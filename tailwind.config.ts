@@ -115,6 +115,14 @@ export default {
 						height: '0'
 					}
 				},
+				'collapsible-down': {
+					from: { height: '0' },
+					to: { height: 'var(--radix-collapsible-content-height)' }
+				},
+				'collapsible-up': {
+					from: { height: 'var(--radix-collapsible-content-height)' },
+					to: { height: '0' }
+				},
 				'gradient-shift': {
 					'0%, 100%': { backgroundPosition: '0% 50%' },
 					'50%': { backgroundPosition: '100% 50%' }
@@ -152,11 +160,35 @@ export default {
 						filter: 'drop-shadow(0 0 12px hsl(var(--primary) / 0.75))',
 						transform: 'scale(1.02)'
 					}
+				},
+				'chapter-card-enter': {
+					from: { opacity: '0', transform: 'translateX(16px) translateY(8px)' },
+					to: { opacity: '1', transform: 'translateX(0) translateY(0)' }
+				},
+				'chapter-node-pop': {
+					'0%': { opacity: '0', transform: 'scale(0.6)' },
+					'70%': { transform: 'scale(1.08)' },
+					'100%': { opacity: '1', transform: 'scale(1)' }
+				},
+				'chapter-line-grow': {
+					from: { transform: 'scaleY(0)' },
+					to: { transform: 'scaleY(1)' }
+				},
+				'trainer-float-drift': {
+					'0%, 100%': { transform: 'translate(0, 0)' },
+					'15%': { transform: 'translate(8px, -12px)' },
+					'30%': { transform: 'translate(-10px, -8px)' },
+					'45%': { transform: 'translate(-6px, 10px)' },
+					'60%': { transform: 'translate(12px, 6px)' },
+					'75%': { transform: 'translate(4px, -14px)' },
+					'90%': { transform: 'translate(-8px, 4px)' }
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
 				'accordion-up': 'accordion-up 0.2s ease-out',
+				'collapsible-down': 'collapsible-down 0.22s ease-out',
+				'collapsible-up': 'collapsible-up 0.2s ease-in',
 				'gradient-shift': 'gradient-shift 3s ease infinite',
 				'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
 				'float': 'float 3s ease-in-out infinite',
@@ -165,7 +197,11 @@ export default {
 				'slide-down-in': 'slide-down-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
 				'slide-up-out': 'slide-up-out 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards',
 				'timer-bar-shimmer': 'timer-bar-shimmer 8s linear infinite',
-				'luminous-timer': 'luminous-timer 3s ease-in-out infinite'
+				'luminous-timer': 'luminous-timer 3s ease-in-out infinite',
+				'chapter-card-enter': 'chapter-card-enter 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards',
+				'chapter-node-pop': 'chapter-node-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards',
+				'chapter-line-grow': 'chapter-line-grow 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards',
+				'trainer-float-drift': 'trainer-float-drift 8s ease-in-out infinite'
 			}
 		}
 	},

@@ -54,4 +54,16 @@ export const PAGE_DESCRIPTIONS = {
     en: "Suggest events, artists or venues to Andiamo Events. Share your ideas – we read every suggestion. Tunisia.",
     fr: "Suggérez des événements, artistes ou lieux à Andiamo Events. Partagez vos idées – nous lisons chaque suggestion. Tunisie.",
   },
+  academy: {
+    en: "Andiamo Academy — certified in-person Event Management training in Tunis. July 2025, 20 hours, 3 formulas. Register now.",
+    fr: "Andiamo Academy — formation certifiée Event Management en présentiel à Tunis. Juillet 2025, 20 heures, 3 formules. Inscrivez-vous.",
+  },
+  academyRegister: {
+    en: "Register for Andiamo Academy — choose your formula and complete your Event Management training enrollment in Tunis.",
+    fr: "Inscrivez-vous à Andiamo Academy — choisissez votre formule et finalisez votre inscription à la formation Event Management à Tunis.",
+  },
+  academyTerms: {
+    en: "Andiamo Academy training terms — registration, payment, place confirmation, refunds, and rules for participants.",
+    fr: "Règlement Andiamo Academy — inscription, paiement, confirmation de place, remboursements et règles pour les participants.",
+  },
 } as const;

@@ -120,6 +120,14 @@
       "destination": "/api/presale.js"
     },
     {
+      "source": "/api/admin/presale/codes/:id/max-unlocks",
+      "destination": "/api/presale.js"
+    },
+    {
+      "source": "/api/admin/presale/codes/:id/discounts",
+      "destination": "/api/presale.js"
+    },
+    {
       "source": "/api/admin/presale/codes/:id/unpause",
       "destination": "/api/presale.js"
     },
@@ -134,6 +142,34 @@
     {
       "source": "/api/aio-events/save-submission",
       "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/academy/status",
+      "destination": "/api/academy.js"
+    },
+    {
+      "source": "/api/academy/register",
+      "destination": "/api/academy.js"
+    },
+    {
+      "source": "/api/academy/validate-promo",
+      "destination": "/api/academy.js"
+    },
+    {
+      "source": "/api/academy/clictopay-generate-payment",
+      "destination": "/api/academy.js"
+    },
+    {
+      "source": "/api/academy/clictopay-confirm-payment",
+      "destination": "/api/academy.js"
+    },
+    {
+      "source": "/api/academy/registration/:id/status",
+      "destination": "/api/academy.js"
+    },
+    {
+      "source": "/api/admin/academy/:path*",
+      "destination": "/api/academy.js"
     },
     {
       "source": "/api/career-application",
@@ -165,6 +201,10 @@
     },
     {
       "source": "/api/admin/passes/:id/payment-methods",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/passes/:id/description",
       "destination": "/api/misc.js"
     },
     {
@@ -563,6 +603,10 @@
     "api/clictopay-generate-payment.js": {
       "maxDuration": 30,
       "includeFiles": "api/lib/**"
+    },
+    "api/academy.js": {
+      "maxDuration": 60,
+      "includeFiles": "{api/lib/**,academyRoutes.cjs}"
     },
     "api/misc.js": {
       "maxDuration": 60,

@@ -18,6 +18,12 @@ import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api-client";
 import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
 import { cn } from "@/lib/utils";
+import {
+  formatPresaleOrderDiscountLabel,
+  formatPresalePassBreakdownRule,
+  parsePresaleOrderSnapshot,
+  type PresaleOrderSnapshot,
+} from "@/lib/presale/presaleDiscount";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AdminOrderQrTicketsSection } from "./AdminOrderQrTicketsSection";
 import {
@@ -118,29 +124,13 @@ export function OrderDetailsDialog({
 
   // Read presale snapshot persisted by the order-create handler. RLS hides `presale_codes` from
   // the anon admin client, so the snapshot stored on `orders.notes.presale` is the source of truth.
-  let presaleInfo: {
-    code_id?: string;
-    code_label?: string | null;
-    discount_type?: "percent" | "fixed" | string;
-    discount_value?: number;
-    original_subtotal?: number;
-    discounted_subtotal?: number;
-  } | null = null;
+  let presaleInfo: PresaleOrderSnapshot | null = null;
   try {
     const rawNotes = (order as { notes?: unknown } | null)?.notes;
     if (rawNotes != null) {
       const notesData = typeof rawNotes === "string" ? JSON.parse(rawNotes) : rawNotes;
-      const p = (notesData as { presale?: Record<string, unknown> } | null)?.presale;
-      if (p && typeof p === "object") {
-        presaleInfo = {
-          code_id: typeof p.code_id === "string" ? (p.code_id as string) : undefined,
-          code_label: typeof p.code_label === "string" ? (p.code_label as string) : null,
-          discount_type: typeof p.discount_type === "string" ? (p.discount_type as string) : undefined,
-          discount_value: typeof p.discount_value === "number" ? (p.discount_value as number) : undefined,
-          original_subtotal: typeof p.original_subtotal === "number" ? (p.original_subtotal as number) : undefined,
-          discounted_subtotal: typeof p.discounted_subtotal === "number" ? (p.discounted_subtotal as number) : undefined,
-        };
-      }
+      const p = (notesData as { presale?: unknown } | null)?.presale;
+      presaleInfo = parsePresaleOrderSnapshot(p);
     }
   } catch (e) {
     presaleInfo = null;
@@ -149,13 +139,7 @@ export function OrderDetailsDialog({
   const presaleCodeIdOnOrder = (order as { presale_code_id?: string | null } | null)?.presale_code_id;
   const isPresaleOrder = !!presaleCodeIdOnOrder || !!presaleInfo;
 
-  const formatPresaleDiscount = () => {
-    if (!presaleInfo || presaleInfo.discount_value == null) return null;
-    if (presaleInfo.discount_type === "percent") {
-      return `${Number(presaleInfo.discount_value).toFixed(0)}%`;
-    }
-    return `${Number(presaleInfo.discount_value).toFixed(2)} TND`;
-  };
+  const formatPresaleDiscount = () => formatPresaleOrderDiscountLabel(presaleInfo, language);
 
   const formatOrderSummaryDateTime = (iso: string | Date | undefined | null) => {
     if (iso == null) return "";
@@ -466,6 +450,16 @@ export function OrderDetailsDialog({
                                               </Badge>
                                             )}
                                           </span>
+                                          {presaleInfo?.discount_mode === "per_pass" &&
+                                            (presaleInfo.pass_breakdown?.length ?? 0) > 0 && (
+                                              <ul className="mt-1 space-y-0.5 text-[10px] text-muted-foreground text-right list-none">
+                                                {presaleInfo.pass_breakdown!.map((row, idx) => (
+                                                  <li key={row.pass_id ?? idx}>
+                                                    {formatPresalePassBreakdownRule(row, language)}
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            )}
                                         </TableCell>
                                         <TableCell className="text-sm font-semibold text-green-600 dark:text-green-400">
                                           {typeof presaleInfo.original_subtotal === 'number' &&
@@ -559,6 +553,16 @@ export function OrderDetailsDialog({
                                         </Badge>
                                       )}
                                     </div>
+                                    {presaleInfo?.discount_mode === "per_pass" &&
+                                      (presaleInfo.pass_breakdown?.length ?? 0) > 0 && (
+                                        <ul className="mt-1 space-y-0.5 text-[10px] text-muted-foreground list-none">
+                                          {presaleInfo.pass_breakdown!.map((row, idx) => (
+                                            <li key={row.pass_id ?? idx}>
+                                              {formatPresalePassBreakdownRule(row, language)}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      )}
                                     {typeof presaleInfo.original_subtotal === 'number' &&
                                       typeof presaleInfo.discounted_subtotal === 'number' && (
                                         <div className="text-xs sm:text-sm font-semibold text-green-600 dark:text-green-400">

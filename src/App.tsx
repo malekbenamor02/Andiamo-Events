@@ -45,6 +45,11 @@ const About = lazyWithChunkRecovery(() => import("./pages/About"));
 const Contact = lazyWithChunkRecovery(() => import("./pages/Contact"));
 const NotFound = lazyWithChunkRecovery(() => import("./pages/NotFound"));
 const Terms = lazyWithChunkRecovery(() => import("./pages/Terms"));
+const Academy = lazyWithChunkRecovery(() => import("./pages/Academy"));
+const AcademyRegistration = lazyWithChunkRecovery(() => import("./pages/AcademyRegistration"));
+const AcademyTerms = lazyWithChunkRecovery(() => import("./pages/AcademyTerms"));
+const AcademyPaymentProcessing = lazyWithChunkRecovery(() => import("./pages/AcademyPaymentProcessing"));
+const AcademyRegistrationConfirmation = lazyWithChunkRecovery(() => import("./pages/AcademyRegistrationConfirmation"));
 import ScrollToTop from "./components/layout/ScrollToTop";
 // Auth / dashboard sections (loaded on demand)
 const Auth = lazyWithChunkRecovery(() => import("./pages/ambassador/Auth"));
@@ -229,6 +234,11 @@ const AppContent = ({
               <Route path="/contact" element={<Contact language={language} />} />
               <Route path="/suggestions" element={<Suggestions language={language} />} />
               <Route path="/terms" element={<Terms language={language} />} />
+              <Route path="/academy" element={<Academy language={language} />} />
+              <Route path="/academy/register" element={<AcademyRegistration language={language} />} />
+              <Route path="/academy/register/confirmation" element={<AcademyRegistrationConfirmation language={language} />} />
+              <Route path="/academy/payment-processing" element={<AcademyPaymentProcessing language={language} />} />
+              <Route path="/academy/terms" element={<AcademyTerms language={language} />} />
               {/* Friendly URL route for event pass purchase: /event-slug */}
               <Route path="/:eventSlug" element={<PassPurchase language={language} />} />
               <Route path="*" element={<NotFound />} />

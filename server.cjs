@@ -3637,6 +3637,15 @@ try {
   console.error(e.stack);
 }
 
+try {
+  const { registerAcademyRoutes } = require('./academyRoutes.cjs');
+  registerAcademyRoutes(app, { requireAdminAuth });
+  console.log('Academy routes registered at /api/academy/* and /api/admin/academy/*');
+} catch (e) {
+  console.error('Academy routes not loaded:', e.message);
+  console.error(e.stack);
+}
+
 // Ticket validation endpoint
 app.post('/api/validate-ticket', async (req, res) => {
   try {
@@ -6676,6 +6685,86 @@ app.put('/api/admin/passes/:id/payment-methods', requireAdminAuth, async (req, r
       error: 'Internal server error',
       details: error.message
     });
+  }
+});
+
+// PUT /api/admin/passes/:id/description - Update pass description
+app.put('/api/admin/passes/:id/description', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { id } = req.params;
+    const { description } = req.body || {};
+    const adminId = req.admin?.id;
+    const adminEmail = req.admin?.email;
+
+    if (!id) {
+      return res.status(400).json({ error: 'Pass ID is required' });
+    }
+
+    if (description != null && typeof description !== 'string') {
+      return res.status(400).json({ error: 'Invalid description', details: 'description must be a string' });
+    }
+
+    const normalizedDescription = (description ?? '').toString();
+    if (normalizedDescription.length > 2000) {
+      return res.status(400).json({ error: 'Description too long', details: 'Max length is 2000 characters' });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    const { data: currentPass, error: fetchError } = await dbClient
+      .from('event_passes')
+      .select('id, event_id, name, description')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !currentPass) {
+      return res.status(404).json({ error: 'Pass not found' });
+    }
+
+    const { data: updatedPass, error: updateError } = await dbClient
+      .from('event_passes')
+      .update({
+        description: normalizedDescription,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select('id, description')
+      .single();
+
+    if (updateError) {
+      console.error('Error updating pass description:', updateError);
+      return res.status(500).json({ error: 'Failed to update pass description', details: updateError.message });
+    }
+
+    try {
+      await dbClient.from('security_audit_logs').insert({
+        event_type: 'admin_pass_description_update',
+        user_id: adminId,
+        endpoint: '/api/admin/passes/:id/description',
+        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        user_agent: req.headers['user-agent'] || 'unknown',
+        details: {
+          pass_id: id,
+          event_id: currentPass.event_id,
+          action: 'UPDATE_DESCRIPTION',
+          before: { description: currentPass.description ?? '' },
+          after: { description: updatedPass.description ?? '' },
+          admin_email: adminEmail || 'unknown',
+        },
+        severity: 'low',
+      });
+    } catch (logError) {
+      console.warn('Failed to log description update (non-fatal):', logError);
+    }
+
+    return res.status(200).json({ success: true, pass: updatedPass });
+  } catch (error) {
+    console.error('Error in /api/admin/passes/:id/description:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
 

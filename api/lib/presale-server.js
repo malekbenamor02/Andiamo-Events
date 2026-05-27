@@ -3,9 +3,21 @@
  * Used by presale routes, passes-[eventId], orders-create, server.cjs.
  */
 import crypto from 'crypto';
+import {
+  applyPresaleDiscountToPasses,
+  buildPresaleDiscountPolicy,
+  buildPresaleOrderSnapshot,
+  buildPresalePassBreakdown,
+  roundPresaleMoney,
+} from './presale-discount.js';
+
+export { applyPresaleDiscountToPasses } from './presale-discount.js';
 
 export const PRESALE_COOKIE_NAME = 'andm_ps';
 export const PRESALE_CSRF_HEADER = 'x-presale-csrf';
+/** Presale access session lifetime after successful code redeem (3.5 minutes). */
+export const PRESALE_SESSION_TTL_SEC = 210;
+export const PRESALE_SESSION_TTL_MS = PRESALE_SESSION_TTL_SEC * 1000;
 
 /** True when X-Forwarded-For / X-Real-IP may be trusted (Vercel, or TRUST_FORWARDED_IP=1 behind your proxy). */
 export function isTrustedProxyEnvironment() {
@@ -175,32 +187,29 @@ export function presaleCsrfHeaderValid(sessionRow, headerVal) {
   return timingSafeEqualString(sessionRow.csrf_token, String(headerVal).trim());
 }
 
-function roundPresaleMoney(n) {
-  return Math.round(Number(n) * 100) / 100;
-}
-
 /**
- * Mutates validatedPasses[].price from list prices using presale code row.
- * Percent: same % off each pass list price. Fixed: subtract discount_value from each unit (per pass).
- * @param {Array<{ price: number, quantity: number, eventPass: { price: unknown } }>} validatedPasses
- * @param {Record<string, unknown>} codeRow presale_codes row
+ * Load presale_codes row + optional per-pass discount rows for pricing/API.
+ * @returns {Promise<{ codeRow: Record<string, unknown>, passDiscountRows: Record<string, unknown>[], policy: ReturnType<typeof buildPresaleDiscountPolicy> } | null>}
  */
-export function applyPresaleDiscountToPasses(validatedPasses, codeRow) {
-  if (!codeRow || !codeRow.discount_type) return;
-  if (codeRow.discount_type === 'percent') {
-    const pct = Math.min(100, Math.max(0, parseFloat(codeRow.discount_value)));
-    const factor = 1 - pct / 100;
-    for (const vp of validatedPasses) {
-      const base = parseFloat(vp.eventPass.price);
-      vp.price = roundPresaleMoney(Math.max(0, base * factor));
-    }
-    return;
+export async function loadPresaleCodeWithDiscountPolicy(dbClient, presaleCodeId) {
+  if (!presaleCodeId) return null;
+  const { data: codeRow, error: codeErr } = await dbClient
+    .from('presale_codes')
+    .select('*')
+    .eq('id', presaleCodeId)
+    .maybeSingle();
+  if (codeErr || !codeRow) return null;
+  let passDiscountRows = [];
+  if (codeRow.discount_mode === 'per_pass') {
+    const { data: passRows, error: passErr } = await dbClient
+      .from('presale_code_pass_discounts')
+      .select('event_pass_id, discount_type, discount_value')
+      .eq('presale_code_id', presaleCodeId);
+    if (passErr) return null;
+    passDiscountRows = passRows || [];
   }
-  const fixedPerUnit = Math.max(0, parseFloat(codeRow.discount_value));
-  for (const vp of validatedPasses) {
-    const base = parseFloat(vp.eventPass.price);
-    vp.price = roundPresaleMoney(Math.max(0, base - fixedPerUnit));
-  }
+  const policy = buildPresaleDiscountPolicy(codeRow, passDiscountRows);
+  return { codeRow, passDiscountRows, policy };
 }
 
 /**
@@ -243,13 +252,13 @@ export async function resolvePresaleForOrderCreate(dbClient, req, { primaryEvent
     return { ok: false, error: 'Presale session invalid' };
   }
 
-  const { data: codeRow, error: codeErr } = await dbClient
-    .from('presale_codes')
-    .select('*')
-    .eq('id', sess.presale_code_id)
-    .maybeSingle();
+  const loaded = await loadPresaleCodeWithDiscountPolicy(dbClient, sess.presale_code_id);
+  if (!loaded) {
+    return { ok: false, error: 'Presale code invalid' };
+  }
+  const { codeRow, policy } = loaded;
   const now = new Date();
-  if (codeErr || !codeRow || codeRow.revoked_at || codeRow.paused_at || codeRow.event_id !== primaryEventId) {
+  if (codeRow.revoked_at || codeRow.paused_at || codeRow.event_id !== primaryEventId) {
     return { ok: false, error: 'Presale code invalid' };
   }
   if (codeRow.active_from && new Date(codeRow.active_from) > now) {
@@ -265,21 +274,21 @@ export async function resolvePresaleForOrderCreate(dbClient, req, { primaryEvent
     0
   );
 
-  applyPresaleDiscountToPasses(validatedPasses, codeRow);
+  applyPresaleDiscountToPasses(validatedPasses, policy);
 
   const discountedSubtotal = validatedPasses.reduce(
     (s, p) => s + parseFloat(p.price) * (p.quantity || 0),
     0
   );
 
-  const presaleSnapshot = {
-    code_id: codeRow.id,
-    code_label: codeRow.label || null,
-    discount_type: codeRow.discount_type,
-    discount_value: parseFloat(codeRow.discount_value),
-    original_subtotal: roundPresaleMoney(originalSubtotal),
-    discounted_subtotal: roundPresaleMoney(discountedSubtotal),
-  };
+  const passBreakdown = buildPresalePassBreakdown(validatedPasses, policy);
+  const presaleSnapshot = buildPresaleOrderSnapshot(
+    codeRow,
+    loaded.passDiscountRows,
+    originalSubtotal,
+    discountedSubtotal,
+    passBreakdown
+  );
 
   return { ok: true, presaleCodeId: codeRow.id, presaleSnapshot };
 }

@@ -2909,6 +2909,124 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         });
       }
     }
+
+    // ============================================
+    // /api/admin/passes/:id/description (PUT)
+    // ============================================
+    if (path.includes('/api/admin/passes/') && path.endsWith('/description') && method === 'PUT') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+
+        // Extract pass ID from path: /api/admin/passes/[id]/description
+        const pathParts = path.split('/');
+        const passId = pathParts[pathParts.length - 2]; // Second to last part
+
+        if (!passId) {
+          return res.status(400).json({ error: 'Pass ID is required' });
+        }
+
+        const bodyData = await parseBody(req);
+        const adminId = authResult.admin?.id;
+        const adminEmail = authResult.admin?.email;
+
+        const description = bodyData?.description;
+        if (description != null && typeof description !== 'string') {
+          return res.status(400).json({ error: 'Invalid description', details: 'description must be a string' });
+        }
+
+        const normalizedDescription = (description ?? '').toString();
+        if (normalizedDescription.length > 2000) {
+          return res.status(400).json({ error: 'Description too long', details: 'Max length is 2000 characters' });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+
+        let dbClient = supabase;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        }
+
+        const { data: currentPass, error: fetchError } = await dbClient
+          .from('event_passes')
+          .select('id, event_id, name, description')
+          .eq('id', passId)
+          .single();
+
+        if (fetchError || !currentPass) {
+          return res.status(404).json({ error: 'Pass not found' });
+        }
+
+        const { data: updatedPass, error: updateError } = await dbClient
+          .from('event_passes')
+          .update({
+            description: normalizedDescription,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', passId)
+          .select('id, description')
+          .single();
+
+        if (updateError) {
+          console.error('Error updating pass description:', updateError);
+          return res.status(500).json({
+            error: 'Failed to update pass description',
+            details: updateError.message
+          });
+        }
+
+        // Log admin action
+        try {
+          await dbClient.from('security_audit_logs').insert({
+            event_type: 'admin_pass_description_update',
+            user_id: adminId,
+            endpoint: '/api/admin/passes/:id/description',
+            ip_address: req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown',
+            user_agent: req.headers['user-agent'] || 'unknown',
+            details: {
+              pass_id: passId,
+              event_id: currentPass.event_id,
+              action: 'UPDATE_DESCRIPTION',
+              before: { description: currentPass.description ?? '' },
+              after: { description: updatedPass.description ?? '' },
+              admin_email: adminEmail || 'unknown'
+            },
+            severity: 'low'
+          });
+        } catch (logError) {
+          console.warn('Failed to log description update (non-fatal):', logError);
+        }
+
+        return res.status(200).json({
+          success: true,
+          pass: updatedPass
+        });
+      } catch (error) {
+        console.error('Error in /api/admin/passes/:id/description:', error);
+        return res.status(500).json({
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
     
     // ============================================
     // /api/admin/passes/:id/activate (POST)

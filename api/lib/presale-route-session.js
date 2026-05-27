@@ -9,7 +9,9 @@ import {
   PRESALE_CSRF_HEADER,
   fetchValidPresaleSessionRow,
   clearPresaleCookieHeader,
+  loadPresaleCodeWithDiscountPolicy,
 } from './presale-server.js';
+import { presaleDiscountPolicyToApi } from './presale-discount.js';
 
 let corsUtils = null;
 async function getCorsUtils() {
@@ -88,15 +90,15 @@ export async function handlePresaleSession(req, res) {
   async function sessionPayloadForRow(row, eventId, includeCsrf) {
     let discount_type = null;
     let discount_value = null;
+    let discount_policy = null;
     try {
-      const { data: codeRow } = await client
-        .from('presale_codes')
-        .select('discount_type, discount_value')
-        .eq('id', row.presale_code_id)
-        .maybeSingle();
-      if (codeRow && (codeRow.discount_type === 'percent' || codeRow.discount_type === 'fixed')) {
-        discount_type = codeRow.discount_type;
-        discount_value = codeRow.discount_value != null ? Number(codeRow.discount_value) : null;
+      const loaded = await loadPresaleCodeWithDiscountPolicy(client, row.presale_code_id);
+      if (loaded) {
+        discount_policy = presaleDiscountPolicyToApi(loaded.policy);
+        if (loaded.policy.mode === 'uniform' && loaded.policy.uniform) {
+          discount_type = loaded.policy.uniform.discount_type;
+          discount_value = loaded.policy.uniform.discount_value;
+        }
       }
     } catch (e) {
       console.error('presale-session discount lookup', e);
@@ -105,8 +107,10 @@ export async function handlePresaleSession(req, res) {
       valid: true,
       eventId,
       presaleCodeId: row.presale_code_id,
+      expiresAt: row.expires_at,
       discount_type,
       discount_value,
+      discount_policy,
     };
     if (includeCsrf) {
       return { ...base, csrfToken: row.csrf_token };

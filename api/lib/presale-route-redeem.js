@@ -8,8 +8,11 @@ import {
   hashPresaleCode,
   newCsrfToken,
   presaleCookieHeaderValue,
+  PRESALE_SESSION_TTL_MS,
+  PRESALE_SESSION_TTL_SEC,
   requirePresalePepperOr503,
 } from './presale-server.js';
+import { buildPresaleDiscountPolicy, presaleDiscountPolicyToApi, validateAdminPassDiscounts } from './presale-discount.js';
 
 let corsUtils = null;
 async function getCorsUtils() {
@@ -189,9 +192,34 @@ export async function handlePresaleRedeem(req, res) {
       });
     }
 
+    const { data: claimedUnlockRaw, error: unlockErr } = await client.rpc('presale_claim_unlock_slot', {
+      p_event_id: eventId,
+      p_presale_code_id: matched.id,
+    });
+    if (unlockErr) {
+      console.error('presale_claim_unlock_slot', unlockErr);
+      return res.status(503).json({
+        success: false,
+        reason: 'server_error',
+        message: 'Could not verify unlock capacity. Ensure database migrations are applied.',
+      });
+    }
+    const claimedUnlockRows = Array.isArray(claimedUnlockRaw)
+      ? claimedUnlockRaw
+      : claimedUnlockRaw
+        ? [claimedUnlockRaw]
+        : [];
+    if (!claimedUnlockRows.length) {
+      await logAttempt(matched.id, false, 'exhausted');
+      return res.status(403).json({
+        success: false,
+        reason: 'code_exhausted',
+        message: 'This code has reached its maximum number of unlocks',
+      });
+    }
+
     const csrf = newCsrfToken();
-    const PRESALE_SESSION_DB_TTL_MS = 8 * 60 * 60 * 1000;
-    const expiresAt = new Date(Date.now() + PRESALE_SESSION_DB_TTL_MS).toISOString();
+    const expiresAt = new Date(Date.now() + PRESALE_SESSION_TTL_MS).toISOString();
 
     const { data: sessionRow, error: sessErr } = await client
       .from('presale_sessions')
@@ -206,6 +234,11 @@ export async function handlePresaleRedeem(req, res) {
 
     if (sessErr || !sessionRow) {
       console.error('presale session insert', sessErr);
+      try {
+        await client.rpc('presale_release_unlock_slot', { p_presale_code_id: matched.id });
+      } catch (releaseErr) {
+        console.error('presale_release_unlock_slot', releaseErr);
+      }
       return res.status(500).json({
         success: false,
         reason: 'session_create_failed',
@@ -215,14 +248,36 @@ export async function handlePresaleRedeem(req, res) {
 
     await logAttempt(matched.id, true, null);
 
-    res.setHeader('Set-Cookie', presaleCookieHeaderValue(sessionRow.id));
+    let passDiscountRows = [];
+    if (matched.discount_mode === 'per_pass') {
+      const { data: passRows } = await client
+        .from('presale_code_pass_discounts')
+        .select('event_pass_id, discount_type, discount_value')
+        .eq('presale_code_id', matched.id);
+      passDiscountRows = passRows || [];
+    }
+    const policy = buildPresaleDiscountPolicy(matched, passDiscountRows);
+    const discount_policy = presaleDiscountPolicyToApi(policy);
+    const legacyUniform =
+      policy.mode === 'uniform' && policy.uniform
+        ? {
+            discount_type: policy.uniform.discount_type,
+            discount_value: policy.uniform.discount_value,
+          }
+        : {
+            discount_type: matched.discount_type,
+            discount_value: matched.discount_value != null ? Number(matched.discount_value) : null,
+          };
+
+    res.setHeader('Set-Cookie', presaleCookieHeaderValue(sessionRow.id, PRESALE_SESSION_TTL_SEC));
     return res.status(200).json({
       success: true,
       csrfToken: csrf,
       expiresAt,
       presaleCodeId: matched.id,
-      discount_type: matched.discount_type,
-      discount_value: matched.discount_value != null ? Number(matched.discount_value) : null,
+      discount_type: legacyUniform.discount_type,
+      discount_value: legacyUniform.discount_value,
+      discount_policy,
     });
   } catch (e) {
     console.error('presale-redeem', e);

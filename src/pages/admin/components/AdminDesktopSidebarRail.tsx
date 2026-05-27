@@ -27,6 +27,7 @@ import {
   Settings,
   LogOut,
   PanelLeft,
+  GraduationCap,
 } from "lucide-react";
 
 export type AdminDesktopSidebarRailProps = {
@@ -228,6 +229,22 @@ export function AdminDesktopSidebarRail({
               >
                 <Briefcase className={`w-4 h-4 shrink-0 ${activeTab === "careers" ? "animate-pulse" : ""}`} />
                 <span>{language === "en" ? "Careers" : "Carrières"}</span>
+              </button>
+            )}
+            {isAdminTabAllowedForRole("academy", currentAdminRole) && (
+              <button
+                type="button"
+                data-active={activeTab === "academy"}
+                onClick={() => setActiveTab("academy")}
+                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
+                  activeTab === "academy" ? "shadow-lg" : ""
+                }`}
+                style={{
+                  background: activeTab === "academy" ? "rgba(226, 24, 54, 0.08)" : "transparent",
+                }}
+              >
+                <GraduationCap className={`w-4 h-4 shrink-0 ${activeTab === "academy" ? "animate-pulse" : ""}`} />
+                <span>Academy</span>
               </button>
             )}
             <button

@@ -37,6 +37,12 @@ import {
   Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  formatPresaleOrderDiscountLabel,
+  formatPresalePassBreakdownRule,
+  parsePresaleOrderSnapshot,
+  type PresaleOrderSnapshot,
+} from "@/lib/presale/presaleDiscount";
 import { useToast } from "@/hooks/use-toast";
 import { AdminOrderQrTicketsSection } from "./AdminOrderQrTicketsSection";
 
@@ -184,29 +190,13 @@ export function OnlineOrderDetailsDialog({
   // Read presale snapshot persisted by the order-create handler. The admin client uses the anon
   // key, so the underlying `presale_codes` row is hidden by RLS — the snapshot in `notes.presale`
   // is the source of truth for this view.
-  let presaleInfo: {
-    code_id?: string;
-    code_label?: string | null;
-    discount_type?: "percent" | "fixed" | string;
-    discount_value?: number;
-    original_subtotal?: number;
-    discounted_subtotal?: number;
-  } | null = null;
+  let presaleInfo: PresaleOrderSnapshot | null = null;
   try {
     if (order?.notes) {
       const raw = order.notes as unknown;
       const notesData = typeof raw === "string" ? JSON.parse(raw) : raw;
-      const p = (notesData as { presale?: Record<string, unknown> } | null)?.presale;
-      if (p && typeof p === "object") {
-        presaleInfo = {
-          code_id: typeof p.code_id === "string" ? (p.code_id as string) : undefined,
-          code_label: typeof p.code_label === "string" ? (p.code_label as string) : null,
-          discount_type: typeof p.discount_type === "string" ? (p.discount_type as string) : undefined,
-          discount_value: typeof p.discount_value === "number" ? (p.discount_value as number) : undefined,
-          original_subtotal: typeof p.original_subtotal === "number" ? (p.original_subtotal as number) : undefined,
-          discounted_subtotal: typeof p.discounted_subtotal === "number" ? (p.discounted_subtotal as number) : undefined,
-        };
-      }
+      const p = (notesData as { presale?: unknown } | null)?.presale;
+      presaleInfo = parsePresaleOrderSnapshot(p);
     }
   } catch (e) {
     presaleInfo = null;
@@ -214,13 +204,7 @@ export function OnlineOrderDetailsDialog({
 
   const isPresaleOrder = !!order?.presale_code_id || !!presaleInfo;
 
-  const formatPresaleDiscount = () => {
-    if (!presaleInfo || presaleInfo.discount_value == null) return null;
-    if (presaleInfo.discount_type === "percent") {
-      return `${Number(presaleInfo.discount_value).toFixed(0)}%`;
-    }
-    return `${Number(presaleInfo.discount_value).toFixed(2)} TND`;
-  };
+  const formatPresaleDiscount = () => formatPresaleOrderDiscountLabel(presaleInfo, language);
 
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(
@@ -663,6 +647,16 @@ export function OnlineOrderDetailsDialog({
                                         </Badge>
                                       )}
                                     </span>
+                                    {presaleInfo?.discount_mode === "per_pass" &&
+                                      (presaleInfo.pass_breakdown?.length ?? 0) > 0 && (
+                                        <ul className="mt-1 space-y-0.5 text-[10px] text-muted-foreground text-right list-none">
+                                          {presaleInfo.pass_breakdown!.map((row, idx) => (
+                                            <li key={row.pass_id ?? idx}>
+                                              {formatPresalePassBreakdownRule(row, language)}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      )}
                                   </TableCell>
                                   <TableCell className="text-sm font-semibold text-green-600 dark:text-green-400">
                                     {typeof presaleInfo.original_subtotal === "number" &&
@@ -770,6 +764,16 @@ export function OnlineOrderDetailsDialog({
                                   </Badge>
                                 )}
                               </div>
+                              {presaleInfo?.discount_mode === "per_pass" &&
+                                (presaleInfo.pass_breakdown?.length ?? 0) > 0 && (
+                                  <ul className="mt-1 space-y-0.5 text-[10px] text-muted-foreground list-none">
+                                    {presaleInfo.pass_breakdown!.map((row, idx) => (
+                                      <li key={row.pass_id ?? idx}>
+                                        {formatPresalePassBreakdownRule(row, language)}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
                               {typeof presaleInfo.original_subtotal === "number" &&
                                 typeof presaleInfo.discounted_subtotal === "number" && (
                                   <div className="text-sm font-semibold text-green-600 dark:text-green-400">

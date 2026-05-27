@@ -32,6 +32,10 @@ export const API_ROUTES = {
   ADMIN_PRESALE_CODE_UNPAUSE: (id: string) => `/api/admin/presale/codes/${encodeURIComponent(id)}/unpause`,
   ADMIN_PRESALE_CODE_MAX_REDEMPTIONS: (id: string) =>
     `/api/admin/presale/codes/${encodeURIComponent(id)}/max-redemptions`,
+  ADMIN_PRESALE_CODE_MAX_UNLOCKS: (id: string) =>
+    `/api/admin/presale/codes/${encodeURIComponent(id)}/max-unlocks`,
+  ADMIN_PRESALE_CODE_DISCOUNTS: (id: string) =>
+    `/api/admin/presale/codes/${encodeURIComponent(id)}/discounts`,
 
   /** Create pass for an event (service role; required when event has presale — anon cannot SELECT inserted row). */
   ADMIN_PASS_CREATE: '/api/admin/passes/create',
@@ -94,6 +98,26 @@ export const API_ROUTES = {
   // ClicToPay Payment Gateway
   CLICTOPAY_GENERATE_PAYMENT: '/api/clictopay-generate-payment',
   CLICTOPAY_CONFIRM_PAYMENT: '/api/clictopay-confirm-payment',
+
+  // Academy registration
+  ACADEMY_STATUS: '/api/academy/status',
+  ACADEMY_VALIDATE_PROMO: '/api/academy/validate-promo',
+  ACADEMY_REGISTER: '/api/academy/register',
+  ACADEMY_CLICTOPAY_GENERATE: '/api/academy/clictopay-generate-payment',
+  ACADEMY_CLICTOPAY_CONFIRM: '/api/academy/clictopay-confirm-payment',
+  ACADEMY_REGISTRATION_STATUS: (id: string) => `/api/academy/registration/${encodeURIComponent(id)}/status`,
+  ADMIN_ACADEMY_SETTINGS: '/api/admin/academy/settings',
+  ADMIN_ACADEMY_REGISTRATIONS: '/api/admin/academy/registrations',
+  ADMIN_ACADEMY_REGISTRATION: (id: string) => `/api/admin/academy/registrations/${encodeURIComponent(id)}`,
+  ADMIN_ACADEMY_REGISTRATION_APPROVE: (id: string) =>
+    `/api/admin/academy/registrations/${encodeURIComponent(id)}/approve`,
+  ADMIN_ACADEMY_REGISTRATION_REJECT: (id: string) =>
+    `/api/admin/academy/registrations/${encodeURIComponent(id)}/reject`,
+  ADMIN_ACADEMY_REGISTRATION_RESEND: (id: string) =>
+    `/api/admin/academy/registrations/${encodeURIComponent(id)}/resend-email`,
+  ADMIN_ACADEMY_REPORTS: '/api/admin/academy/reports',
+  ADMIN_ACADEMY_PROMO_CODES: '/api/admin/academy/promo-codes',
+  ADMIN_ACADEMY_PROMO_CODE: (id: string) => `/api/admin/academy/promo-codes/${encodeURIComponent(id)}`,
 
   // Admin Order Management
   ADMIN_SKIP_AMBASSADOR_CONFIRMATION: '/api/admin-skip-ambassador-confirmation',

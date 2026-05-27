@@ -186,4 +186,41 @@ ${emailLogoHeaderHtml()}
 </div></div></body></html>`
 );
 
+// --- Academy registration emails (English only) ---
+// Relative path so previews work when opened from email-templates/previews/
+process.env.ACADEMY_EMAIL_LOGO_URL = '../../public/assets/andiamo-academy-cropped.svg';
+
+const {
+  PREVIEW_FIXTURE,
+  buildAcademyOnlineConfirmedEmailHtml,
+  buildAcademyManualPaymentReceivedEmailHtml,
+  buildAcademyApprovedEmailHtml,
+} = require(path.join(root, 'api/lib/academy-email-html.cjs'));
+
+const academyManualFixture = { ...PREVIEW_FIXTURE, payment_method: 'd17' };
+
+write('14-academy-online-confirmed.html', buildAcademyOnlineConfirmedEmailHtml(PREVIEW_FIXTURE).html);
+write(
+  '15-academy-manual-payment-received.html',
+  buildAcademyManualPaymentReceivedEmailHtml(academyManualFixture).html
+);
+write('16-academy-approved.html', buildAcademyApprovedEmailHtml(PREVIEW_FIXTURE).html);
+
+const staleAcademyPreviews = [
+  '14-academy-online-confirmed-en.html',
+  '15-academy-online-confirmed-fr.html',
+  '16-academy-manual-payment-received-en.html',
+  '17-academy-manual-payment-received-fr.html',
+  '18-academy-approved-en.html',
+  '19-academy-approved-fr.html',
+];
+for (const name of staleAcademyPreviews) {
+  const p = path.join(previewsDir, name);
+  if (fs.existsSync(p)) {
+    fs.unlinkSync(p);
+    console.log('removed', name);
+  }
+}
+
 console.log('Done. Open email-templates/email-gallery.html to browse all previews in one page.');
+console.log('Academy emails: email-templates/previews/14–16-academy-*.html');

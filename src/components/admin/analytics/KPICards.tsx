@@ -78,7 +78,7 @@ function KPICard({ title, value, suffix = '', icon, trend, color }: KPICardProps
   };
 
   return (
-    <Card className="bg-card rounded-2xl border-border/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] group animate-in slide-in-from-bottom-4 fade-in">
+    <Card className="bg-card rounded-2xl border-border/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] group">
       <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
           <div className={`w-12 h-12 ${getBgColor(color)} rounded-xl flex items-center justify-center transition-colors`}>

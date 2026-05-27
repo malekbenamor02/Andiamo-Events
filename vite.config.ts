@@ -12,8 +12,17 @@ export default defineConfig(({ mode }) => {
   const isProdDeploy =
     mode === "production" && process.env.VERCEL_ENV === "production";
 
+  const wantSentrySourcemaps =
+    isProdDeploy &&
+    Boolean(env.SENTRY_AUTH_TOKEN && env.SENTRY_ORG && env.SENTRY_PROJECT);
+
   return {
     base: "/",
+
+    esbuild: {
+      // Production: remove console/debugger from shipped JS (Console tab stays clean).
+      drop: mode === "production" ? ["console", "debugger"] : [],
+    },
 
     server: {
       host: "::",
@@ -51,10 +60,7 @@ export default defineConfig(({ mode }) => {
 
     plugins: [
       react(),
-      ...(isProdDeploy &&
-      env.SENTRY_AUTH_TOKEN &&
-      env.SENTRY_ORG &&
-      env.SENTRY_PROJECT
+      ...(wantSentrySourcemaps
         ? [
             sentryVitePlugin({
               org: env.SENTRY_ORG,
@@ -95,9 +101,10 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: "dist",
       assetsDir: "assets",
-      // Hidden source maps in production: .map files are generated for Sentry but not
-      // linked in JS, so DevTools won't show original sources (like big platforms).
-      sourcemap: mode === "production" ? "hidden" : true,
+      // Only emit .map files when Sentry upload runs; otherwise skip maps so
+      // /assets/*.map is never deployed (avoids reconstructing original TS/TSX).
+      // When Sentry runs: "hidden" = maps exist for upload but no sourceMappingURL in JS.
+      sourcemap: mode === "production" ? (wantSentrySourcemaps ? "hidden" : false) : true,
       emptyOutDir: true,
       // Skip gzip-size reporting on every chunk (saves several seconds on big bundles).
       reportCompressedSize: false,

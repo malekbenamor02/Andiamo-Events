@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import FileUpload from "@/components/ui/file-upload";
@@ -26,6 +27,10 @@ import { formatDateDMY, toDatetimeLocalValue } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+/** Add/Edit Event dialog — subtab triggers: comfortable gaps + ~44px tap height on mobile */
+const EDIT_EVENT_SUBTAB_TRIGGER =
+  "w-full touch-manipulation rounded-md px-2 py-2 text-[11px] leading-none min-h-[40px] sm:min-h-10 sm:rounded-sm sm:px-3 sm:py-2 sm:text-sm";
 
 export interface EventsTabProps {
   language: "en" | "fr";
@@ -63,18 +68,39 @@ export interface EventsTabProps {
   handleDeleteEvent: (eventId: string) => void;
 }
 
+type PresalePassDiscountRow = {
+  event_pass_id: string;
+  pass_name: string | null;
+  discount_type: "percent" | "fixed";
+  discount_value: number;
+};
+
 type PresaleCodeRow = {
   id: string;
   label: string | null;
   usage_mode: string;
+  discount_mode: "uniform" | "per_pass";
   discount_type: string;
   discount_value: number;
+  pass_discounts: PresalePassDiscountRow[];
   max_total_redemptions: number | null;
+  max_total_unlocks: number | null;
+  redemption_count: number;
   paused_at: string | null;
   revoked_at: string | null;
   successful_order_count: number | null;
-  /** Successful redeem (code accepted); includes visitors who did not purchase. */
-  successful_unlock_count: number;
+};
+
+type PresalePassDiscountDraft = {
+  discount_type: "percent" | "fixed";
+  discount_value: string;
+};
+
+type PresaleDiscountEditDraft = {
+  discount_mode: "uniform" | "per_pass";
+  discount_type: "percent" | "fixed";
+  discount_value: string;
+  per_pass: Record<string, PresalePassDiscountDraft>;
 };
 
 function parsePresaleLabelFromApiRow(row: Record<string, unknown>): string | null {
@@ -105,16 +131,26 @@ function mergePresaleCodeRows(
       id,
       label,
       usage_mode: String(row.usage_mode ?? ""),
+      discount_mode: row.discount_mode === "per_pass" ? "per_pass" : "uniform",
       discount_type: String(row.discount_type ?? ""),
       discount_value: Number(row.discount_value) || 0,
+      pass_discounts: Array.isArray(row.pass_discounts)
+        ? (row.pass_discounts as Record<string, unknown>[]).map((pd) => ({
+            event_pass_id: String(pd.event_pass_id ?? ""),
+            pass_name: pd.pass_name != null ? String(pd.pass_name) : null,
+            discount_type: pd.discount_type === "fixed" ? "fixed" : "percent",
+            discount_value: Number(pd.discount_value) || 0,
+          }))
+        : [],
       max_total_redemptions:
         row.max_total_redemptions != null ? Number(row.max_total_redemptions) : null,
+      max_total_unlocks:
+        row.max_total_unlocks != null ? Number(row.max_total_unlocks) : null,
+      redemption_count: row.redemption_count != null ? Number(row.redemption_count) : 0,
       paused_at: row.paused_at != null ? String(row.paused_at) : null,
       revoked_at: row.revoked_at != null ? String(row.revoked_at) : null,
       successful_order_count:
         row.successful_order_count != null ? Number(row.successful_order_count) : null,
-      successful_unlock_count:
-        row.successful_unlock_count != null ? Number(row.successful_unlock_count) : 0,
     };
   });
 }
@@ -123,6 +159,54 @@ function presaleApiErrorMessage(body: Record<string, unknown>, fallback: string)
   const m = typeof body.message === "string" ? body.message.trim() : "";
   const e = typeof body.error === "string" ? body.error.trim() : "";
   return m || e || fallback;
+}
+
+function presaleCapsInvalidMessage(language: "en" | "fr"): string {
+  return language === "en"
+    ? "Max successful orders cannot exceed max code entries (each order requires an unlock)."
+    : "Le max de commandes ne peut pas dépasser le max de déblocages (chaque commande nécessite un déblocage).";
+}
+
+function presaleUsagePercent(used: number, max: number | null): number {
+  if (max == null || max <= 0) return 0;
+  return Math.min(100, Math.round((used / max) * 100));
+}
+
+function presaleCapDisplayMax(max: number | null, language: "en" | "fr"): string {
+  return max != null ? String(max) : language === "en" ? "∞" : "∞";
+}
+
+function emptyPerPassDrafts(passes: EventPass[]): Record<string, PresalePassDiscountDraft> {
+  return Object.fromEntries(
+    passes.map((p) => [p.id, { discount_type: "percent" as const, discount_value: "" }])
+  );
+}
+
+function discountEditDraftFromCode(c: PresaleCodeRow, passes: EventPass[]): PresaleDiscountEditDraft {
+  const per_pass = emptyPerPassDrafts(passes);
+  for (const row of c.pass_discounts || []) {
+    if (per_pass[row.event_pass_id]) {
+      per_pass[row.event_pass_id] = {
+        discount_type: row.discount_type,
+        discount_value: String(row.discount_value),
+      };
+    }
+  }
+  return {
+    discount_mode: c.discount_mode,
+    discount_type: c.discount_type === "fixed" ? "fixed" : "percent",
+    discount_value: String(c.discount_value ?? ""),
+    per_pass,
+  };
+}
+
+function formatPresaleCodeDiscountSummary(c: PresaleCodeRow, language: "en" | "fr"): string {
+  if (c.discount_mode === "per_pass") {
+    const n = (c.pass_discounts || []).length;
+    return language === "en" ? `Per pass (${n} rules)` : `Par pass (${n} règles)`;
+  }
+  if (c.discount_type === "fixed") return `${c.discount_value} TND`;
+  return `${c.discount_value}%`;
 }
 
 /** Buyer-facing presale string stored in `label` (set when the code is created). */
@@ -144,6 +228,33 @@ async function postPresaleMaxRedemptions(codeId: string, max: number) {
   if (!r.ok) throw new Error(presaleApiErrorMessage(j, "Update failed"));
 }
 
+async function postPresaleCodeDiscounts(
+  codeId: string,
+  body: Record<string, unknown>
+) {
+  const apiBase = getApiBaseUrl();
+  const r = await fetch(`${apiBase}${API_ROUTES.ADMIN_PRESALE_CODE_DISCOUNTS(codeId)}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok) throw new Error(presaleApiErrorMessage(j, "Update failed"));
+}
+
+async function postPresaleMaxUnlocks(codeId: string, max: number | null) {
+  const apiBase = getApiBaseUrl();
+  const r = await fetch(`${apiBase}${API_ROUTES.ADMIN_PRESALE_CODE_MAX_UNLOCKS(codeId)}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ max_total_unlocks: max }),
+  });
+  const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok) throw new Error(presaleApiErrorMessage(j, "Update failed"));
+}
+
 export function EventsTab(p: EventsTabProps) {
   const { toast } = useToast();
   const [editEventTab, setEditEventTab] = React.useState<"details" | "presale" | "pass-stock" | "promo-codes">("details");
@@ -151,6 +262,10 @@ export function EventsTab(p: EventsTabProps) {
   const [presaleCodesLoading, setPresaleCodesLoading] = React.useState(false);
   const [expandedPresaleCodeId, setExpandedPresaleCodeId] = React.useState<string | null>(null);
   const [codeMaxDrafts, setCodeMaxDrafts] = React.useState<Record<string, string>>({});
+  const [codeUnlockMaxDrafts, setCodeUnlockMaxDrafts] = React.useState<Record<string, string>>({});
+  const [codeDiscountEditDrafts, setCodeDiscountEditDrafts] = React.useState<
+    Record<string, PresaleDiscountEditDraft>
+  >({});
   const [openingEditEventId, setOpeningEditEventId] = React.useState<string | null>(null);
   /** Only the latest `loadPresaleCodes` result may update state (avoids stale responses wiping a freshly added row). */
   const presaleCodesFetchGenRef = React.useRef(0);
@@ -159,9 +274,12 @@ export function EventsTab(p: EventsTabProps) {
   const newPassFormScrollRef = React.useRef<HTMLDivElement | null>(null);
   const [newPresale, setNewPresale] = React.useState({
     code: "",
+    discount_mode: "uniform" as "uniform" | "per_pass",
     discount_type: "percent" as "percent" | "fixed",
     discount_value: "",
+    per_pass_discounts: {} as Record<string, PresalePassDiscountDraft>,
     max_total_redemptions: "",
+    max_total_unlocks: "",
   });
 
   const EVENT_TIME_MINUTE_STEP = 5;
@@ -228,6 +346,14 @@ export function EventsTab(p: EventsTabProps) {
           setCodeMaxDrafts(
             Object.fromEntries(merged.map((c) => [c.id, String(c.max_total_redemptions ?? "")]))
           );
+          setCodeUnlockMaxDrafts(
+            Object.fromEntries(merged.map((c) => [c.id, String(c.max_total_unlocks ?? "")]))
+          );
+          setCodeDiscountEditDrafts(
+            Object.fromEntries(
+              merged.map((c) => [c.id, discountEditDraftFromCode(c, p.passesForManagement)])
+            )
+          );
           return merged;
         });
       } catch (e: unknown) {
@@ -243,13 +369,157 @@ export function EventsTab(p: EventsTabProps) {
         }
       }
     },
-    [p.t.error, toast]
+    [p.t.error, p.passesForManagement, toast]
+  );
+
+  const savePresaleUnlockCapForCode = React.useCallback(
+    async (eventId: string, code: PresaleCodeRow) => {
+      const raw = (codeUnlockMaxDrafts[code.id] ?? "").trim();
+      let n: number | null = null;
+      if (raw !== "") {
+        n = parseInt(raw, 10);
+        if (!Number.isFinite(n) || n < 1) {
+          toast({
+            title: p.t.error,
+            description:
+              p.language === "en"
+                ? "Enter a valid max code entries (integer ≥ 1) or leave empty for unlimited."
+                : "Entrez un max déblocages valide (entier ≥ 1) ou laissez vide pour illimité.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+      const ordersCap = code.max_total_redemptions;
+      if (n != null && ordersCap != null && ordersCap > n) {
+        toast({
+          title: p.t.error,
+          description: presaleCapsInvalidMessage(p.language),
+          variant: "destructive",
+        });
+        return;
+      }
+      try {
+        await postPresaleMaxUnlocks(code.id, n);
+        toast({
+          title: p.language === "en" ? "Updated" : "Mis à jour",
+          variant: "default",
+        });
+        void loadPresaleCodes(eventId);
+      } catch (err) {
+        toast({
+          title: p.t.error,
+          description: err instanceof Error ? err.message : "Failed",
+          variant: "destructive",
+        });
+      }
+    },
+    [codeUnlockMaxDrafts, loadPresaleCodes, p.language, p.t.error, toast]
+  );
+
+  const savePresaleOrderCapForCode = React.useCallback(
+    async (eventId: string, code: PresaleCodeRow) => {
+      const raw = (codeMaxDrafts[code.id] ?? "").trim();
+      const n = parseInt(raw, 10);
+      if (!Number.isFinite(n) || n < 1) {
+        toast({
+          title: p.t.error,
+          description:
+            p.language === "en"
+              ? "Enter a valid max orders (integer ≥ 1)."
+              : "Entrez un max commandes valide (entier ≥ 1).",
+          variant: "destructive",
+        });
+        return;
+      }
+      const unlockDraft = (codeUnlockMaxDrafts[code.id] ?? "").trim();
+      const unlockCap =
+        unlockDraft !== "" ? parseInt(unlockDraft, 10) : code.max_total_unlocks;
+      if (unlockCap != null && Number.isFinite(unlockCap) && n > unlockCap) {
+        toast({
+          title: p.t.error,
+          description: presaleCapsInvalidMessage(p.language),
+          variant: "destructive",
+        });
+        return;
+      }
+      try {
+        await postPresaleMaxRedemptions(code.id, n);
+        toast({
+          title: p.language === "en" ? "Updated" : "Mis à jour",
+          variant: "default",
+        });
+        void loadPresaleCodes(eventId);
+      } catch (err) {
+        toast({
+          title: p.t.error,
+          description: err instanceof Error ? err.message : "Failed",
+          variant: "destructive",
+        });
+      }
+    },
+    [codeMaxDrafts, codeUnlockMaxDrafts, loadPresaleCodes, p.language, p.t.error, toast]
+  );
+
+  const savePresaleDiscountsForCode = React.useCallback(
+    async (eventId: string, code: PresaleCodeRow) => {
+      const draft = codeDiscountEditDrafts[code.id];
+      if (!draft) return;
+      const body: Record<string, unknown> = {
+        discount_mode: draft.discount_mode,
+      };
+      if (draft.discount_mode === "per_pass") {
+        const pass_discounts = Object.entries(draft.per_pass)
+          .map(([event_pass_id, row]) => {
+            const val = parseFloat(String(row.discount_value).trim());
+            if (!Number.isFinite(val) || val <= 0) return null;
+            return {
+              event_pass_id,
+              discount_type: row.discount_type,
+              discount_value: val,
+            };
+          })
+          .filter(Boolean);
+        body.pass_discounts = pass_discounts;
+      } else {
+        const dv = parseFloat(String(draft.discount_value).trim());
+        if (!Number.isFinite(dv) || dv < 0) {
+          toast({
+            title: p.t.error,
+            description:
+              p.language === "en"
+                ? "Discount must be a number ≥ 0."
+                : "La remise doit être un nombre ≥ 0.",
+            variant: "destructive",
+          });
+          return;
+        }
+        body.discount_type = draft.discount_type;
+        body.discount_value = dv;
+      }
+      try {
+        await postPresaleCodeDiscounts(code.id, body);
+        toast({
+          title: p.language === "en" ? "Updated" : "Mis à jour",
+          variant: "default",
+        });
+        void loadPresaleCodes(eventId);
+      } catch (err) {
+        toast({
+          title: p.t.error,
+          description: err instanceof Error ? err.message : "Failed",
+          variant: "destructive",
+        });
+      }
+    },
+    [codeDiscountEditDrafts, loadPresaleCodes, p.language, p.t.error, toast]
   );
 
   React.useEffect(() => {
     if (!p.isEventDialogOpen || !p.editingEvent?.id || !p.editingEvent.presale_enabled) {
       setPresaleCodes([]);
       setCodeMaxDrafts({});
+      setCodeUnlockMaxDrafts({});
       setExpandedPresaleCodeId(null);
       presaleLabelHintByIdRef.current = {};
       return;
@@ -316,6 +586,44 @@ export function EventsTab(p: EventsTabProps) {
     void loadPassStockForEvent(p.editingEvent.id);
   }, [p.isEventDialogOpen, editEventTab, p.editingEvent?.id]);
 
+  // Presale per-pass discounts need the event's pass types; load them when the Presale tab is opened.
+  React.useEffect(() => {
+    if (!p.isEventDialogOpen) return;
+    if (editEventTab !== "presale") return;
+    if (!p.editingEvent?.id) return;
+    if (!p.editingEvent?.presale_enabled) return;
+    if (p.isPassManagementLoading) return;
+    if (p.passesForManagement.length > 0) return;
+    void loadPassStockForEvent(p.editingEvent.id);
+  }, [
+    p.isEventDialogOpen,
+    editEventTab,
+    p.editingEvent?.id,
+    p.editingEvent?.presale_enabled,
+    p.isPassManagementLoading,
+    p.passesForManagement.length,
+    loadPassStockForEvent,
+  ]);
+
+  // After passes load, hydrate any per-pass discount drafts that were created before passes were available.
+  React.useEffect(() => {
+    if (p.passesForManagement.length === 0) return;
+    setCodeDiscountEditDrafts((prev) => {
+      const next = { ...prev };
+      for (const [codeId, draft] of Object.entries(prev)) {
+        if (draft.discount_mode !== "per_pass") continue;
+        if (draft.per_pass && Object.keys(draft.per_pass).length > 0) continue;
+        next[codeId] = { ...draft, per_pass: emptyPerPassDrafts(p.passesForManagement) };
+      }
+      return next;
+    });
+    setNewPresale((s) => {
+      if (s.discount_mode !== "per_pass") return s;
+      if (Object.keys(s.per_pass_discounts || {}).length > 0) return s;
+      return { ...s, per_pass_discounts: emptyPerPassDrafts(p.passesForManagement) };
+    });
+  }, [p.passesForManagement]);
+
   return (
     <TabsContent value="events" className="space-y-6">
       <div className="flex justify-between items-center mb-4">
@@ -348,42 +656,43 @@ export function EventsTab(p: EventsTabProps) {
                     </DialogTrigger>
                     <DialogContent
                       className={cn(
-                        "max-w-4xl max-h-[90vh] overflow-y-auto scrollbar-hidden event-edit-dialog rounded-2xl",
+                        "w-[min(100%,calc(100vw-2rem))] max-w-4xl max-h-[90dvh] flex flex-col gap-4 overflow-hidden rounded-2xl p-4 sm:p-6",
+                        "event-edit-dialog scrollbar-hidden",
                         "[&_input]:transition-none [&_textarea]:transition-none [&_[role=combobox]]:transition-none"
                       )}
                       translate="no"
                     >
-                      <DialogHeader>
+                      <DialogHeader className="shrink-0 space-y-0">
                         <DialogTitle>
                           {p.editingEvent?.id ? 'Edit Event' : 'Add New Event'}
                         </DialogTitle>
                       </DialogHeader>
-                      <Tabs value={editEventTab} onValueChange={(v) => setEditEventTab(v as any)} className="w-full">
+                      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-auto overscroll-contain scrollbar-hidden">
+                      <Tabs value={editEventTab} onValueChange={(v) => setEditEventTab(v as any)} className="w-full min-w-0">
                         <TabsList
                           className={cn(
                             "w-full justify-start bg-muted/50 border border-border/30",
-                            // Mobile: horizontally scrollable pills (hide scrollbar but keep scrolling)
-                            "overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-hidden",
-                            "gap-1 h-auto p-1 flex flex-nowrap",
+                            // Mobile: show ALL tabs (no horizontal scroll)
+                            "grid h-auto grid-cols-4 gap-1.5 p-1.5",
                             // Desktop: full-width, evenly spaced tabs
-                            "sm:overflow-x-visible sm:whitespace-normal sm:grid sm:grid-cols-4 sm:justify-stretch"
+                            "sm:grid-cols-4 sm:gap-1 sm:p-1"
                           )}
                         >
-                          <TabsTrigger value="details" className="shrink-0 px-2.5 py-1.5 text-xs sm:text-sm sm:w-full">
+                          <TabsTrigger value="details" className={EDIT_EVENT_SUBTAB_TRIGGER}>
                             {p.language === "en" ? "Details" : "Détails"}
                           </TabsTrigger>
-                          <TabsTrigger value="presale" className="shrink-0 px-2.5 py-1.5 text-xs sm:text-sm sm:w-full">
+                          <TabsTrigger value="presale" className={EDIT_EVENT_SUBTAB_TRIGGER}>
                             {p.language === "en" ? "Presale" : "Prévente"}
                           </TabsTrigger>
-                          <TabsTrigger value="pass-stock" className="shrink-0 px-2.5 py-1.5 text-xs sm:text-sm sm:w-full">
+                          <TabsTrigger value="pass-stock" className={EDIT_EVENT_SUBTAB_TRIGGER}>
                             {p.language === "en" ? "Pass stock" : "Stock passes"}
                           </TabsTrigger>
-                          <TabsTrigger value="promo-codes" className="shrink-0 px-2.5 py-1.5 text-xs sm:text-sm sm:w-full">
+                          <TabsTrigger value="promo-codes" className={EDIT_EVENT_SUBTAB_TRIGGER}>
                             {p.language === "en" ? "Promo codes" : "Codes promo"}
                           </TabsTrigger>
                         </TabsList>
                         <TabsContent value="details" className="space-y-6 mt-6">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
                           <div>
                             <Label htmlFor="eventName">{p.t.eventName}</Label>
                             <Input
@@ -538,7 +847,7 @@ export function EventsTab(p: EventsTabProps) {
                             })()}
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
                           <div>
                             <Label htmlFor="eventVenue">{p.t.eventVenue}</Label>
                             <Input
@@ -560,6 +869,7 @@ export function EventsTab(p: EventsTabProps) {
                           <Label htmlFor="eventDescription">{p.t.eventDescription}</Label>
                           <Textarea
                             id="eventDescription"
+                            className="min-h-[140px] max-h-[min(45dvh,22rem)] resize-y"
                             value={p.editingEvent?.description || ''}
                             onChange={(e) => p.setEditingEvent(prev => ({ ...prev, description: e.target.value }))}
                           />
@@ -904,23 +1214,27 @@ export function EventsTab(p: EventsTabProps) {
                                             {p.language === "en" ? "Loading…" : "Chargement…"}
                                           </p>
                                         ) : (
-                                          <div className="space-y-2 max-h-52 overflow-y-auto text-xs">
+                                          <div className="space-y-2 text-xs">
                                             {presaleCodes.map((c) => {
                                               const isOpen = expandedPresaleCodeId === c.id;
                                               return (
-                                              <div
+                                              <Collapsible
                                                 key={c.id}
+                                                open={isOpen}
+                                                onOpenChange={(open) =>
+                                                  setExpandedPresaleCodeId((prev) => {
+                                                    if (open) return c.id;
+                                                    return prev === c.id ? null : prev;
+                                                  })
+                                                }
                                                 className="rounded border border-border/50 bg-background/40 overflow-hidden"
                                               >
                                                 <div className="flex items-center gap-2 p-2 min-h-[2.5rem]">
-                                                  <button
-                                                    type="button"
-                                                    className="flex flex-1 min-w-0 items-center gap-2 text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring -m-0.5 p-0.5"
-                                                    aria-expanded={isOpen}
-                                                    onClick={() =>
-                                                      setExpandedPresaleCodeId((prev) => (prev === c.id ? null : c.id))
-                                                    }
-                                                  >
+                                                  <CollapsibleTrigger asChild>
+                                                    <button
+                                                      type="button"
+                                                      className="flex flex-1 min-w-0 items-center gap-2 text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring -m-0.5 p-0.5"
+                                                    >
                                                     <ChevronRight
                                                       className={cn(
                                                         "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
@@ -930,12 +1244,6 @@ export function EventsTab(p: EventsTabProps) {
                                                     />
                                                     <span className="truncate text-sm font-medium text-foreground break-all min-w-0">
                                                       {presaleCodeDisplayName(c, p.language)}
-                                                      <span
-                                                        className="font-normal text-muted-foreground tabular-nums"
-                                                      >
-                                                        {" "}
-                                                        ({c.successful_unlock_count})
-                                                      </span>
                                                     </span>
                                                     {c.revoked_at ? (
                                                       <Badge variant="destructive" className="text-[10px] shrink-0">
@@ -946,7 +1254,8 @@ export function EventsTab(p: EventsTabProps) {
                                                         {p.language === "en" ? "Paused" : "En pause"}
                                                       </Badge>
                                                     ) : null}
-                                                  </button>
+                                                    </button>
+                                                  </CollapsibleTrigger>
                                                   <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
                                                     {!c.revoked_at && !c.paused_at && (
                                                       <Button
@@ -994,108 +1303,428 @@ export function EventsTab(p: EventsTabProps) {
                                                     )}
                                                   </div>
                                                 </div>
-                                                {isOpen && (
-                                                  <div className="border-t border-border/50 bg-muted/20 px-3 py-2.5">
-                                                    <div className="flex flex-col gap-3">
-                                                      <div className="min-w-0">
-                                                        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-                                                          {p.language === "en" ? "Code name" : "Nom du code"}
-                                                        </p>
-                                                        <p className="mt-0.5 text-sm font-medium text-foreground break-all">
-                                                          {presaleCodeDisplayName(c, p.language)}
-                                                        </p>
-                                                      </div>
-                                                      <div className="flex flex-col gap-2.5 border-t border-border/40 pt-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                                                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 min-w-0">
+                                                <CollapsibleContent className="border-t border-border/50 bg-muted/20 px-3 py-3">
+                                                  {(() => {
+                                                    const unlockUsed = c.redemption_count ?? 0;
+                                                    const ordersUsed = c.successful_order_count ?? 0;
+                                                    const unlockMax = c.max_total_unlocks;
+                                                    const ordersMax = c.max_total_redemptions;
+                                                    const unlockDraftRaw = (codeUnlockMaxDrafts[c.id] ?? "").trim();
+                                                    const ordersDraftRaw = (codeMaxDrafts[c.id] ?? "").trim();
+                                                    const unlockDraftN =
+                                                      unlockDraftRaw !== ""
+                                                        ? parseInt(unlockDraftRaw, 10)
+                                                        : unlockMax;
+                                                    const ordersDraftN =
+                                                      ordersDraftRaw !== ""
+                                                        ? parseInt(ordersDraftRaw, 10)
+                                                        : ordersMax;
+                                                    const capsDraftInvalid =
+                                                      unlockDraftN != null &&
+                                                      Number.isFinite(unlockDraftN) &&
+                                                      ordersDraftN != null &&
+                                                      Number.isFinite(ordersDraftN) &&
+                                                      ordersDraftN > unlockDraftN;
+                                                    const eventId = p.editingEvent!.id;
+
+                                                    return (
+                                                      <div className="space-y-4">
+                                                        <div className="flex flex-wrap items-center gap-2">
                                                           <Badge variant="secondary" className="text-[10px] shrink-0">
-                                                            {c.discount_type === "fixed"
-                                                              ? `${c.discount_value} TND`
-                                                              : `${c.discount_value}%`}
+                                                            {formatPresaleCodeDiscountSummary(c, p.language)}
                                                           </Badge>
-                                                          <span className="text-[10px] text-muted-foreground leading-snug">
-                                                            {p.language === "en" ? "Code unlocks" : "Déblocages"}
-                                                            {": "}
-                                                            <span className="font-medium text-foreground">
-                                                              {c.successful_unlock_count}
-                                                            </span>
-                                                            <span className="text-muted-foreground/80">
-                                                              {" · "}
-                                                            </span>
+                                                          <span className="text-[10px] text-muted-foreground">
                                                             {p.language === "en"
-                                                              ? "Successful orders"
-                                                              : "Commandes réussies"}
-                                                            {": "}
-                                                            <span className="font-medium text-foreground">
-                                                              {c.successful_order_count ?? 0}
-                                                            </span>
-                                                            {" / "}
-                                                            <span className="font-medium text-foreground">
-                                                              {c.max_total_redemptions ?? "—"}
-                                                            </span>
+                                                              ? "Discount applied at checkout"
+                                                              : "Remise appliquée au paiement"}
                                                           </span>
                                                         </div>
+                                                        {c.discount_mode === "per_pass" &&
+                                                          (c.pass_discounts?.length ?? 0) > 0 && (
+                                                            <ul className="space-y-1 rounded-md border border-border/40 bg-background/50 px-2.5 py-2">
+                                                              {c.pass_discounts.map((pd) => (
+                                                                <li
+                                                                  key={pd.event_pass_id}
+                                                                  className="flex items-center justify-between gap-2 text-[10px]"
+                                                                >
+                                                                  <span className="truncate text-foreground">
+                                                                    {pd.pass_name || pd.event_pass_id}
+                                                                  </span>
+                                                                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                                                                    {pd.discount_type === "fixed"
+                                                                      ? `${pd.discount_value} TND`
+                                                                      : `${pd.discount_value}%`}
+                                                                  </span>
+                                                                </li>
+                                                              ))}
+                                                            </ul>
+                                                          )}
+
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                                          <div className="rounded-md border border-border/50 bg-background/60 p-2.5 space-y-2">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                              <div>
+                                                                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                                  {p.language === "en"
+                                                                    ? "Code entries"
+                                                                    : "Déblocages"}
+                                                                </p>
+                                                                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                                                  {p.language === "en"
+                                                                    ? "Users who entered the code"
+                                                                    : "Utilisateurs ayant entré le code"}
+                                                                </p>
+                                                              </div>
+                                                              <p className="text-sm font-semibold tabular-nums text-foreground">
+                                                                {unlockUsed}
+                                                                <span className="text-muted-foreground font-normal">
+                                                                  {" / "}
+                                                                  {presaleCapDisplayMax(unlockMax, p.language)}
+                                                                </span>
+                                                              </p>
+                                                            </div>
+                                                            {unlockMax != null && (
+                                                              <div
+                                                                className="h-1.5 rounded-full bg-muted overflow-hidden"
+                                                                role="progressbar"
+                                                                aria-valuenow={presaleUsagePercent(unlockUsed, unlockMax)}
+                                                                aria-valuemin={0}
+                                                                aria-valuemax={100}
+                                                              >
+                                                                <div
+                                                                  className="h-full rounded-full bg-primary transition-all"
+                                                                  style={{
+                                                                    width: `${presaleUsagePercent(unlockUsed, unlockMax)}%`,
+                                                                  }}
+                                                                />
+                                                              </div>
+                                                            )}
+                                                          </div>
+
+                                                          <div className="rounded-md border border-border/50 bg-background/60 p-2.5 space-y-2">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                              <div>
+                                                                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                                  {p.language === "en"
+                                                                    ? "Successful orders"
+                                                                    : "Commandes réussies"}
+                                                                </p>
+                                                                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                                                  {p.language === "en"
+                                                                    ? "Completed purchases with this code"
+                                                                    : "Achats finalisés avec ce code"}
+                                                                </p>
+                                                              </div>
+                                                              <p className="text-sm font-semibold tabular-nums text-foreground">
+                                                                {ordersUsed}
+                                                                <span className="text-muted-foreground font-normal">
+                                                                  {" / "}
+                                                                  {presaleCapDisplayMax(ordersMax, p.language)}
+                                                                </span>
+                                                              </p>
+                                                            </div>
+                                                            {ordersMax != null && (
+                                                              <div
+                                                                className="h-1.5 rounded-full bg-muted overflow-hidden"
+                                                                role="progressbar"
+                                                                aria-valuenow={presaleUsagePercent(ordersUsed, ordersMax)}
+                                                                aria-valuemin={0}
+                                                                aria-valuemax={100}
+                                                              >
+                                                                <div
+                                                                  className="h-full rounded-full bg-primary/80 transition-all"
+                                                                  style={{
+                                                                    width: `${presaleUsagePercent(ordersUsed, ordersMax)}%`,
+                                                                  }}
+                                                                />
+                                                              </div>
+                                                            )}
+                                                          </div>
+                                                        </div>
+
                                                         {!c.revoked_at && (
-                                                          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto sm:justify-end">
-                                                            <Input
-                                                              className="h-9 flex-1 min-w-0 sm:flex-initial sm:w-[5.5rem] text-xs px-2"
-                                                              inputMode="numeric"
-                                                              placeholder={
-                                                                p.language === "en" ? "New max" : "Nouveau max"
-                                                              }
-                                                              value={codeMaxDrafts[c.id] ?? ""}
-                                                              onChange={(e) =>
-                                                                setCodeMaxDrafts((prev) => ({
+                                                          <div className="rounded-md border border-border/50 bg-background/40 p-2.5 space-y-3">
+                                                            <div>
+                                                              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                                {p.language === "en" ? "Edit caps" : "Modifier les plafonds"}
+                                                              </p>
+                                                              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                                                {p.language === "en"
+                                                                  ? "Max orders must be ≤ max code entries."
+                                                                  : "Le max commandes doit être ≤ au max déblocages."}
+                                                              </p>
+                                                            </div>
+
+                                                            <div className="space-y-2">
+                                                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_5.5rem_auto] sm:items-center">
+                                                                <Label
+                                                                  htmlFor={`presale-unlock-cap-${c.id}`}
+                                                                  className="text-xs font-normal text-foreground"
+                                                                >
+                                                                  {p.language === "en"
+                                                                    ? "Max code entries"
+                                                                    : "Max déblocages"}
+                                                                </Label>
+                                                                <Input
+                                                                  id={`presale-unlock-cap-${c.id}`}
+                                                                  className="h-8 text-xs px-2 sm:col-start-2"
+                                                                  inputMode="numeric"
+                                                                  placeholder={
+                                                                    p.language === "en" ? "Unlimited" : "Illimité"
+                                                                  }
+                                                                  value={codeUnlockMaxDrafts[c.id] ?? ""}
+                                                                  onChange={(e) =>
+                                                                    setCodeUnlockMaxDrafts((prev) => ({
+                                                                      ...prev,
+                                                                      [c.id]: e.target.value,
+                                                                    }))
+                                                                  }
+                                                                />
+                                                                <Button
+                                                                  type="button"
+                                                                  size="sm"
+                                                                  variant="secondary"
+                                                                  className="h-8 px-3 text-xs sm:col-start-3"
+                                                                  onClick={() =>
+                                                                    void savePresaleUnlockCapForCode(eventId, c)
+                                                                  }
+                                                                >
+                                                                  {p.language === "en" ? "Save" : "Enreg."}
+                                                                </Button>
+                                                              </div>
+
+                                                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_5.5rem_auto] sm:items-center">
+                                                                <Label
+                                                                  htmlFor={`presale-order-cap-${c.id}`}
+                                                                  className="text-xs font-normal text-foreground"
+                                                                >
+                                                                  {p.language === "en"
+                                                                    ? "Max successful orders"
+                                                                    : "Max commandes"}
+                                                                </Label>
+                                                                <Input
+                                                                  id={`presale-order-cap-${c.id}`}
+                                                                  className="h-8 text-xs px-2 sm:col-start-2"
+                                                                  inputMode="numeric"
+                                                                  value={codeMaxDrafts[c.id] ?? ""}
+                                                                  onChange={(e) =>
+                                                                    setCodeMaxDrafts((prev) => ({
+                                                                      ...prev,
+                                                                      [c.id]: e.target.value,
+                                                                    }))
+                                                                  }
+                                                                />
+                                                                <Button
+                                                                  type="button"
+                                                                  size="sm"
+                                                                  variant="secondary"
+                                                                  className="h-8 px-3 text-xs sm:col-start-3"
+                                                                  onClick={() =>
+                                                                    void savePresaleOrderCapForCode(eventId, c)
+                                                                  }
+                                                                >
+                                                                  {p.language === "en" ? "Save" : "Enreg."}
+                                                                </Button>
+                                                              </div>
+                                                            </div>
+
+                                                            {capsDraftInvalid && (
+                                                              <p className="text-[10px] text-destructive">
+                                                                {presaleCapsInvalidMessage(p.language)}
+                                                              </p>
+                                                            )}
+                                                          </div>
+                                                        )}
+
+                                                        {!c.revoked_at && codeDiscountEditDrafts[c.id] && (
+                                                          <div className="rounded-md border border-border/50 bg-background/40 p-2.5 space-y-3">
+                                                            <div>
+                                                              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                                {p.language === "en"
+                                                                  ? "Edit discounts"
+                                                                  : "Modifier les remises"}
+                                                              </p>
+                                                            </div>
+                                                            <Select
+                                                              value={codeDiscountEditDrafts[c.id].discount_mode}
+                                                              onValueChange={(v: "uniform" | "per_pass") => {
+                                                                if (v === "per_pass" && p.editingEvent?.id && p.passesForManagement.length === 0 && !p.isPassManagementLoading) {
+                                                                  void loadPassStockForEvent(p.editingEvent.id);
+                                                                }
+                                                                setCodeDiscountEditDrafts((prev) => ({
                                                                   ...prev,
-                                                                  [c.id]: e.target.value,
-                                                                }))
-                                                              }
-                                                            />
+                                                                  [c.id]: {
+                                                                    ...prev[c.id],
+                                                                    discount_mode: v,
+                                                                    per_pass:
+                                                                      v === "per_pass"
+                                                                        ? discountEditDraftFromCode(
+                                                                            c,
+                                                                            p.passesForManagement
+                                                                          ).per_pass
+                                                                        : prev[c.id].per_pass,
+                                                                  },
+                                                                }));
+                                                              }}
+                                                            >
+                                                              <SelectTrigger className="h-8 text-xs">
+                                                                <SelectValue />
+                                                              </SelectTrigger>
+                                                              <SelectContent>
+                                                                <SelectItem value="uniform">
+                                                                  {p.language === "en"
+                                                                    ? "Same discount for all passes"
+                                                                    : "Même remise pour tous les passes"}
+                                                                </SelectItem>
+                                                                <SelectItem value="per_pass">
+                                                                  {p.language === "en"
+                                                                    ? "Different per pass"
+                                                                    : "Différent par pass"}
+                                                                </SelectItem>
+                                                              </SelectContent>
+                                                            </Select>
+                                                            {codeDiscountEditDrafts[c.id].discount_mode ===
+                                                            "uniform" ? (
+                                                              <div className="flex rounded-md border border-input bg-background shadow-sm overflow-hidden">
+                                                                <Select
+                                                                  value={codeDiscountEditDrafts[c.id].discount_type}
+                                                                  onValueChange={(v: "percent" | "fixed") =>
+                                                                    setCodeDiscountEditDrafts((prev) => ({
+                                                                      ...prev,
+                                                                      [c.id]: {
+                                                                        ...prev[c.id],
+                                                                        discount_type: v,
+                                                                      },
+                                                                    }))
+                                                                  }
+                                                                >
+                                                                  <SelectTrigger className="h-8 w-[42%] min-w-[5.5rem] shrink-0 rounded-none border-0 border-r border-input bg-transparent shadow-none focus:ring-0 focus:ring-offset-0">
+                                                                    <SelectValue />
+                                                                  </SelectTrigger>
+                                                                  <SelectContent>
+                                                                    <SelectItem value="percent">% </SelectItem>
+                                                                    <SelectItem value="fixed">TND</SelectItem>
+                                                                  </SelectContent>
+                                                                </Select>
+                                                                <Input
+                                                                  type="number"
+                                                                  min={0}
+                                                                  step="0.01"
+                                                                  className="h-8 flex-1 min-w-0 rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-xs"
+                                                                  value={codeDiscountEditDrafts[c.id].discount_value}
+                                                                  onChange={(e) =>
+                                                                    setCodeDiscountEditDrafts((prev) => ({
+                                                                      ...prev,
+                                                                      [c.id]: {
+                                                                        ...prev[c.id],
+                                                                        discount_value: e.target.value,
+                                                                      },
+                                                                    }))
+                                                                  }
+                                                                />
+                                                              </div>
+                                                            ) : (
+                                                              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                                                {p.passesForManagement.length === 0 ? (
+                                                                  <p className="text-[10px] text-muted-foreground">
+                                                                    {p.isPassManagementLoading
+                                                                      ? (p.language === "en" ? "Loading passes…" : "Chargement des passes…")
+                                                                      : (p.language === "en"
+                                                                          ? "Add passes to this event first."
+                                                                          : "Ajoutez d'abord des passes à l'événement.")}
+                                                                  </p>
+                                                                ) : (
+                                                                  p.passesForManagement.map((pass) => {
+                                                                    const row =
+                                                                      codeDiscountEditDrafts[c.id].per_pass[
+                                                                        pass.id
+                                                                      ] ?? {
+                                                                        discount_type: "percent" as const,
+                                                                        discount_value: "",
+                                                                      };
+                                                                    return (
+                                                                      <div
+                                                                        key={pass.id}
+                                                                        className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] gap-1.5 items-center"
+                                                                      >
+                                                                        <span className="truncate text-[10px] text-foreground">
+                                                                          {pass.name}
+                                                                        </span>
+                                                                        <Select
+                                                                          value={row.discount_type}
+                                                                          onValueChange={(v: "percent" | "fixed") =>
+                                                                            setCodeDiscountEditDrafts((prev) => ({
+                                                                              ...prev,
+                                                                              [c.id]: {
+                                                                                ...prev[c.id],
+                                                                                per_pass: {
+                                                                                  ...prev[c.id].per_pass,
+                                                                                  [pass.id]: {
+                                                                                    ...row,
+                                                                                    discount_type: v,
+                                                                                  },
+                                                                                },
+                                                                              },
+                                                                            }))
+                                                                          }
+                                                                        >
+                                                                          <SelectTrigger className="h-7 text-[10px] px-1">
+                                                                            <SelectValue />
+                                                                          </SelectTrigger>
+                                                                          <SelectContent>
+                                                                            <SelectItem value="percent">%</SelectItem>
+                                                                            <SelectItem value="fixed">TND</SelectItem>
+                                                                          </SelectContent>
+                                                                        </Select>
+                                                                        <Input
+                                                                          type="number"
+                                                                          min={0}
+                                                                          step="0.01"
+                                                                          className="h-7 text-[10px] px-1"
+                                                                          placeholder="0"
+                                                                          value={row.discount_value}
+                                                                          onChange={(e) =>
+                                                                            setCodeDiscountEditDrafts((prev) => ({
+                                                                              ...prev,
+                                                                              [c.id]: {
+                                                                                ...prev[c.id],
+                                                                                per_pass: {
+                                                                                  ...prev[c.id].per_pass,
+                                                                                  [pass.id]: {
+                                                                                    ...row,
+                                                                                    discount_value: e.target.value,
+                                                                                  },
+                                                                                },
+                                                                              },
+                                                                            }))
+                                                                          }
+                                                                        />
+                                                                      </div>
+                                                                    );
+                                                                  })
+                                                                )}
+                                                              </div>
+                                                            )}
                                                             <Button
                                                               type="button"
                                                               size="sm"
                                                               variant="secondary"
-                                                              className="h-9 px-3 text-xs shrink-0"
-                                                              onClick={async () => {
-                                                                const raw = (codeMaxDrafts[c.id] ?? "").trim();
-                                                                const n = parseInt(raw, 10);
-                                                                if (!Number.isFinite(n) || n < 1) {
-                                                                  toast({
-                                                                    title: p.t.error,
-                                                                    description:
-                                                                      p.language === "en"
-                                                                        ? "Enter a valid max (integer ≥ 1)."
-                                                                        : "Entrez un max valide (entier ≥ 1).",
-                                                                    variant: "destructive",
-                                                                  });
-                                                                  return;
-                                                                }
-                                                                try {
-                                                                  await postPresaleMaxRedemptions(c.id, n);
-                                                                  toast({
-                                                                    title:
-                                                                      p.language === "en" ? "Updated" : "Mis à jour",
-                                                                    variant: "default",
-                                                                  });
-                                                                  void loadPresaleCodes(p.editingEvent!.id);
-                                                                } catch (err) {
-                                                                  toast({
-                                                                    title: p.t.error,
-                                                                    description:
-                                                                      err instanceof Error ? err.message : "Failed",
-                                                                    variant: "destructive",
-                                                                  });
-                                                                }
-                                                              }}
+                                                              className="h-8 px-3 text-xs"
+                                                              onClick={() =>
+                                                                void savePresaleDiscountsForCode(eventId, c)
+                                                              }
                                                             >
-                                                              {p.language === "en" ? "Save max" : "Enreg. max"}
+                                                              {p.language === "en"
+                                                                ? "Save discounts"
+                                                                : "Enreg. remises"}
                                                             </Button>
                                                           </div>
                                                         )}
                                                       </div>
-                                                    </div>
-                                                  </div>
-                                                )}
-                                              </div>
+                                                    );
+                                                  })()}
+                                                </CollapsibleContent>
+                                              </Collapsible>
                                               );
                                             })}
                                           </div>
@@ -1114,12 +1743,61 @@ export function EventsTab(p: EventsTabProps) {
                                           />
                                           <Input
                                             inputMode="numeric"
-                                            placeholder={p.language === "en" ? "Quantity" : "Quantité"}
+                                            placeholder={
+                                              p.language === "en"
+                                                ? "Max code entries (required)"
+                                                : "Max déblocages (obligatoire)"
+                                            }
+                                            value={newPresale.max_total_unlocks}
+                                            onChange={(e) =>
+                                              setNewPresale((s) => ({ ...s, max_total_unlocks: e.target.value }))
+                                            }
+                                          />
+                                          <Input
+                                            inputMode="numeric"
+                                            placeholder={
+                                              p.language === "en"
+                                                ? "Max successful orders (required)"
+                                                : "Max commandes réussies (obligatoire)"
+                                            }
                                             value={newPresale.max_total_redemptions}
                                             onChange={(e) =>
                                               setNewPresale((s) => ({ ...s, max_total_redemptions: e.target.value }))
                                             }
                                           />
+                                          <Select
+                                            value={newPresale.discount_mode}
+                                            onValueChange={(v: "uniform" | "per_pass") => {
+                                              if (v === "per_pass" && p.editingEvent?.id && p.passesForManagement.length === 0 && !p.isPassManagementLoading) {
+                                                void loadPassStockForEvent(p.editingEvent.id);
+                                              }
+                                              setNewPresale((s) => ({
+                                                ...s,
+                                                discount_mode: v,
+                                                per_pass_discounts:
+                                                  v === "per_pass"
+                                                    ? emptyPerPassDrafts(p.passesForManagement)
+                                                    : s.per_pass_discounts,
+                                              }));
+                                            }}
+                                          >
+                                            <SelectTrigger className="h-10 text-sm">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="uniform">
+                                                {p.language === "en"
+                                                  ? "Same discount for all passes"
+                                                  : "Même remise pour tous les passes"}
+                                              </SelectItem>
+                                              <SelectItem value="per_pass">
+                                                {p.language === "en"
+                                                  ? "Different per pass"
+                                                  : "Différent par pass"}
+                                              </SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                          {newPresale.discount_mode === "uniform" ? (
                                           <div className="flex rounded-md border border-input bg-background shadow-sm overflow-hidden">
                                             <Select
                                               value={newPresale.discount_type}
@@ -1158,6 +1836,75 @@ export function EventsTab(p: EventsTabProps) {
                                               }
                                             />
                                           </div>
+                                          ) : (
+                                            <div className="space-y-1.5 rounded-md border border-border/50 p-2 max-h-48 overflow-y-auto">
+                                              {p.passesForManagement.length === 0 ? (
+                                                <p className="text-xs text-muted-foreground">
+                                                  {p.isPassManagementLoading
+                                                    ? (p.language === "en" ? "Loading passes…" : "Chargement des passes…")
+                                                    : (p.language === "en"
+                                                        ? "Add passes to this event first."
+                                                        : "Ajoutez d'abord des passes à l'événement.")}
+                                                </p>
+                                              ) : (
+                                                p.passesForManagement.map((pass) => {
+                                                  const row =
+                                                    newPresale.per_pass_discounts[pass.id] ?? {
+                                                      discount_type: "percent" as const,
+                                                      discount_value: "",
+                                                    };
+                                                  return (
+                                                    <div
+                                                      key={pass.id}
+                                                      className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem] gap-1.5 items-center"
+                                                    >
+                                                      <span className="truncate text-xs">{pass.name}</span>
+                                                      <Select
+                                                        value={row.discount_type}
+                                                        onValueChange={(v: "percent" | "fixed") =>
+                                                          setNewPresale((s) => ({
+                                                            ...s,
+                                                            per_pass_discounts: {
+                                                              ...s.per_pass_discounts,
+                                                              [pass.id]: { ...row, discount_type: v },
+                                                            },
+                                                          }))
+                                                        }
+                                                      >
+                                                        <SelectTrigger className="h-8 text-xs px-1">
+                                                          <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                          <SelectItem value="percent">%</SelectItem>
+                                                          <SelectItem value="fixed">TND</SelectItem>
+                                                        </SelectContent>
+                                                      </Select>
+                                                      <Input
+                                                        type="number"
+                                                        min={0}
+                                                        step="0.01"
+                                                        className="h-8 text-xs px-2"
+                                                        placeholder="0"
+                                                        value={row.discount_value}
+                                                        onChange={(e) =>
+                                                          setNewPresale((s) => ({
+                                                            ...s,
+                                                            per_pass_discounts: {
+                                                              ...s.per_pass_discounts,
+                                                              [pass.id]: {
+                                                                ...row,
+                                                                discount_value: e.target.value,
+                                                              },
+                                                            },
+                                                          }))
+                                                        }
+                                                      />
+                                                    </div>
+                                                  );
+                                                })
+                                              )}
+                                            </div>
+                                          )}
                                         </div>
                                         <Button
                                           type="button"
@@ -1166,7 +1913,23 @@ export function EventsTab(p: EventsTabProps) {
                                           onClick={async () => {
                                             const apiBase = getApiBaseUrl();
                                             const maxRaw = newPresale.max_total_redemptions.trim();
-                                            const dv = parseFloat(String(newPresale.discount_value).trim());
+                                            const unlockRaw = newPresale.max_total_unlocks.trim();
+                                            const discountMode = newPresale.discount_mode;
+                                            let dv = 0;
+                                            if (discountMode === "uniform") {
+                                              dv = parseFloat(String(newPresale.discount_value).trim());
+                                              if (!Number.isFinite(dv) || dv < 0) {
+                                                toast({
+                                                  title: p.t.error,
+                                                  description:
+                                                    p.language === "en"
+                                                      ? "Discount must be a number ≥ 0 (use 0 for no discount)."
+                                                      : "La remise doit être un nombre ≥ 0 (0 = pas de remise).",
+                                                  variant: "destructive",
+                                                });
+                                                return;
+                                              }
+                                            }
                                             if (!newPresale.code.trim()) {
                                               toast({
                                                 title: p.t.error,
@@ -1174,17 +1937,6 @@ export function EventsTab(p: EventsTabProps) {
                                                   p.language === "en"
                                                     ? "Code is required."
                                                     : "Le code est obligatoire.",
-                                                variant: "destructive",
-                                              });
-                                              return;
-                                            }
-                                            if (!Number.isFinite(dv) || dv < 0) {
-                                              toast({
-                                                title: p.t.error,
-                                                description:
-                                                  p.language === "en"
-                                                    ? "Discount must be a number ≥ 0 (use 0 for no discount)."
-                                                    : "La remise doit être un nombre ≥ 0 (0 = pas de remise).",
                                                 variant: "destructive",
                                               });
                                               return;
@@ -1201,15 +1953,59 @@ export function EventsTab(p: EventsTabProps) {
                                               });
                                               return;
                                             }
+                                            const unlockN = parseInt(unlockRaw, 10);
+                                            if (!Number.isFinite(unlockN) || unlockN < 1) {
+                                              toast({
+                                                title: p.t.error,
+                                                description:
+                                                  p.language === "en"
+                                                    ? "Max code entries is required (integer ≥ 1)."
+                                                    : "Le max de déblocages est obligatoire (entier ≥ 1).",
+                                                variant: "destructive",
+                                              });
+                                              return;
+                                            }
+                                            if (maxN > unlockN) {
+                                              toast({
+                                                title: p.t.error,
+                                                description: presaleCapsInvalidMessage(p.language),
+                                                variant: "destructive",
+                                              });
+                                              return;
+                                            }
                                             const addedCode = newPresale.code.trim();
                                             const discountType = newPresale.discount_type;
+                                            const passDiscountRows =
+                                              discountMode === "per_pass"
+                                                ? Object.entries(newPresale.per_pass_discounts)
+                                                    .map(([event_pass_id, row]) => {
+                                                      const val = parseFloat(
+                                                        String(row.discount_value).trim()
+                                                      );
+                                                      if (!Number.isFinite(val) || val <= 0) {
+                                                        return null;
+                                                      }
+                                                      return {
+                                                        event_pass_id,
+                                                        discount_type: row.discount_type,
+                                                        discount_value: val,
+                                                      };
+                                                    })
+                                                    .filter(Boolean)
+                                                : [];
                                             const body: Record<string, unknown> = {
                                               eventId: p.editingEvent!.id,
                                               code: addedCode,
-                                              discount_type: discountType,
-                                              discount_value: dv,
+                                              discount_mode: discountMode,
                                               max_total_redemptions: maxN,
+                                              max_total_unlocks: unlockN,
                                             };
+                                            if (discountMode === "per_pass") {
+                                              body.pass_discounts = passDiscountRows;
+                                            } else {
+                                              body.discount_type = discountType;
+                                              body.discount_value = dv;
+                                            }
                                             const r = await fetch(`${apiBase}/api/admin/presale/codes`, {
                                               method: "POST",
                                               credentials: "include",
@@ -1239,13 +2035,27 @@ export function EventsTab(p: EventsTabProps) {
                                                 id: createdId,
                                                 label: createdLabel,
                                                 usage_mode: "multi_use",
+                                                discount_mode: discountMode,
                                                 discount_type: discountType,
                                                 discount_value: dv,
+                                                pass_discounts:
+                                                  discountMode === "per_pass"
+                                                    ? passDiscountRows.map((row) => ({
+                                                        event_pass_id: row!.event_pass_id,
+                                                        pass_name:
+                                                          p.passesForManagement.find(
+                                                            (pass) => pass.id === row!.event_pass_id
+                                                          )?.name ?? null,
+                                                        discount_type: row!.discount_type,
+                                                        discount_value: row!.discount_value,
+                                                      }))
+                                                    : [],
                                                 max_total_redemptions: maxN,
+                                                max_total_unlocks: unlockN,
+                                                redemption_count: 0,
                                                 paused_at: null,
                                                 revoked_at: null,
                                                 successful_order_count: 0,
-                                                successful_unlock_count: 0,
                                               };
                                               setPresaleCodes((prev) => [
                                                 optimistic,
@@ -1255,12 +2065,19 @@ export function EventsTab(p: EventsTabProps) {
                                                 ...d,
                                                 [createdId]: String(maxN),
                                               }));
+                                              setCodeUnlockMaxDrafts((d) => ({
+                                                ...d,
+                                                [createdId]: String(unlockN),
+                                              }));
                                             }
                                             setNewPresale({
                                               code: "",
+                                              discount_mode: "uniform",
                                               discount_type: "percent",
                                               discount_value: "",
+                                              per_pass_discounts: {},
                                               max_total_redemptions: "",
+                                              max_total_unlocks: "",
                                             });
                                             await loadPresaleCodes(p.editingEvent!.id);
                                           }}
@@ -1665,11 +2482,6 @@ export function EventsTab(p: EventsTabProps) {
                                                   {pass.price.toFixed(2)} TND
                                                 </span>
                                               </div>
-                                              {pass.description && (
-                                                <p className="text-sm text-muted-foreground break-words">
-                                                  {pass.description}
-                                                </p>
-                                              )}
                                             </div>
                                             <Button
                                               variant="ghost"
@@ -1785,95 +2597,130 @@ export function EventsTab(p: EventsTabProps) {
                                           {pass.id && (
                                             <div className="space-y-2">
                                               <Label>{p.language === "en" ? "Max Stock" : "Stock Maximum"}</Label>
-                                              <div className="flex gap-2">
-                                                <Input
-                                                  type="number"
-                                                  min={pass.sold_quantity || 0}
-                                                  value={pass.max_quantity != null ? pass.max_quantity : ""}
-                                                  onChange={(e) => {
-                                                    const numValue =
-                                                      e.target.value === "" ? undefined : parseInt(e.target.value, 10);
+                                              <Input
+                                                type="number"
+                                                min={pass.sold_quantity || 0}
+                                                value={pass.max_quantity != null ? pass.max_quantity : ""}
+                                                onChange={(e) => {
+                                                  const numValue =
+                                                    e.target.value === "" ? undefined : parseInt(e.target.value, 10);
+                                                  const updatedPasses = [...p.passesForManagement];
+                                                  const idx = updatedPasses.findIndex((pp) => pp.id === pass.id);
+                                                  if (idx >= 0)
+                                                    updatedPasses[idx] = {
+                                                      ...pass,
+                                                      max_quantity: numValue ?? pass.max_quantity ?? 0,
+                                                    };
+                                                  p.setPassesForManagement(updatedPasses);
+                                                  p.setSelectedPassForSettings(updatedPasses[idx] || pass);
+                                                }}
+                                                placeholder={p.language === "en" ? "Enter max stock" : "Entrez le stock max"}
+                                              />
+                                              <p className="text-xs text-muted-foreground">
+                                                {p.language === "en"
+                                                  ? `Minimum: ${pass.sold_quantity || 0}`
+                                                  : `Minimum: ${pass.sold_quantity || 0}`}
+                                              </p>
+                                            </div>
+                                          )}
+
+                                          {/* Save pass */}
+                                          {pass.id && (
+                                            <div className="flex justify-end">
+                                              <Button
+                                                size="sm"
+                                                onClick={async () => {
+                                                  if (!pass.id) return;
+                                                  const maxQty = pass.max_quantity;
+                                                  if (maxQty == null || maxQty < (pass.sold_quantity || 0)) {
+                                                    toast({
+                                                      title: p.t.error,
+                                                      description:
+                                                        p.language === "en"
+                                                          ? `Cannot set max stock below sold quantity (${pass.sold_quantity})`
+                                                          : `Impossible de définir le stock max en dessous de la quantité vendue (${pass.sold_quantity})`,
+                                                      variant: "destructive",
+                                                    });
+                                                    return;
+                                                  }
+                                                  try {
+                                                    const apiBase = getApiBaseUrl();
+                                                    const descResp = await fetch(
+                                                      `${apiBase}/api/admin/passes/${pass.id}/description`,
+                                                      {
+                                                        method: "PUT",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        credentials: "include",
+                                                        body: JSON.stringify({ description: pass.description || "" }),
+                                                      }
+                                                    );
+                                                    if (!descResp.ok) {
+                                                      const err = await descResp.json().catch(() => ({}));
+                                                      toast({
+                                                        title: p.t.error,
+                                                        description:
+                                                          err.error ||
+                                                          err.details ||
+                                                          (p.language === "en"
+                                                            ? "Failed to update description"
+                                                            : "Échec de la mise à jour de la description"),
+                                                        variant: "destructive",
+                                                      });
+                                                      return;
+                                                    }
+                                                    const response = await fetch(
+                                                      `${apiBase}/api/admin/passes/${pass.id}/stock`,
+                                                      {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        credentials: "include",
+                                                        body: JSON.stringify({ max_quantity: maxQty }),
+                                                      }
+                                                    );
+                                                    if (!response.ok) {
+                                                      const err = await response.json();
+                                                      toast({
+                                                        title: p.t.error,
+                                                        description:
+                                                          err.error ||
+                                                          err.details ||
+                                                          (p.language === "en"
+                                                            ? "Failed to update stock"
+                                                            : "Échec"),
+                                                        variant: "destructive",
+                                                      });
+                                                      return;
+                                                    }
+                                                    const result = await response.json();
                                                     const updatedPasses = [...p.passesForManagement];
                                                     const idx = updatedPasses.findIndex((pp) => pp.id === pass.id);
                                                     if (idx >= 0)
                                                       updatedPasses[idx] = {
                                                         ...pass,
-                                                        max_quantity: numValue ?? pass.max_quantity ?? 0,
+                                                        max_quantity: result.pass.max_quantity,
+                                                        remaining_quantity: result.pass.remaining_quantity,
+                                                        is_unlimited: result.pass.is_unlimited,
                                                       };
                                                     p.setPassesForManagement(updatedPasses);
                                                     p.setSelectedPassForSettings(updatedPasses[idx] || pass);
-                                                  }}
-                                                  placeholder={p.language === "en" ? "Enter max stock" : "Entrez le stock max"}
-                                                  className="flex-1"
-                                                />
-                                                <Button
-                                                  size="sm"
-                                                  onClick={async () => {
-                                                    if (!pass.id) return;
-                                                    const maxQty = pass.max_quantity;
-                                                    if (maxQty == null || maxQty < (pass.sold_quantity || 0)) {
-                                                      toast({
-                                                        title: p.t.error,
-                                                        description:
-                                                          p.language === "en"
-                                                            ? `Cannot set max stock below sold quantity (${pass.sold_quantity})`
-                                                            : `Impossible de définir le stock max en dessous de la quantité vendue (${pass.sold_quantity})`,
-                                                        variant: "destructive",
-                                                      });
-                                                      return;
-                                                    }
-                                                    try {
-                                                      const apiBase = getApiBaseUrl();
-                                                      const response = await fetch(
-                                                        `${apiBase}/api/admin/passes/${pass.id}/stock`,
-                                                        {
-                                                          method: "POST",
-                                                          headers: { "Content-Type": "application/json" },
-                                                          credentials: "include",
-                                                          body: JSON.stringify({ max_quantity: maxQty }),
-                                                        }
-                                                      );
-                                                      if (!response.ok) {
-                                                        const err = await response.json();
-                                                        toast({
-                                                          title: p.t.error,
-                                                          description:
-                                                            err.error ||
-                                                            err.details ||
-                                                            (p.language === "en" ? "Failed to update stock" : "Échec"),
-                                                          variant: "destructive",
-                                                        });
-                                                        return;
-                                                      }
-                                                      const result = await response.json();
-                                                      const updatedPasses = [...p.passesForManagement];
-                                                      const idx = updatedPasses.findIndex((pp) => pp.id === pass.id);
-                                                      if (idx >= 0)
-                                                        updatedPasses[idx] = {
-                                                          ...pass,
-                                                          max_quantity: result.pass.max_quantity,
-                                                          remaining_quantity: result.pass.remaining_quantity,
-                                                          is_unlimited: result.pass.is_unlimited,
-                                                        };
-                                                      p.setPassesForManagement(updatedPasses);
-                                                      p.setSelectedPassForSettings(updatedPasses[idx] || pass);
-                                                      toast({
-                                                        title: p.t.success || "Success",
-                                                        description: p.language === "en" ? "Stock updated" : "Stock mis à jour",
-                                                      });
-                                                    } catch (e: any) {
-                                                      toast({
-                                                        title: p.t.error,
-                                                        description: e.message || (p.language === "en" ? "Failed" : "Échec"),
-                                                        variant: "destructive",
-                                                      });
-                                                    }
-                                                  }}
-                                                >
-                                                  <Save className="w-4 h-4 mr-2" />
-                                                  {p.language === "en" ? "Save" : "Enregistrer"}
-                                                </Button>
-                                              </div>
+                                                    toast({
+                                                      title: p.t.success || "Success",
+                                                      description:
+                                                        p.language === "en" ? "Pass saved" : "Pass enregistré",
+                                                    });
+                                                  } catch (e: any) {
+                                                    toast({
+                                                      title: p.t.error,
+                                                      description:
+                                                        e.message || (p.language === "en" ? "Failed" : "Échec"),
+                                                      variant: "destructive",
+                                                    });
+                                                  }
+                                                }}
+                                              >
+                                                <Save className="w-4 h-4 mr-2" />
+                                                {p.language === "en" ? "Save pass" : "Enregistrer le pass"}
+                                              </Button>
                                             </div>
                                           )}
 
@@ -1944,6 +2791,109 @@ export function EventsTab(p: EventsTabProps) {
                                               />
                                             </div>
                                           )}
+
+                                          {/* Description (editable) */}
+                                          {pass.id && (
+                                            <div className="space-y-2">
+                                              <div className="flex items-start justify-between gap-3">
+                                                <div className="space-y-0.5">
+                                                  <Label className="text-sm font-semibold">
+                                                    {p.language === "en" ? "Description" : "Description"}
+                                                  </Label>
+                                                  <p className="text-xs text-muted-foreground">
+                                                    {p.language === "en"
+                                                      ? "Shown to customers on the checkout page."
+                                                      : "Affichée aux clients sur la page de paiement."}
+                                                  </p>
+                                                </div>
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  className="shrink-0"
+                                                  onClick={async () => {
+                                                    if (!pass.id) return;
+                                                    try {
+                                                      const apiBase = getApiBaseUrl();
+                                                      const response = await fetch(
+                                                        `${apiBase}/api/admin/passes/${pass.id}/description`,
+                                                        {
+                                                          method: "PUT",
+                                                          headers: { "Content-Type": "application/json" },
+                                                          credentials: "include",
+                                                          body: JSON.stringify({ description: pass.description || "" }),
+                                                        }
+                                                      );
+                                                      if (!response.ok) {
+                                                        const err = await response.json().catch(() => ({}));
+                                                        toast({
+                                                          title: p.t.error,
+                                                          description:
+                                                            err.error ||
+                                                            err.details ||
+                                                            (p.language === "en"
+                                                              ? "Failed to update description"
+                                                              : "Échec de la mise à jour de la description"),
+                                                          variant: "destructive",
+                                                        });
+                                                        return;
+                                                      }
+                                                      const result = await response.json().catch(() => ({}));
+                                                      const updatedPasses = [...p.passesForManagement];
+                                                      const idx = updatedPasses.findIndex((pp) => pp.id === pass.id);
+                                                      if (idx >= 0) {
+                                                        updatedPasses[idx] = {
+                                                          ...pass,
+                                                          description: result.pass?.description ?? pass.description,
+                                                        };
+                                                      }
+                                                      p.setPassesForManagement(updatedPasses);
+                                                      p.setSelectedPassForSettings(updatedPasses[idx] || pass);
+                                                      toast({
+                                                        title: p.t.success || "Success",
+                                                        description:
+                                                          p.language === "en"
+                                                            ? "Description saved"
+                                                            : "Description enregistrée",
+                                                      });
+                                                    } catch (e: any) {
+                                                      toast({
+                                                        title: p.t.error,
+                                                        description:
+                                                          e?.message ||
+                                                          (p.language === "en"
+                                                            ? "Failed to update description"
+                                                            : "Échec de la mise à jour de la description"),
+                                                        variant: "destructive",
+                                                      });
+                                                    }
+                                                  }}
+                                                >
+                                                  <Save className="w-4 h-4 mr-2" />
+                                                  {p.language === "en" ? "Save" : "Enregistrer"}
+                                                </Button>
+                                              </div>
+                                              <Textarea
+                                                className="bg-muted/10"
+                                                value={pass.description || ""}
+                                                onChange={(e) => {
+                                                  const nextDesc = e.target.value;
+                                                  const updatedPasses = [...p.passesForManagement];
+                                                  const idx = updatedPasses.findIndex((pp) => pp.id === pass.id);
+                                                  if (idx >= 0) updatedPasses[idx] = { ...pass, description: nextDesc };
+                                                  p.setPassesForManagement(updatedPasses);
+                                                  p.setSelectedPassForSettings(
+                                                    updatedPasses[idx] || { ...pass, description: nextDesc }
+                                                  );
+                                                }}
+                                                placeholder={
+                                                  p.language === "en"
+                                                    ? "Add a short description…"
+                                                    : "Ajoutez une courte description…"
+                                                }
+                                                rows={4}
+                                              />
+                                            </div>
+                                          )}
                                         </CardContent>
                                       </Card>
                                     );
@@ -1984,9 +2934,7 @@ export function EventsTab(p: EventsTabProps) {
                                                   {p.language === "en" ? "PRIMARY" : "PRINCIPAL"}
                                                 </Badge>
                                               ) : null}
-                                              <span className="font-semibold text-base break-words">
-                                                {pass.name}
-                                              </span>
+                                              <span className="font-semibold text-base break-words">{pass.name}</span>
                                             </div>
                                             <div className="grid grid-cols-3 gap-3 text-sm">
                                               <div>
@@ -2001,9 +2949,7 @@ export function EventsTab(p: EventsTabProps) {
                                                 <span className="text-muted-foreground text-xs block mb-0.5">
                                                   {p.language === "en" ? "Sold" : "Vendus"}
                                                 </span>
-                                                <span className="font-medium tabular-nums">
-                                                  {pass.sold_quantity || 0}
-                                                </span>
+                                                <span className="font-medium tabular-nums">{pass.sold_quantity || 0}</span>
                                               </div>
                                               <div>
                                                 <span className="text-muted-foreground text-xs block mb-0.5">
@@ -2108,7 +3054,8 @@ export function EventsTab(p: EventsTabProps) {
                           </Card>
                         </TabsContent>
                       </Tabs>
-                      <div className="flex justify-end gap-2 mt-6">
+                      </div>
+                      <div className="flex shrink-0 justify-end gap-2 border-t border-border/40 pt-4">
                         <DialogClose asChild>
                           <Button 
                             variant="outline"
@@ -2453,9 +3400,6 @@ export function EventsTab(p: EventsTabProps) {
                                         )}
                                         <span className="text-lg font-bold text-primary">{pass.price.toFixed(2)} TND</span>
                                       </div>
-                                      {pass.description && (
-                                        <p className="text-sm text-muted-foreground">{pass.description}</p>
-                                      )}
                                     </div>
                                     {pass.id && (
                                       <Button
@@ -2578,74 +3522,92 @@ export function EventsTab(p: EventsTabProps) {
                                   {pass.id && (
                                     <div className="space-y-2">
                                       <Label>{p.language === 'en' ? 'Max Stock' : 'Stock Maximum'}</Label>
-                                      <div className="flex gap-2">
-                                        <Input
-                                          type="number"
-                                          min={pass.sold_quantity || 0}
-                                          value={pass.max_quantity != null ? pass.max_quantity : ''}
-                                          onChange={(e) => {
-                                            const numValue = e.target.value === '' ? undefined : parseInt(e.target.value, 10);
-                                            const updatedPasses = [...p.passesForManagement];
-                                            const idx = updatedPasses.findIndex(pp => pp.id === pass.id);
-                                            if (idx >= 0) updatedPasses[idx] = { ...pass, max_quantity: numValue ?? pass.max_quantity ?? 0 };
-                                            p.setPassesForManagement(updatedPasses);
-                                            p.setSelectedPassForSettings(updatedPasses[idx] || pass);
-                                          }}
-                                          placeholder={p.language === 'en' ? 'Enter max stock' : 'Entrez le stock max'}
-                                          className="flex-1"
-                                        />
-                                        <Button
-                                          size="sm"
-                                          onClick={async () => {
-                                            if (!pass.id) return;
-                                            const maxQty = pass.max_quantity;
-                                            if (maxQty == null || maxQty < (pass.sold_quantity || 0)) {
-                                              toast({
-                                                title: p.t.error,
-                                                description: p.language === 'en'
-                                                  ? `Cannot set max stock below sold quantity (${pass.sold_quantity})`
-                                                  : `Impossible de définir le stock max en dessous de la quantité vendue (${pass.sold_quantity})`,
-                                                variant: "destructive",
-                                              });
-                                              return;
-                                            }
-                                            try {
-                                              const apiBase = getApiBaseUrl();
-                                              const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/stock`, {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                credentials: 'include',
-                                                body: JSON.stringify({ max_quantity: maxQty })
-                                              });
-                                              if (!response.ok) {
-                                                const err = await response.json();
-                                                toast({ title: p.t.error, description: err.error || err.details || (p.language === 'en' ? 'Failed to update stock' : 'Échec'), variant: "destructive" });
-                                                return;
-                                              }
-                                              const result = await response.json();
-                                              const updatedPasses = [...p.passesForManagement];
-                                              const idx = updatedPasses.findIndex(pp => pp.id === pass.id);
-                                              if (idx >= 0) updatedPasses[idx] = {
-                                                ...pass,
-                                                max_quantity: result.pass.max_quantity,
-                                                remaining_quantity: result.pass.remaining_quantity,
-                                                is_unlimited: result.pass.is_unlimited
-                                              };
-                                              p.setPassesForManagement(updatedPasses);
-                                              p.setSelectedPassForSettings(updatedPasses[idx] || pass);
-                                              toast({ title: p.t.success || 'Success', description: p.language === 'en' ? 'Stock updated' : 'Stock mis à jour' });
-                                            } catch (e: any) {
-                                              toast({ title: p.t.error, description: e.message || (p.language === 'en' ? 'Failed' : 'Échec'), variant: "destructive" });
-                                            }
-                                          }}
-                                        >
-                                          <Save className="w-4 h-4 mr-2" />
-                                          {p.language === 'en' ? 'Save' : 'Enregistrer'}
-                                        </Button>
-                                      </div>
+                                      <Input
+                                        type="number"
+                                        min={pass.sold_quantity || 0}
+                                        value={pass.max_quantity != null ? pass.max_quantity : ''}
+                                        onChange={(e) => {
+                                          const numValue = e.target.value === '' ? undefined : parseInt(e.target.value, 10);
+                                          const updatedPasses = [...p.passesForManagement];
+                                          const idx = updatedPasses.findIndex(pp => pp.id === pass.id);
+                                          if (idx >= 0) updatedPasses[idx] = { ...pass, max_quantity: numValue ?? pass.max_quantity ?? 0 };
+                                          p.setPassesForManagement(updatedPasses);
+                                          p.setSelectedPassForSettings(updatedPasses[idx] || pass);
+                                        }}
+                                        placeholder={p.language === 'en' ? 'Enter max stock' : 'Entrez le stock max'}
+                                      />
                                       <p className="text-xs text-muted-foreground">
                                         {p.language === 'en' ? `Minimum: ${pass.sold_quantity || 0}` : `Minimum: ${pass.sold_quantity || 0}`}
                                       </p>
+                                    </div>
+                                  )}
+
+                                  {/* Save pass */}
+                                  {pass.id && (
+                                    <div className="flex justify-end">
+                                      <Button
+                                        size="sm"
+                                        onClick={async () => {
+                                          if (!pass.id) return;
+                                          const maxQty = pass.max_quantity;
+                                          if (maxQty == null || maxQty < (pass.sold_quantity || 0)) {
+                                            toast({
+                                              title: p.t.error,
+                                              description: p.language === 'en'
+                                                ? `Cannot set max stock below sold quantity (${pass.sold_quantity})`
+                                                : `Impossible de définir le stock max en dessous de la quantité vendue (${pass.sold_quantity})`,
+                                              variant: "destructive",
+                                            });
+                                            return;
+                                          }
+                                          try {
+                                            const apiBase = getApiBaseUrl();
+                                            const descResp = await fetch(`${apiBase}/api/admin/passes/${pass.id}/description`, {
+                                              method: 'PUT',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              credentials: 'include',
+                                              body: JSON.stringify({ description: pass.description || '' })
+                                            });
+                                            if (!descResp.ok) {
+                                              const err = await descResp.json().catch(() => ({}));
+                                              toast({
+                                                title: p.t.error,
+                                                description: err.error || err.details || (p.language === 'en' ? 'Failed to update description' : 'Échec de la mise à jour de la description'),
+                                                variant: "destructive"
+                                              });
+                                              return;
+                                            }
+                                            const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/stock`, {
+                                              method: 'POST',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              credentials: 'include',
+                                              body: JSON.stringify({ max_quantity: maxQty })
+                                            });
+                                            if (!response.ok) {
+                                              const err = await response.json();
+                                              toast({ title: p.t.error, description: err.error || err.details || (p.language === 'en' ? 'Failed to update stock' : 'Échec'), variant: "destructive" });
+                                              return;
+                                            }
+                                            const result = await response.json();
+                                            const updatedPasses = [...p.passesForManagement];
+                                            const idx = updatedPasses.findIndex(pp => pp.id === pass.id);
+                                            if (idx >= 0) updatedPasses[idx] = {
+                                              ...pass,
+                                              max_quantity: result.pass.max_quantity,
+                                              remaining_quantity: result.pass.remaining_quantity,
+                                              is_unlimited: result.pass.is_unlimited
+                                            };
+                                            p.setPassesForManagement(updatedPasses);
+                                            p.setSelectedPassForSettings(updatedPasses[idx] || pass);
+                                            toast({ title: p.t.success || 'Success', description: p.language === 'en' ? 'Pass saved' : 'Pass enregistré' });
+                                          } catch (e: any) {
+                                            toast({ title: p.t.error, description: e.message || (p.language === 'en' ? 'Failed' : 'Échec'), variant: "destructive" });
+                                          }
+                                        }}
+                                      >
+                                        <Save className="w-4 h-4 mr-2" />
+                                        {p.language === 'en' ? 'Save pass' : 'Enregistrer le pass'}
+                                      </Button>
                                     </div>
                                   )}
 
@@ -2687,6 +3649,76 @@ export function EventsTab(p: EventsTabProps) {
                                             toast({ title: p.t.error, description: e.message || (p.language === 'en' ? 'Failed' : 'Échec'), variant: "destructive" });
                                           }
                                         }}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Description (editable) */}
+                                  {pass.id && (
+                                    <div className="space-y-2">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="space-y-0.5">
+                                          <Label className="text-sm font-semibold">
+                                            {p.language === 'en' ? 'Description' : 'Description'}
+                                          </Label>
+                                          <p className="text-xs text-muted-foreground">
+                                            {p.language === 'en'
+                                              ? 'Shown to customers on the checkout page.'
+                                              : 'Affichée aux clients sur la page de paiement.'}
+                                          </p>
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="shrink-0"
+                                          onClick={async () => {
+                                            if (!pass.id) return;
+                                            try {
+                                              const apiBase = getApiBaseUrl();
+                                              const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/description`, {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                credentials: 'include',
+                                                body: JSON.stringify({ description: pass.description || '' })
+                                              });
+                                              if (!response.ok) {
+                                                const err = await response.json().catch(() => ({}));
+                                                toast({
+                                                  title: p.t.error,
+                                                  description: err.error || err.details || (p.language === 'en' ? 'Failed to update description' : 'Échec de la mise à jour de la description'),
+                                                  variant: "destructive"
+                                                });
+                                                return;
+                                              }
+                                              const result = await response.json().catch(() => ({}));
+                                              const updatedPasses = [...p.passesForManagement];
+                                              const idx = updatedPasses.findIndex(pp => pp.id === pass.id);
+                                              if (idx >= 0) updatedPasses[idx] = { ...pass, description: result.pass?.description ?? pass.description };
+                                              p.setPassesForManagement(updatedPasses);
+                                              p.setSelectedPassForSettings(updatedPasses[idx] || pass);
+                                              toast({ title: p.t.success || 'Success', description: p.language === 'en' ? 'Description saved' : 'Description enregistrée' });
+                                            } catch (e: any) {
+                                              toast({ title: p.t.error, description: e?.message || (p.language === 'en' ? 'Failed to update description' : 'Échec de la mise à jour de la description'), variant: "destructive" });
+                                            }
+                                          }}
+                                        >
+                                          <Save className="w-4 h-4 mr-2" />
+                                          {p.language === 'en' ? 'Save' : 'Enregistrer'}
+                                        </Button>
+                                      </div>
+                                      <Textarea
+                                        className="bg-muted/10"
+                                        value={pass.description || ''}
+                                        onChange={(e) => {
+                                          const nextDesc = e.target.value;
+                                          const updatedPasses = [...p.passesForManagement];
+                                          const idx = updatedPasses.findIndex(pp => pp.id === pass.id);
+                                          if (idx >= 0) updatedPasses[idx] = { ...pass, description: nextDesc };
+                                          p.setPassesForManagement(updatedPasses);
+                                          p.setSelectedPassForSettings(updatedPasses[idx] || { ...pass, description: nextDesc });
+                                        }}
+                                        placeholder={p.language === 'en' ? 'Add a short description…' : 'Ajoutez une courte description…'}
+                                        rows={4}
                                       />
                                     </div>
                                   )}

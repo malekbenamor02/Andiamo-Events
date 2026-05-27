@@ -98,6 +98,7 @@ import {
   Menu,
   Bell,
   Lightbulb,
+  GraduationCap,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -161,6 +162,7 @@ const LazyApplicationsTab = React.lazy(() =>
   import("./components/ApplicationsTab").then((m) => ({ default: m.ApplicationsTab })),
 );
 const LazyCareerTab = React.lazy(() => import("./components/CareerTab").then((m) => ({ default: m.CareerTab })));
+const LazyAcademyTab = React.lazy(() => import("./components/AcademyTab").then((m) => ({ default: m.AcademyTab })));
 const LazySponsorsTab = React.lazy(() =>
   import("./components/SponsorsTab").then((m) => ({ default: m.SponsorsTab })),
 );
@@ -10494,6 +10496,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         "marketing",
         "aio-events",
         "logs",
+        "academy",
       ];
     }
     if (currentAdminRole === "admin") {
@@ -10765,6 +10768,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 >
                   <Briefcase className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Careers' : 'Carrières'}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("academy") && (
+                <button
+                  type="button"
+                  data-active={activeTab === "academy"}
+                  onClick={() => handleMobileNavSelect("academy")}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "academy" && "shadow-lg")}
+                  style={{ background: activeTab === "academy" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <GraduationCap className="w-4 h-4 shrink-0" />
+                  <span>Academy</span>
                 </button>
               )}
               {isTabAllowedOnMobile("online-orders") && (
@@ -11341,6 +11356,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 {activeTab === "careers" && (
                   <Suspense fallback={adminTabSuspenseFallback}>
                     <LazyCareerTab language={language} />
+                  </Suspense>
+                )}
+              </TabsContent>
+
+              <TabsContent value="academy" className="space-y-6">
+                {activeTab === "academy" && (
+                  <Suspense fallback={adminTabSuspenseFallback}>
+                    <LazyAcademyTab language={language} />
                   </Suspense>
                 )}
               </TabsContent>

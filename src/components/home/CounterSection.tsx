@@ -1,13 +1,36 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface CounterSectionProps {
   language: 'en' | 'fr';
 }
 
+const TARGET_COUNTS = { events: 20, members: 40, followers: 65000 };
+
 const CounterSection = ({ language }: CounterSectionProps) => {
   const [counters, setCounters] = useState({ events: 0, members: 0, followers: 0 });
   const [hasAnimated, setHasAnimated] = useState(false);
-  const targetCounts = { events: 20, members: 40, followers: 45000 };
+
+  const animateCounters = useCallback(() => {
+    const duration = 4000;
+    const steps = 60;
+    const stepDuration = duration / steps;
+    let step = 0;
+
+    const timer = setInterval(() => {
+      step++;
+      const progress = step / steps;
+      setCounters({
+        events: Math.floor(TARGET_COUNTS.events * progress),
+        members: Math.floor(TARGET_COUNTS.members * progress),
+        followers: Math.floor(TARGET_COUNTS.followers * progress)
+      });
+
+      if (step >= steps) {
+        clearInterval(timer);
+        setCounters(TARGET_COUNTS);
+      }
+    }, stepDuration);
+  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -24,27 +47,7 @@ const CounterSection = ({ language }: CounterSectionProps) => {
     const counterSection = document.getElementById('counter-section');
     if (counterSection) observer.observe(counterSection);
     return () => observer.disconnect();
-  }, [hasAnimated]);
-
-  const animateCounters = () => {
-    const duration = 4000; // 2 seconds in milliseconds
-    const steps = 60;
-    const stepDuration = duration / steps;
-    let step = 0;
-    const timer = setInterval(() => {
-      step++;
-      const progress = step / steps;
-      setCounters({
-        events: Math.floor(targetCounts.events * progress),
-        members: Math.floor(targetCounts.members * progress),
-        followers: Math.floor(targetCounts.followers * progress)
-      });
-      if (step >= steps) {
-        clearInterval(timer);
-        setCounters(targetCounts);
-      }
-    }, stepDuration);
-  };
+  }, [animateCounters, hasAnimated]);
 
   return (
     <section id="counter-section" className="py-20 bg-gradient-dark">

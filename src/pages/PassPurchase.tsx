@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams, useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, MapPin, ArrowLeft, CheckCircle, XCircle, Lock } from 'lucide-react';
-import { ExpandableText } from '@/components/ui/expandable-text';
+import { ArrowLeft, CheckCircle, XCircle, Lock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
@@ -27,12 +26,19 @@ import { PaymentOptionSelector } from '@/components/orders/PaymentOptionSelector
 import { AmbassadorSelector } from '@/components/orders/AmbassadorSelector';
 import { OrderSummary } from '@/components/orders/OrderSummary';
 import { OrderSuccessScreen } from '@/components/orders/OrderSuccessScreen';
+import { PassPurchaseEventDetails } from '@/components/orders/PassPurchaseEventDetails';
 import { usePaymentOptions } from '@/hooks/usePaymentOptions';
 import { useActiveAmbassadors } from '@/hooks/useActiveAmbassadors';
 import { PaymentMethod } from '@/lib/constants/orderStatuses';
 import { CustomerInfo, SelectedPass, Ambassador } from '@/types/orders';
 import { createOrder } from '@/lib/orders/orderService';
 import { PageMeta } from '@/components/PageMeta';
+import {
+  parsePresaleDiscountPolicyFromApi,
+  presaleAdjustedUnitPrice,
+  roundPresaleMoneyDisplay,
+  type PresaleDiscountPolicy,
+} from '@/lib/presale/presaleDiscount';
 import { trackEvent } from '@/lib/ga';
 import { trackMetaEvent, trackMetaViewContent, trackMetaInitiateCheckout } from '@/lib/meta';
 import { createMetaEventId, getMetaAttributionContext } from '@/lib/metaAttribution';
@@ -96,23 +102,6 @@ function isPresaleEnabledOnEvent(ev: { presale_enabled?: unknown } | null | unde
   return v === true || v === 1 || v === '1' || v === 't' || v === 'T' || v === 'true' || v === 'TRUE';
 }
 
-type PresaleDiscountMeta = {
-  discount_type: 'percent' | 'fixed';
-  discount_value: number;
-};
-
-function roundMoneyDisplay(n: number) {
-  return Math.round(Number(n) * 100) / 100;
-}
-
-function parsePresaleDiscountFromApi(body: Record<string, unknown>): PresaleDiscountMeta | null {
-  const dt = body.discount_type;
-  const dv = body.discount_value;
-  if (dt !== 'percent' && dt !== 'fixed') return null;
-  if (typeof dv !== 'number' || Number.isNaN(dv)) return null;
-  return { discount_type: dt, discount_value: dv };
-}
-
 const PRESALE_CSRF_STORAGE_PREFIX = 'andiamo_presale_csrf:';
 function readPresaleCsrfFromStorage(eventId: string): string | null {
   if (typeof sessionStorage === 'undefined') return null;
@@ -138,23 +127,6 @@ function clearPresaleCsrfFromStorage(eventId: string) {
   } catch {
     /* ignore */
   }
-}
-
-/** Same rules as server `applyPresaleDiscountToPasses` (fixed = amount off each unit). */
-function presaleAdjustedUnitPrice(
-  unitList: number,
-  cartLines: { unitList: number; qty: number }[],
-  disc: PresaleDiscountMeta | null
-): number {
-  if (!disc || cartLines.length === 0) return unitList;
-  const subtotal = cartLines.reduce((s, l) => s + l.unitList * l.qty, 0);
-  if (subtotal <= 0) return unitList;
-  if (disc.discount_type === 'percent') {
-    const pct = Math.min(100, Math.max(0, disc.discount_value));
-    return roundMoneyDisplay(Math.max(0, unitList * (1 - pct / 100)));
-  }
-  const fixedPerUnit = Math.max(0, disc.discount_value);
-  return roundMoneyDisplay(Math.max(0, unitList - fixedPerUnit));
 }
 
 function mapPassesFromApiResponse(passesData: unknown[]): EventPass[] {
@@ -217,15 +189,18 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   const [presaleCodeDraft, setPresaleCodeDraft] = useState('');
   const [presaleRedeeming, setPresaleRedeeming] = useState(false);
   /** Mirrors presale_codes discount for the active session (from session or redeem API). */
-  const [presaleDiscountMeta, setPresaleDiscountMeta] = useState<PresaleDiscountMeta | null>(null);
-  /** Cart lines at list price — used with presaleDiscountMeta for totals (matches server order math). */
-  const presaleLineList = useMemo((): { unitList: number; qty: number }[] => {
+  const [presaleDiscountPolicy, setPresaleDiscountPolicy] = useState<PresaleDiscountPolicy | null>(null);
+  /** Server session expiry (ms since epoch); used to re-lock at 3.5 minutes. */
+  const [presaleSessionExpiresAt, setPresaleSessionExpiresAt] = useState<number | null>(null);
+  const presaleExpiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Cart lines at list price — used with presaleDiscountPolicy for totals (matches server order math). */
+  const presaleLineList = useMemo((): { passId: string; unitList: number; qty: number }[] => {
     if (!event?.passes) return [];
-    const out: { unitList: number; qty: number }[] = [];
+    const out: { passId: string; unitList: number; qty: number }[] = [];
     for (const [passId, quantity] of Object.entries(selectedPasses)) {
       if (quantity <= 0) continue;
       const pass = event.passes.find((p) => p.id === passId);
-      if (pass) out.push({ unitList: pass.price, qty: quantity });
+      if (pass) out.push({ passId, unitList: pass.price, qty: quantity });
     }
     return out;
   }, [event?.passes, selectedPasses]);
@@ -245,13 +220,95 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   // Fetch payment options
   const { data: paymentOptions = [], isLoading: loadingPaymentOptions } = usePaymentOptions();
 
+  const clearPresaleExpiryTimer = useCallback(() => {
+    if (presaleExpiryTimerRef.current) {
+      clearTimeout(presaleExpiryTimerRef.current);
+      presaleExpiryTimerRef.current = null;
+    }
+  }, []);
+
+  const lockPresaleGate = useCallback(
+    async (eventId: string, showExpiredToast = false) => {
+      clearPresaleExpiryTimer();
+      setPresaleCsrfToken(null);
+      setPresaleSessionExpiresAt(null);
+      setPresaleDiscountPolicy(null);
+      setPassesForbiddenPresale(true);
+      setEvent((prev) => (prev ? ({ ...prev, passes: [] } as Event) : prev));
+      clearPresaleCsrfFromStorage(eventId);
+      try {
+        const apiBase = getApiBaseUrl();
+        await fetch(`${apiBase}${API_ROUTES.PRESALE_SESSION_CLEAR}`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+      } catch {
+        /* ignore */
+      }
+      if (showExpiredToast) {
+        toast({
+          title: language === 'en' ? 'Session expired' : 'Session expirée',
+          description:
+            language === 'en'
+              ? 'Your presale access has expired. Enter your code again to continue.'
+              : 'Votre accès prévente a expiré. Entrez votre code à nouveau pour continuer.',
+          variant: 'default',
+        });
+      }
+    },
+    [clearPresaleExpiryTimer, language, toast]
+  );
+
+  const schedulePresaleExpiry = useCallback(
+    (eventId: string, expiresAtMs: number) => {
+      clearPresaleExpiryTimer();
+      setPresaleSessionExpiresAt(expiresAtMs);
+      const delay = expiresAtMs - Date.now();
+      if (delay <= 0) {
+        void lockPresaleGate(eventId, true);
+        return;
+      }
+      presaleExpiryTimerRef.current = setTimeout(() => {
+        void lockPresaleGate(eventId, true);
+      }, delay);
+    },
+    [clearPresaleExpiryTimer, lockPresaleGate]
+  );
+
+  const applyActivePresaleSession = useCallback(
+    (
+      eventId: string,
+      csrfTok: string,
+      expiresAtRaw: unknown,
+      discount: PresaleDiscountPolicy | null
+    ) => {
+      setPresaleCsrfToken(csrfTok);
+      writePresaleCsrfToStorage(eventId, csrfTok);
+      setPassesForbiddenPresale(false);
+      if (discount) setPresaleDiscountPolicy(discount);
+      const expiresMs =
+        typeof expiresAtRaw === 'string' ? new Date(expiresAtRaw).getTime() : NaN;
+      if (Number.isFinite(expiresMs)) {
+        schedulePresaleExpiry(eventId, expiresMs);
+      }
+    },
+    [schedulePresaleExpiry]
+  );
+
+  useEffect(() => () => clearPresaleExpiryTimer(), [clearPresaleExpiryTimer]);
+
   const presaleLocked = useMemo(() => {
-    if (presaleCsrfToken) return false;
+    if (presaleCsrfToken) {
+      if (presaleSessionExpiresAt != null && presaleSessionExpiresAt <= Date.now()) {
+        return true;
+      }
+      return false;
+    }
     if (passesForbiddenPresale) return true;
     if (serverPresaleRequired === true) return true;
     if (serverPresaleRequired === false) return false;
     return isPresaleEnabledOnEvent(event);
-  }, [event, presaleCsrfToken, passesForbiddenPresale, serverPresaleRequired]);
+  }, [event, presaleCsrfToken, presaleSessionExpiresAt, passesForbiddenPresale, serverPresaleRequired]);
 
   // Fetch active ambassadors to get full details (including social_link)
   const { data: activeAmbassadors = [] } = useActiveAmbassadors(
@@ -454,7 +511,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     en: {
       title: "Purchase Pass",
       backToEvents: "Back to Events",
-      eventDetails: "Event Details",
       passSelection: "Select Passes",
       customerInfo: "Personal Information",
       payment: "Payment Method",
@@ -508,7 +564,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     fr: {
       title: "Acheter un Pass",
       backToEvents: "Retour aux Événements",
-      eventDetails: "Détails de l'Événement",
       passSelection: "Sélectionner les Passes",
       customerInfo: "Informations Personnelles",
       payment: "Méthode de Paiement",
@@ -610,9 +665,11 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       setLoading(true);
       setPurchaseBlockedReason(null);
       setPresaleCsrfToken(null);
+      setPresaleSessionExpiresAt(null);
+      clearPresaleExpiryTimer();
       setPassesForbiddenPresale(false);
       setServerPresaleRequired(undefined);
-      setPresaleDiscountMeta(null);
+      setPresaleDiscountPolicy(null);
 
       const isLocal = isLocalhostClient();
 
@@ -730,19 +787,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         if (!resolvedEventId) {
           throw new Error('Event ID not resolved');
         }
-        const eidForPresale = String(resolvedEventId).trim();
-        clearPresaleCsrfFromStorage(eidForPresale);
-        try {
-          const clearRes = await fetch(`${apiBase}${API_ROUTES.PRESALE_SESSION_CLEAR}`, {
-            method: 'POST',
-            credentials: 'include',
-          });
-          if (!clearRes.ok) {
-            console.warn('PassPurchase: presale session clear failed', clearRes.status);
-          }
-        } catch (clearErr) {
-          console.warn('PassPurchase: presale session clear request failed', clearErr);
-        }
         try {
           const metaRes = await fetch(
             `${apiBase}${API_ROUTES.PRESALE_REQUIRED}?eventId=${encodeURIComponent(String(resolvedEventId).trim())}`,
@@ -769,7 +813,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           passes = [];
           setPresaleCsrfToken(null);
           setPassesForbiddenPresale(true);
-          setPresaleDiscountMeta(null);
+          setPresaleDiscountPolicy(null);
         } else if (privatePassesResponse.ok) {
           const passesResult = await privatePassesResponse.json();
           if (typeof passesResult.presale_required === 'boolean') {
@@ -792,22 +836,23 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                 : readPresaleCsrfFromStorage(eid);
             const sessionOk = sessRes.ok && sessJson.valid === true && !!csrfTok;
             if (sessionOk) {
-              setPresaleCsrfToken(csrfTok);
-              writePresaleCsrfToStorage(eid, csrfTok);
-              setPassesForbiddenPresale(false);
-              const disc = parsePresaleDiscountFromApi(sessJson as Record<string, unknown>);
-              setPresaleDiscountMeta(disc);
+              applyActivePresaleSession(
+                eid,
+                csrfTok,
+                sessJson.expiresAt,
+                parsePresaleDiscountPolicyFromApi(sessJson as Record<string, unknown>)
+              );
               passes = mappedPasses;
             } else {
               setPresaleCsrfToken(null);
               setPassesForbiddenPresale(true);
-              setPresaleDiscountMeta(null);
+              setPresaleDiscountPolicy(null);
               passes = [];
             }
           } else {
             setPresaleCsrfToken(null);
             setPassesForbiddenPresale(false);
-            setPresaleDiscountMeta(null);
+            setPresaleDiscountPolicy(null);
             passes = mappedPasses;
           }
         } else if (privatePassesResponse.status === 404) {
@@ -955,7 +1000,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         typeof body.csrfToken === 'string' && body.csrfToken.trim()
           ? body.csrfToken.trim()
           : null;
-      const discFromRedeem = parsePresaleDiscountFromApi(body as Record<string, unknown>);
+      const discFromRedeem = parsePresaleDiscountPolicyFromApi(body as Record<string, unknown>);
 
       const passesRes = await fetch(`${apiBase}/api/passes/${event.id}`, { credentials: 'include' });
       if (!passesRes.ok) {
@@ -974,10 +1019,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
       // Unlock only after passes are loaded so `presaleLocked` never goes false while `event.passes` is still empty (avoids "no passes" flash).
       if (csrfFromRedeem) {
-        setPresaleCsrfToken(csrfFromRedeem);
-        writePresaleCsrfToStorage(event.id, csrfFromRedeem);
+        applyActivePresaleSession(
+          event.id,
+          csrfFromRedeem,
+          body.expiresAt,
+          discFromRedeem
+        );
+      } else if (discFromRedeem) {
+        setPresaleDiscountPolicy(discFromRedeem);
       }
-      if (discFromRedeem) setPresaleDiscountMeta(discFromRedeem);
       setPassesForbiddenPresale(false);
       setPresaleCodeDraft('');
       setEvent((prev) => (prev ? ({ ...prev, passes: mapped } as Event) : prev));
@@ -1072,7 +1122,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     if (presaleLineList.length === 0) return 0;
     return presaleLineList.reduce(
       (sum, l) =>
-        sum + presaleAdjustedUnitPrice(l.unitList, presaleLineList, presaleDiscountMeta) * l.qty,
+        sum + presaleAdjustedUnitPrice(l.unitList, l.passId, presaleDiscountPolicy) * l.qty,
       0
     );
   };
@@ -1082,7 +1132,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     if (!event?.passes) return [];
 
     const passes: SelectedPass[] = [];
-    const lines = presaleLineList;
     Object.entries(selectedPasses).forEach(([passId, quantity]) => {
       if (quantity > 0) {
         const pass = event.passes?.find((p) => p.id === passId);
@@ -1091,7 +1140,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             passId: pass.id,
             passName: pass.name,
             quantity,
-            price: presaleAdjustedUnitPrice(pass.price, lines, presaleDiscountMeta),
+            price: presaleAdjustedUnitPrice(pass.price, pass.id, presaleDiscountPolicy),
           });
         }
       }
@@ -1679,57 +1728,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           }}
         >
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Public pass purchase only: presale flow omits this block so poster/description are not mounted or fetched by the browser */}
-            {!effectivePresaleForCountdown && (
-              <div className="lg:col-span-1">
-                <Card className="glass">
-                  <CardHeader>
-                    <CardTitle className="text-primary">{t[language].eventDetails}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {event.poster_url ? (
-                      <img
-                        src={event.poster_url}
-                        alt={event.name}
-                        className="w-full h-48 object-cover rounded-lg"
-                      />
-                    ) : null}
-                    <div className="mb-4">
-                      <h3 className="text-xl font-bold text-primary mb-3">{event.name}</h3>
-                      {event.description && (
-                        <div className="mb-4">
-                          <ExpandableText
-                            text={event.description}
-                            maxLength={150}
-                            className="text-foreground text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words"
-                            showMoreText={language === 'en' ? 'Show more' : 'Voir plus'}
-                            showLessText={language === 'en' ? 'Show less' : 'Voir moins'}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center">
-                        <Calendar className="w-4 h-4 mr-2 text-primary" />
-                        <span>{formatDateDMY(event.date, language)}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <MapPin className="w-4 h-4 mr-2 text-primary" />
-                        <span>{event.venue}, {event.city}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+            <div className="lg:col-span-1">
+              <PassPurchaseEventDetails event={event} language={language} />
+            </div>
 
             {/* Main Form — wizard; scroll-into-view on step change keeps this card visible after Continue/Back */}
-            <div
-              className={cn(
-                'flex flex-col gap-4',
-                effectivePresaleForCountdown ? 'lg:col-span-3' : 'lg:col-span-2'
-              )}
-            >
+            <div className="flex flex-col gap-4 lg:col-span-2">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm text-muted-foreground">
                 <span aria-live="polite">
                   {t[language].stepOf.replace('{n}', String(wizardStep)).replace('{total}', String(WIZARD_STEP_COUNT))}
@@ -1786,16 +1790,14 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                         const remainingQuantity = pass.remaining_quantity ?? 0;
                         const maxAllowed = Math.min(10, remainingQuantity);
                         const isLowStock = !isSoldOut && remainingQuantity <= 5;
-                        /** Card shows unit price for this pass type only (qty 1); checkout uses full cart lines. */
-                        const pricePreviewLinesForCard = [{ unitList: pass.price, qty: 1 }];
                         const displayUnitPrice = presaleAdjustedUnitPrice(
                           pass.price,
-                          pricePreviewLinesForCard,
-                          presaleDiscountMeta
+                          pass.id,
+                          presaleDiscountPolicy
                         );
                         const showPresaleStrike =
-                          presaleDiscountMeta != null &&
-                          roundMoneyDisplay(displayUnitPrice) < roundMoneyDisplay(pass.price);
+                          presaleDiscountPolicy != null &&
+                          roundPresaleMoneyDisplay(displayUnitPrice) < roundPresaleMoneyDisplay(pass.price);
                         
                         // Check if pass is compatible with selected payment method (UX only - backend is authoritative)
                         const isCompatible = isPassCompatibleWithPaymentMethod(pass, paymentMethod);
