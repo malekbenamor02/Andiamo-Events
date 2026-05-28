@@ -47,9 +47,8 @@ const { canSendTransactionalEmail } = requireFromRoot(path.join(__dirname, '_lib
 // Eager load with a static specifier so @vercel/nft bundles transitive deps (@sparticuz/chromium, puppeteer-core, pdf-lib).
 // Lazy require(path.join(...)) omitted those packages → runtime "Cannot find module '@sparticuz/chromium'" on Vercel.
 const renderPremiumTicketPdfModule = requireFromRoot('./_lib/render-premium-ticket-pdf.cjs');
-// academyRoutes.cjs is lazy-loaded via path.join; without static requires, Vercel omits multer → registration/admin academy fail.
+// Static multer require so Vercel NFT includes it (see vercel.json misc.js includeFiles). academyRoutes.cjs is listed there too.
 requireFromRoot('multer');
-requireFromRoot('../academyRoutes.cjs');
 function getRenderPremiumTicketPdf() {
   return renderPremiumTicketPdfModule;
 }

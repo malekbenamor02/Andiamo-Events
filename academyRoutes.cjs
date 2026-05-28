@@ -39,6 +39,10 @@ const { getFormulaBasePrice, FORMULA_IDS } = require('./api/_lib/academy-pricing
 const { normalizeAcademyPromoCode } = require('./api/_lib/academy-registration-validation.cjs');
 const { cancelExpiredAcademyPendingRegistrations } = require('./api/_lib/academy-expire-pending.cjs');
 const { requireCronSecret } = require('./api/_lib/cron-auth.cjs');
+const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
+const { getEmailTransporter } = require('./api/_lib/get-email-transporter.cjs');
+
+const ACADEMY_EMAIL_FROM = '"Andiamo Events" <contact@andiamoevents.com>';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -100,27 +104,29 @@ function requireSuperAdmin(req, res, next) {
   next();
 }
 
-function getEmailTransporterBundle() {
-  try {
-    const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
-    return { sendTransactionalEmail };
-  } catch {
-    return null;
-  }
-}
-
 async function sendAcademyEmail(reg, template) {
-  const bundle = getEmailTransporterBundle();
-  if (!bundle) return;
+  if (!reg?.email) return false;
   let mail;
   if (template === 'online_confirmed') mail = buildAcademyOnlineConfirmedEmailHtml(reg);
   else if (template === 'manual_received') mail = buildAcademyManualPaymentReceivedEmailHtml(reg);
   else if (template === 'approved') mail = buildAcademyApprovedEmailHtml(reg);
-  else return;
-  await bundle.sendTransactionalEmail(
-    {},
-    { to: reg.email, subject: mail.subject, html: mail.html }
-  );
+  else return false;
+  try {
+    await sendTransactionalEmail(
+      { getEmailTransporter },
+      {
+        from: ACADEMY_EMAIL_FROM,
+        replyTo: ACADEMY_EMAIL_FROM,
+        to: reg.email,
+        subject: mail.subject,
+        html: mail.html,
+      }
+    );
+    return true;
+  } catch (e) {
+    console.error(`[academy] ${template} email failed:`, e.message || e);
+    return false;
+  }
 }
 
 async function tryAutoApprove(db, reg, adminId = null, ip = null, options = {}) {
@@ -149,11 +155,13 @@ async function tryAutoApprove(db, reg, adminId = null, ip = null, options = {}) 
     ip,
   });
   if (!skipApprovedEmail) {
-    await sendAcademyEmail(data, 'approved');
-    await db
-      .from('academy_registrations')
-      .update({ last_email_type: 'approved', email_sent_at: new Date().toISOString() })
-      .eq('id', reg.id);
+    const sent = await sendAcademyEmail(data, 'approved');
+    if (sent) {
+      await db
+        .from('academy_registrations')
+        .update({ last_email_type: 'approved', email_sent_at: new Date().toISOString() })
+        .eq('id', reg.id);
+    }
   }
   return { approved: true, registration: data };
 }
@@ -515,11 +523,13 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       });
 
       if (requiresPaymentProof(vData.paymentMethod)) {
-        await sendAcademyEmail(inserted, 'manual_received');
-        await db
-          .from('academy_registrations')
-          .update({ last_email_type: 'manual_received', email_sent_at: new Date().toISOString() })
-          .eq('id', inserted.id);
+        const sent = await sendAcademyEmail(inserted, 'manual_received');
+        if (sent) {
+          await db
+            .from('academy_registrations')
+            .update({ last_email_type: 'manual_received', email_sent_at: new Date().toISOString() })
+            .eq('id', inserted.id);
+        }
       }
 
       res.status(201).json(academyRegistrationResponse(inserted));
@@ -730,11 +740,13 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       const approveResult = await tryAutoApprove(db, paidReg, null, null, { skipApprovedEmail: true });
 
       const emailReg = approveResult.registration || paidReg;
-      await sendAcademyEmail(emailReg, 'online_confirmed');
-      await db
-        .from('academy_registrations')
-        .update({ last_email_type: 'online_confirmed', email_sent_at: new Date().toISOString() })
-        .eq('id', registrationId);
+      const onlineSent = await sendAcademyEmail(emailReg, 'online_confirmed');
+      if (onlineSent) {
+        await db
+          .from('academy_registrations')
+          .update({ last_email_type: 'online_confirmed', email_sent_at: new Date().toISOString() })
+          .eq('id', registrationId);
+      }
 
       res.json({
         success: true,
@@ -906,7 +918,10 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         adminId: req.admin.id,
         ip: getClientIp(req),
       });
-      await sendAcademyEmail(data, 'approved');
+      const sent = await sendAcademyEmail(data, 'approved');
+      if (!sent) {
+        return res.status(502).json({ error: 'Registration approved but confirmation email could not be sent' });
+      }
       res.json({ success: true, registration: data });
     } catch (e) {
       res.status(500).json({ error: e.message });
@@ -960,7 +975,10 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       if (reg.status !== 'approved') {
         return res.status(400).json({ error: 'Resend is only available for approved registrations' });
       }
-      await sendAcademyEmail(reg, 'approved');
+      const sent = await sendAcademyEmail(reg, 'approved');
+      if (!sent) {
+        return res.status(502).json({ error: 'Could not send confirmation email' });
+      }
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: e.message });
