@@ -23,6 +23,7 @@ const {
   resolvePromoCode,
   computePromoDiscount,
   incrementPromoUsed,
+  findActiveAcademyRegistration,
 } = require('./api/_lib/academy-db.cjs');
 const {
   registerClicToPayPayment,
@@ -160,6 +161,98 @@ async function tryAutoApprove(db, reg, adminId = null, ip = null, options = {}) 
 function runAcademyExpirePendingInBackground(db) {
   cancelExpiredAcademyPendingRegistrations(db).catch((e) => {
     console.warn('academy auto-cancel pending:', e.message || e);
+  });
+}
+
+function academyRegistrationResponse(reg, extra = {}) {
+  return {
+    success: true,
+    registrationId: reg.id,
+    registrationNumber: reg.registration_number,
+    status: reg.status,
+    paymentMethod: reg.payment_method,
+    totalAmountDt: reg.total_amount_dt,
+    redirectToPayment: reg.payment_method === 'card',
+    ...extra,
+  };
+}
+
+async function respondToExistingAcademyRegistration(res, db, existing, vData, lang) {
+  if (['pending_payment', 'pending_online'].includes(existing.status)) {
+    if (existing.payment_method === 'card' && vData.paymentMethod === 'card') {
+      await db
+        .from('academy_registrations')
+        .update({
+          full_name: vData.fullName,
+          phone: vData.phone,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id);
+      return res.status(200).json(
+        academyRegistrationResponse(existing, {
+          resumed: true,
+          message:
+            lang === 'en'
+              ? 'You already have a registration in progress. Continuing to payment.'
+              : 'Vous avez déjà une inscription en cours. Poursuite vers le paiement.',
+        })
+      );
+    }
+    return res.status(409).json({
+      error: 'registration_in_progress',
+      message:
+        lang === 'en'
+          ? 'You already have a registration in progress for this formula. Please contact us if you need to change payment method.'
+          : 'Vous avez déjà une inscription en cours pour cette formule. Contactez-nous pour changer de mode de paiement.',
+      registrationNumber: existing.registration_number,
+      status: existing.status,
+    });
+  }
+
+  if (existing.status === 'proof_received') {
+    return res.status(409).json({
+      error: 'registration_pending_review',
+      message:
+        lang === 'en'
+          ? 'We already have your registration and payment proof for this formula. Our team will review it shortly.'
+          : 'Nous avons déjà votre inscription et votre preuve de paiement pour cette formule. Notre équipe va les examiner sous peu.',
+      registrationNumber: existing.registration_number,
+      status: existing.status,
+    });
+  }
+
+  if (existing.status === 'paid_online') {
+    return res.status(409).json({
+      error: 'payment_received',
+      message:
+        lang === 'en'
+          ? 'Your online payment was received. Your place will be confirmed by email once processing is complete.'
+          : 'Votre paiement en ligne a été reçu. Votre place sera confirmée par e-mail une fois le traitement terminé.',
+      registrationNumber: existing.registration_number,
+      status: existing.status,
+    });
+  }
+
+  if (existing.status === 'approved') {
+    return res.status(409).json({
+      error: 'already_approved',
+      message:
+        lang === 'en'
+          ? 'You are already registered and approved for this formula.'
+          : 'Vous êtes déjà inscrit et approuvé pour cette formule.',
+      registrationNumber: existing.registration_number,
+      status: existing.status,
+    });
+  }
+
+  return res.status(409).json({
+    error: 'registration_exists',
+    message:
+      lang === 'en'
+        ? 'A registration with this email and formula already exists.'
+        : 'Une inscription avec cet e-mail et cette formule existe déjà.',
+    registrationNumber: existing.registration_number,
+    status: existing.status,
   });
 }
 
@@ -308,6 +401,13 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
 
       const { data: vData } = validation;
 
+      await cancelExpiredAcademyPendingRegistrations(db);
+
+      const existingReg = await findActiveAcademyRegistration(db, vData.email, vData.formule);
+      if (existingReg) {
+        return await respondToExistingAcademyRegistration(res, db, existingReg, vData, lang);
+      }
+
       let promoId = null;
       let discountAmount = 0;
       if (vData.promoCode) {
@@ -367,7 +467,17 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         .single();
       if (insertErr) {
         if (insertErr.code === '23505') {
-          return res.status(409).json({ error: 'A registration with this email and formula already exists' });
+          const duplicate = await findActiveAcademyRegistration(db, vData.email, vData.formule);
+          if (duplicate) {
+            return await respondToExistingAcademyRegistration(res, db, duplicate, vData, lang);
+          }
+          return res.status(409).json({
+            error: 'registration_exists',
+            message:
+              lang === 'en'
+                ? 'A registration with this email and formula already exists.'
+                : 'Une inscription avec cet e-mail et cette formule existe déjà.',
+          });
         }
         throw insertErr;
       }
@@ -412,15 +522,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
           .eq('id', inserted.id);
       }
 
-      res.status(201).json({
-        success: true,
-        registrationId: inserted.id,
-        registrationNumber: inserted.registration_number,
-        status: inserted.status,
-        paymentMethod: inserted.payment_method,
-        totalAmountDt: inserted.total_amount_dt,
-        redirectToPayment: inserted.payment_method === 'card',
-      });
+      res.status(201).json(academyRegistrationResponse(inserted));
     } catch (e) {
       console.error('POST /api/academy/register', e);
       res.status(500).json({ error: e.message || 'Server error' });

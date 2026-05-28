@@ -165,6 +165,30 @@ function computePromoDiscount(promo, baseAmount) {
   return Math.min(base, Number(promo.discount_value));
 }
 
+const TERMINAL_ACADEMY_STATUSES = ['failed', 'cancelled', 'rejected'];
+const ACTIVE_ACADEMY_STATUSES = [
+  'pending_payment',
+  'pending_online',
+  'proof_received',
+  'paid_online',
+  'approved',
+];
+
+/** Active row blocking duplicate email+formula (matches DB partial unique index). */
+async function findActiveAcademyRegistration(db, email, formule) {
+  const { data, error } = await db
+    .from('academy_registrations')
+    .select('*')
+    .eq('email', email)
+    .eq('formule', formule)
+    .in('status', ACTIVE_ACADEMY_STATUSES)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 async function incrementPromoUsed(db, promoId) {
   const { data: row } = await db.from('academy_promo_codes').select('used_count, max_uses').eq('id', promoId).single();
   if (!row || row.used_count >= row.max_uses) return false;
@@ -189,4 +213,7 @@ module.exports = {
   resolvePromoCode,
   computePromoDiscount,
   incrementPromoUsed,
+  findActiveAcademyRegistration,
+  TERMINAL_ACADEMY_STATUSES,
+  ACTIVE_ACADEMY_STATUSES,
 };

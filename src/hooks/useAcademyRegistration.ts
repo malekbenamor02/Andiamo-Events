@@ -303,6 +303,13 @@ export function useAcademyRegistration(
           return;
         }
 
+        if (data.resumed && data.message) {
+          toast({
+            title: language === 'en' ? 'Continuing your registration' : 'Poursuite de votre inscription',
+            description: String(data.message),
+          });
+        }
+
         const registrationId = data.registrationId as string;
         if (data.redirectToPayment && registrationId) {
           navigate(`/academy/payment-processing?registrationId=${registrationId}&init=1`);
