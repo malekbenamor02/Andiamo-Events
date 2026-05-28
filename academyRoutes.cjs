@@ -120,6 +120,9 @@ async function sendAcademyEmail(reg, template) {
         to: reg.email,
         subject: mail.subject,
         html: mail.html,
+        text: mail.text,
+        transactional: true,
+        messageRef: reg.registration_number || reg.id,
       }
     );
     return true;

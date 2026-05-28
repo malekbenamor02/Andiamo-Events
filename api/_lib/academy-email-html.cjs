@@ -3,6 +3,7 @@
 const {
   getPublicSiteOrigin,
   transactionalEmailDarkStylesCss,
+  transactionalEmailClosingFooterHtml,
   escapeAttr,
 } = require('./email-branding.cjs');
 
@@ -76,30 +77,23 @@ function paymentSummaryBlockHtml(reg) {
   return `<div class="order-info-block">${rowsHtml}</div>`;
 }
 
-function academyEmailClosingFooterHtml() {
-  return `
-      <div class="support-section">
-        <p class="support-text">
-          Need assistance? Contact us at
-          <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a>.
-        </p>
-      </div>
-      <div class="closing-section">
-        <p class="slogan">We Create Memories</p>
-        <p class="signature">
-          Best regards,<br>
-          The Andiamo Events Team
-        </p>
-      </div>
-    </div>
-    <div class="footer">
-      <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
-      <div class="footer-links">
-        <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
-        <span style="color: #888888;">&bull;</span>
-        <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
-      </div>
-    </div>`;
+function academyPlainTextLines(reg, lines) {
+  const formulaLabel = FORMULA_LABELS[reg.formule] || reg.formule;
+  return [
+    ...lines,
+    '',
+    `Registration: ${reg.registration_number}`,
+    `Formula: ${formulaLabel}`,
+    `Base amount: ${fmtDt(reg.base_amount_dt)}`,
+    ...(Number(reg.discount_amount_dt) > 0 ? [`Discount: -${fmtDt(reg.discount_amount_dt)}`] : []),
+    ...(Number(reg.fee_amount_dt) > 0 ? [`Online processing fee: ${fmtDt(reg.fee_amount_dt)}`] : []),
+    `Total: ${fmtDt(reg.total_amount_dt)}`,
+    '',
+    'Need assistance? Contact@andiamoevents.com',
+    '',
+    'We Create Memories',
+    'The Andiamo Events Team',
+  ].join('\n');
 }
 
 function wrapAcademyEmail({ title, subtitle, bodyHtml }) {
@@ -122,7 +116,7 @@ function wrapAcademyEmail({ title, subtitle, bodyHtml }) {
         <p class="subtitle">${escapeHtml(subtitle)}</p>
       </div>
       ${bodyHtml}
-      ${academyEmailClosingFooterHtml()}
+      ${transactionalEmailClosingFooterHtml()}
   </div>
 </body>
 </html>`;
@@ -140,9 +134,16 @@ function buildAcademyOnlineConfirmedEmailHtml(reg) {
       We look forward to seeing you at the training.
     </p>
     ${paymentSummaryBlockHtml(reg)}`;
+  const firstNamePlain = (reg.full_name || '').trim().split(/\s+/)[0] || 'there';
   return {
-    subject: `Andiamo Academy — Payment confirmed (${reg.registration_number})`,
+    subject: `Your Andiamo Academy payment is confirmed (${reg.registration_number})`,
     html: wrapAcademyEmail({ title, subtitle, bodyHtml: body }),
+    text: academyPlainTextLines(reg, [
+      `Hello ${firstNamePlain},`,
+      '',
+      'Your online payment has been successfully confirmed. Your place at Andiamo Academy is now confirmed.',
+      'We look forward to seeing you at the training.',
+    ]),
   };
 }
 
@@ -165,9 +166,18 @@ function buildAcademyManualPaymentReceivedEmailHtml(reg) {
     <p class="message" style="font-size:13px;color:#888;">
       You do not need to take any further action for now. We will contact you by email once your payment has been validated.
     </p>`;
+  const firstNamePlain = (reg.full_name || '').trim().split(/\s+/)[0] || 'there';
   return {
-    subject: `Andiamo Academy — Registration received (${reg.registration_number})`,
+    subject: `Your Andiamo Academy registration is received (${reg.registration_number})`,
     html: wrapAcademyEmail({ title, subtitle, bodyHtml: body }),
+    text: academyPlainTextLines(reg, [
+      `Hello ${firstNamePlain},`,
+      '',
+      'We have received your academy registration and your payment proof. Our team will review your payment as soon as possible and confirm your place.',
+      `Payment method: ${methodLabel}`,
+      '',
+      'You do not need to take any further action for now. We will email you once your payment has been validated.',
+    ]),
   };
 }
 
@@ -183,9 +193,16 @@ function buildAcademyApprovedEmailHtml(reg) {
       We look forward to seeing you at the training.
     </p>
     ${paymentSummaryBlockHtml(reg)}`;
+  const firstNamePlain = (reg.full_name || '').trim().split(/\s+/)[0] || 'there';
   return {
-    subject: `Andiamo Academy — Your place is confirmed (${reg.registration_number})`,
+    subject: `Your Andiamo Academy place is confirmed (${reg.registration_number})`,
     html: wrapAcademyEmail({ title, subtitle, bodyHtml: body }),
+    text: academyPlainTextLines(reg, [
+      `Hello ${firstNamePlain},`,
+      '',
+      'Your payment has been validated and your place at Andiamo Academy is now confirmed.',
+      'We look forward to seeing you at the training.',
+    ]),
   };
 }
 

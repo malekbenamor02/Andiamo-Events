@@ -380,12 +380,32 @@ function emailLogoHeaderHtml() {
   return '';
 }
 
+/** Closing block for receipts / registrations — no social link footer (Gmail Promotions signal). */
+function transactionalEmailClosingFooterHtml() {
+  return `
+      <div class="support-section">
+        <p class="support-text">
+          Need assistance? Contact us at
+          <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a>.
+        </p>
+      </div>
+      <div class="closing-section">
+        <p class="slogan">We Create Memories</p>
+        <p class="signature">
+          Best regards,<br>
+          The Andiamo Events Team
+        </p>
+      </div>
+    </div>`;
+}
+
 module.exports = {
   getPublicSiteOrigin,
   getEmailLogoUrl,
   getEmailLogoBlackUrl,
   emailLogoHeaderHtml,
   transactionalEmailDarkStylesCss,
+  transactionalEmailClosingFooterHtml,
   invitationEmailDarkStylesCss,
   escapeAttr,
 };

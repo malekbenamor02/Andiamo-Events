@@ -184,12 +184,26 @@ function smtpEnvConfigured() {
   return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
 }
 
+/** Receipt-style mail: strip List-Unsubscribe, optional ref header (Gmail Primary vs Promotions). */
+function normalizeTransactionalMailOptions(mailOptions) {
+  if (!mailOptions || mailOptions.transactional !== true) return mailOptions || {};
+  const { messageRef, transactional, ...rest } = mailOptions;
+  const headers = { ...(rest.headers || {}) };
+  if (messageRef) headers['X-Entity-Ref-ID'] = String(messageRef);
+  return {
+    ...rest,
+    suppressListUnsubscribe: rest.suppressListUnsubscribe !== false,
+    headers,
+  };
+}
+
 /**
  * @param {{ getEmailTransporter?: () => unknown }} deps
  * @param {object} mailOptions nodemailer-compatible sendMail options
  */
 async function sendTransactionalEmail(deps, mailOptions) {
-  const { brevoApiKey, ...mailRest } = mailOptions || {};
+  const normalized = normalizeTransactionalMailOptions(mailOptions);
+  const { brevoApiKey, ...mailRest } = normalized || {};
   const hasAttachments =
     Array.isArray(mailRest.attachments) && mailRest.attachments.length > 0;
 
@@ -251,4 +265,5 @@ module.exports = {
   sendViaBrevoApi,
   brevoSmtpExtraHeaders,
   isBrevoSmtpHost,
+  normalizeTransactionalMailOptions,
 };
