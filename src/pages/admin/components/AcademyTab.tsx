@@ -33,6 +33,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { normalizeAcademyPromoCodeInput } from '@/lib/academy/promoCode';
+import Loader from '@/components/ui/Loader';
 import { ExternalLink, GraduationCap, Mail, RefreshCw } from 'lucide-react';
 
 type AcademyLanguage = 'en' | 'fr';
@@ -64,8 +65,6 @@ interface AcademySettings {
   disabled_message_en: string | null;
   disabled_message_fr: string | null;
   online_payment_fee_rate?: number;
-  sold_out_message_en?: string | null;
-  sold_out_message_fr?: string | null;
   approved_count?: number;
   remaining_approved?: number;
 }
@@ -183,6 +182,29 @@ function DetailField({
     <div className={className}>
       <p className="text-xs font-medium text-muted-foreground mb-1">{label}</p>
       <div className="text-sm">{children}</div>
+    </div>
+  );
+}
+
+function AcademyTabLoadingPanel({
+  message,
+  className,
+  compact = false,
+}: {
+  message: string;
+  className?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex flex-col items-center justify-center gap-3 rounded-lg border',
+        compact ? 'py-12' : 'py-16',
+        className
+      )}
+    >
+      <Loader size="md" />
+      <p className="text-sm text-muted-foreground">{message}</p>
     </div>
   );
 }
@@ -361,8 +383,9 @@ export function AcademyTab({ language }: AcademyTabProps) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-xs"
+              disabled={loading}
             />
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={setStatusFilter} disabled={loading}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue />
               </SelectTrigger>
@@ -379,40 +402,55 @@ export function AcademyTab({ language }: AcademyTabProps) {
             </Select>
           </div>
           <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{isEn ? 'Ref' : 'Réf.'}</TableHead>
-                  <TableHead>{isEn ? 'Name' : 'Nom'}</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>{isEn ? 'Formula' : 'Formule'}</TableHead>
-                  <TableHead>{isEn ? 'Payment' : 'Paiement'}</TableHead>
-                  <TableHead className="text-center w-16">Status</TableHead>
-                  <TableHead>{isEn ? 'Total' : 'Total'}</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-mono text-xs">{r.registration_number}</TableCell>
-                    <TableCell>{r.full_name}</TableCell>
-                    <TableCell>{r.email}</TableCell>
-                    <TableCell>{academyFormulaLabel(r.formule, isEn)}</TableCell>
-                    <TableCell>{academyPaymentLabel(r.payment_method, isEn)}</TableCell>
-                    <TableCell className="py-2 text-center">
-                      <AcademyStatusDot status={r.status} isEn={isEn} />
-                    </TableCell>
-                    <TableCell>{Number(r.total_amount_dt).toFixed(2)} DT</TableCell>
-                    <TableCell>
-                      <Button size="sm" variant="outline" onClick={() => openDetail(r)}>
-                        {isEn ? 'View' : 'Voir'}
-                      </Button>
-                    </TableCell>
+            {loading ? (
+              <AcademyTabLoadingPanel
+                message={isEn ? 'Loading registrations…' : 'Chargement des inscriptions…'}
+                className="border-0"
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{isEn ? 'Ref' : 'Réf.'}</TableHead>
+                    <TableHead>{isEn ? 'Name' : 'Nom'}</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>{isEn ? 'Formula' : 'Formule'}</TableHead>
+                    <TableHead>{isEn ? 'Payment' : 'Paiement'}</TableHead>
+                    <TableHead className="text-center w-16">Status</TableHead>
+                    <TableHead>{isEn ? 'Total' : 'Total'}</TableHead>
+                    <TableHead />
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filtered.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
+                        {isEn ? 'No registrations found' : 'Aucune inscription trouvée'}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filtered.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-mono text-xs">{r.registration_number}</TableCell>
+                        <TableCell>{r.full_name}</TableCell>
+                        <TableCell>{r.email}</TableCell>
+                        <TableCell>{academyFormulaLabel(r.formule, isEn)}</TableCell>
+                        <TableCell>{academyPaymentLabel(r.payment_method, isEn)}</TableCell>
+                        <TableCell className="py-2 text-center">
+                          <AcademyStatusDot status={r.status} isEn={isEn} />
+                        </TableCell>
+                        <TableCell>{Number(r.total_amount_dt).toFixed(2)} DT</TableCell>
+                        <TableCell>
+                          <Button size="sm" variant="outline" onClick={() => openDetail(r)}>
+                            {isEn ? 'View' : 'Voir'}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </div>
         </TabsContent>
 
@@ -486,7 +524,15 @@ export function AcademyTab({ language }: AcademyTabProps) {
               />
             </div>
           </div>
-          <Button onClick={createPromo}>{isEn ? 'Create code' : 'Créer le code'}</Button>
+          <Button onClick={createPromo} disabled={loading}>
+            {isEn ? 'Create code' : 'Créer le code'}
+          </Button>
+          {loading ? (
+            <AcademyTabLoadingPanel
+              compact
+              message={isEn ? 'Loading promo codes…' : 'Chargement des codes promo…'}
+            />
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -532,10 +578,15 @@ export function AcademyTab({ language }: AcademyTabProps) {
               ))}
             </TableBody>
           </Table>
+          )}
         </TabsContent>
 
         <TabsContent value="reports">
-          {reports && (
+          {loading ? (
+            <AcademyTabLoadingPanel
+              message={isEn ? 'Loading reports…' : 'Chargement des rapports…'}
+            />
+          ) : reports ? (
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="rounded-lg border p-4">
                 <p className="text-sm text-muted-foreground">{isEn ? 'Total registrations' : 'Total inscriptions'}</p>
@@ -554,11 +605,16 @@ export function AcademyTab({ language }: AcademyTabProps) {
                 <p className="text-3xl font-bold">{reports.revenue_dt} DT</p>
               </div>
             </div>
-          )}
+          ) : null}
         </TabsContent>
 
         <TabsContent value="settings" className="space-y-6 max-w-xl">
-          {settings && (
+          {loading ? (
+            <AcademyTabLoadingPanel
+              message={isEn ? 'Loading settings…' : 'Chargement des paramètres…'}
+              className="max-w-xl"
+            />
+          ) : settings ? (
             <>
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <Label htmlFor="academy-page-enabled">
@@ -633,7 +689,7 @@ export function AcademyTab({ language }: AcademyTabProps) {
               </div>
               <Button onClick={saveSettings}>{isEn ? 'Save settings' : 'Enregistrer'}</Button>
             </>
-          )}
+          ) : null}
         </TabsContent>
       </Tabs>
 
