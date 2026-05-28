@@ -38,10 +38,11 @@ const deferAnalytics = () => {
 }
 
 if (typeof window !== 'undefined') {
-  if ('requestIdleCallback' in window) {
-    (window as any).requestIdleCallback(deferAnalytics)
+  const win = window as Window & { requestIdleCallback?: (cb: () => void) => void }
+  if (typeof win.requestIdleCallback === 'function') {
+    win.requestIdleCallback(deferAnalytics)
   } else {
-    window.addEventListener('load', () => {
+    win.addEventListener('load', () => {
       setTimeout(deferAnalytics, 0)
     })
   }
@@ -244,7 +245,17 @@ const setupErrorHandlers = async () => {
   const originalFetch = window.fetch;
   window.fetch = async (...args) => {
     const startTime = Date.now();
-    const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+    const requestTarget = args[0];
+    const url = typeof requestTarget === 'string'
+      ? requestTarget
+      : requestTarget instanceof URL
+        ? requestTarget.toString()
+        : requestTarget.url;
+    const method = typeof requestTarget === 'string'
+      ? 'GET'
+      : requestTarget instanceof URL
+        ? 'GET'
+        : (requestTarget.method || 'GET');
     const sanitizedUrl = sanitizeString(url);
     try {
       const response = await originalFetch(...args);
@@ -262,12 +273,12 @@ const setupErrorHandlers = async () => {
           category: 'api_call',
           details: sanitizeObject({
             url: sanitizedUrl,
-            method: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
+            method,
             status,
             statusText: response.statusText,
             duration
           }),
-          requestMethod: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
+          requestMethod: method,
           requestPath: sanitizedUrl,
           responseStatus: status
         });
@@ -289,12 +300,18 @@ const setupErrorHandlers = async () => {
           category: 'api_call',
           details: sanitizeObject({
             url: sanitizedUrl,
-            method: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
+            method,
             duration
           }),
-          requestMethod: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
+          requestMethod: method,
           requestPath: sanitizedUrl
         });
+      }
+
+      // Third-party analytics requests are commonly blocked (ad blockers, DNS policies).
+      // Resolve as a no-op response to avoid uncaught promise noise from external scripts.
+      if (isAnalyticsUrl) {
+        return new Response(null, { status: 204, statusText: 'No Content' });
       }
 
       throw error;

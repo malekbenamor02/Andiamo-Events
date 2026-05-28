@@ -15,6 +15,9 @@ const {
   getAcademySettings,
   countApprovedRegistrations,
   canApproveMore,
+  isAcademySoldOut,
+  buildAcademyPublicStatus,
+  parseAcademyOnlineFeeRate,
   generateRegistrationNumber,
   logAcademyEvent,
   resolvePromoCode,
@@ -33,6 +36,8 @@ const {
 } = require('./api/_lib/academy-email-html.cjs');
 const { getFormulaBasePrice, FORMULA_IDS } = require('./api/_lib/academy-pricing.cjs');
 const { normalizeAcademyPromoCode } = require('./api/_lib/academy-registration-validation.cjs');
+const { cancelExpiredAcademyPendingRegistrations } = require('./api/_lib/academy-expire-pending.cjs');
+const { requireCronSecret } = require('./api/_lib/cron-auth.cjs');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -117,7 +122,8 @@ async function sendAcademyEmail(reg, template) {
   );
 }
 
-async function tryAutoApprove(db, reg, adminId = null, ip = null) {
+async function tryAutoApprove(db, reg, adminId = null, ip = null, options = {}) {
+  const { skipApprovedEmail = false } = options;
   const can = await canApproveMore(db);
   if (!can) return { approved: false, reason: 'cap_reached' };
   const { data, error } = await db
@@ -141,31 +147,72 @@ async function tryAutoApprove(db, reg, adminId = null, ip = null) {
     adminId,
     ip,
   });
-  await sendAcademyEmail(data, 'approved');
-  await db
-    .from('academy_registrations')
-    .update({ last_email_type: 'approved', email_sent_at: new Date().toISOString() })
-    .eq('id', reg.id);
+  if (!skipApprovedEmail) {
+    await sendAcademyEmail(data, 'approved');
+    await db
+      .from('academy_registrations')
+      .update({ last_email_type: 'approved', email_sent_at: new Date().toISOString() })
+      .eq('id', reg.id);
+  }
   return { approved: true, registration: data };
+}
+
+function runAcademyExpirePendingInBackground(db) {
+  cancelExpiredAcademyPendingRegistrations(db).catch((e) => {
+    console.warn('academy auto-cancel pending:', e.message || e);
+  });
+}
+
+function academySoldOutResponse(res, settings, lang = 'en') {
+  const message =
+    lang === 'en'
+      ? settings.sold_out_message_en || 'Academy registrations are sold out.'
+      : settings.sold_out_message_fr || "Les inscriptions à l'Academy sont complètes.";
+  return res.status(409).json({ error: 'academy_sold_out', message });
 }
 
 function registerAcademyRoutes(app, { requireAdminAuth }) {
   const registerLimiter = multerSingle('paymentProof');
 
+  async function handleAutoCancelExpiredAcademyRegistrations(req, res) {
+    try {
+      const db = getServiceDb();
+      if (!db) return res.status(503).json({ error: 'Database not configured' });
+
+      const result = await cancelExpiredAcademyPendingRegistrations(db);
+      res.json({
+        success: true,
+        ...result,
+        expire_minutes: result.expireMinutes,
+        message:
+          result.cancelled_count > 0
+            ? `Auto-cancelled ${result.cancelled_count} expired academy registration(s).`
+            : 'No expired academy pending registrations found.',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('auto-cancel-expired-academy-registrations', e);
+      res.status(500).json({ error: e.message || 'Server error' });
+    }
+  }
+
+  app.get(
+    '/api/auto-cancel-expired-academy-registrations',
+    requireCronSecret,
+    handleAutoCancelExpiredAcademyRegistrations
+  );
+  app.post(
+    '/api/auto-cancel-expired-academy-registrations',
+    requireCronSecret,
+    handleAutoCancelExpiredAcademyRegistrations
+  );
+
   app.get('/api/academy/status', async (req, res) => {
     try {
       const db = getServiceDb();
       if (!db) return res.status(503).json({ error: 'Database not configured' });
-      const settings = await getAcademySettings(db);
-      res.json({
-        enabled: settings.page_enabled !== false,
-        messageEn:
-          settings.disabled_message_en ||
-          'Academy registrations are temporarily closed. Please check back soon.',
-        messageFr:
-          settings.disabled_message_fr ||
-          'Les inscriptions à l\'Academy sont temporairement fermées. Veuillez réessayer bientôt.',
-      });
+      const status = await buildAcademyPublicStatus(db);
+      res.json(status);
     } catch (e) {
       console.error('GET /api/academy/status', e);
       res.status(500).json({ error: 'Server error' });
@@ -245,8 +292,8 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       if (!recaptchaOk) return res.status(400).json({ error: 'reCAPTCHA verification failed' });
 
       const settings = await getAcademySettings(db);
+      const lang = body.language === 'en' ? 'en' : 'fr';
       if (!settings.page_enabled) {
-        const lang = body.language === 'en' ? 'en' : 'fr';
         const message =
           lang === 'en'
             ? settings.disabled_message_en ||
@@ -254,6 +301,9 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
             : settings.disabled_message_fr ||
               'Les inscriptions à l\'Academy sont temporairement fermées.';
         return res.status(503).json({ error: 'academy_closed', message });
+      }
+      if (await isAcademySoldOut(db)) {
+        return academySoldOutResponse(res, settings, lang);
       }
 
       const { data: vData } = validation;
@@ -274,6 +324,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         formule: vData.formule,
         paymentMethod: vData.paymentMethod,
         discountAmountDt: discountAmount,
+        feeRate: settings.online_payment_fee_rate,
       });
       if (!amounts) return res.status(400).json({ error: 'Invalid formula pricing' });
 
@@ -380,6 +431,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
     try {
       const db = getServiceDb();
       if (!db) return res.status(503).json({ error: 'Database not configured' });
+      await cancelExpiredAcademyPendingRegistrations(db);
       const { id } = req.params;
       const { data, error } = await db
         .from('academy_registrations')
@@ -417,24 +469,42 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       if (reg.payment_method !== 'card') {
         return res.status(400).json({ error: 'Not a card payment registration' });
       }
-      if (reg.status === 'approved' || reg.status === 'paid_online') {
+      await cancelExpiredAcademyPendingRegistrations(db);
+      const { data: regFresh } = await db
+        .from('academy_registrations')
+        .select('*')
+        .eq('id', registrationId)
+        .single();
+      const activeReg = regFresh || reg;
+      if (activeReg.status === 'cancelled') {
+        return res.status(410).json({
+          error: 'registration_expired',
+          message: 'This registration has expired. Please register again.',
+          status: 'cancelled',
+        });
+      }
+      if (await isAcademySoldOut(db)) {
+        const settings = await getAcademySettings(db);
+        return academySoldOutResponse(res, settings);
+      }
+      if (activeReg.status === 'approved' || activeReg.status === 'paid_online') {
         return res.status(400).json({ error: 'Already paid', alreadyPaid: true });
       }
-      if (!['pending_payment', 'pending_online'].includes(reg.status)) {
-        return res.status(400).json({ error: 'Registration is not ready for payment', status: reg.status });
+      if (!['pending_payment', 'pending_online'].includes(activeReg.status)) {
+        return res.status(400).json({ error: 'Registration is not ready for payment', status: activeReg.status });
       }
 
       const base = resolvePublicBaseUrl(req);
       const returnUrl = `${base}/academy/payment-processing?registrationId=${registrationId}&return=1`;
       const failUrl = `${base}/academy/payment-processing?registrationId=${registrationId}&return=1&status=failed`;
-      const orderRef = reg.registration_number.replace(/-/g, '').substring(0, 32);
+      const orderRef = activeReg.registration_number.replace(/-/g, '').substring(0, 32);
 
       const result = await registerClicToPayPayment({
-        amount: Number(reg.total_amount_dt),
+        amount: Number(activeReg.total_amount_dt),
         orderNumber: orderRef,
         returnUrl,
         failUrl,
-        description: `Academy ${reg.registration_number}`,
+        description: `Academy ${activeReg.registration_number}`,
       });
 
       if (!result.ok) {
@@ -449,7 +519,8 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
             status: 'pending_online',
             updated_at: new Date().toISOString(),
           })
-          .eq('id', registrationId);
+          .eq('id', registrationId)
+          .in('status', ['pending_payment', 'pending_online']);
       }
 
       res.json({ success: true, formUrl: result.formUrl, registrationId });
@@ -473,22 +544,44 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         .single();
       if (error || !reg) return res.status(404).json({ error: 'Registration not found' });
 
-      if (reg.status === 'approved') {
+      await cancelExpiredAcademyPendingRegistrations(db);
+      const { data: regFresh } = await db
+        .from('academy_registrations')
+        .select('*')
+        .eq('id', registrationId)
+        .single();
+      const activeReg = regFresh || reg;
+
+      if (activeReg.status === 'cancelled') {
+        return res.status(410).json({
+          success: false,
+          error: 'registration_expired',
+          message: 'This registration has expired. Please register again.',
+          status: 'cancelled',
+        });
+      }
+
+      if (await isAcademySoldOut(db)) {
+        const settings = await getAcademySettings(db);
+        return academySoldOutResponse(res, settings);
+      }
+
+      if (activeReg.status === 'approved') {
         return res.json({ success: true, alreadyPaid: true, status: 'approved' });
       }
-      if (reg.status === 'paid_online') {
-        const approveResult = await tryAutoApprove(db, reg);
+      if (activeReg.status === 'paid_online') {
+        const approveResult = await tryAutoApprove(db, activeReg, null, null, { skipApprovedEmail: true });
         return res.json({
           success: true,
           status: approveResult.approved ? 'approved' : 'paid_online',
           approved: approveResult.approved,
         });
       }
-      if (reg.status !== 'pending_online' && reg.status !== 'pending_payment') {
-        return res.status(400).json({ error: 'Not pending payment', status: reg.status });
+      if (activeReg.status !== 'pending_online' && activeReg.status !== 'pending_payment') {
+        return res.status(400).json({ error: 'Not pending payment', status: activeReg.status });
       }
 
-      const ctpId = reg.payment_gateway_reference;
+      const ctpId = activeReg.payment_gateway_reference;
       if (!ctpId) return res.status(400).json({ error: 'No gateway reference' });
 
       const gateway = await fetchClicToPayOrderStatus(ctpId);
@@ -512,24 +605,34 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', registrationId)
+        .in('status', ['pending_payment', 'pending_online'])
         .select('*')
         .single();
       if (upErr) throw upErr;
+      if (!paidReg) {
+        return res.status(410).json({
+          success: false,
+          error: 'registration_expired',
+          message: 'This registration has expired. Please register again.',
+          status: 'cancelled',
+        });
+      }
 
       await logAcademyEvent(db, {
         registrationId,
         eventType: 'payment_confirmed',
-        oldStatus: reg.status,
+        oldStatus: activeReg.status,
         newStatus: 'paid_online',
       });
 
-      await sendAcademyEmail(paidReg, 'online_confirmed');
+      const approveResult = await tryAutoApprove(db, paidReg, null, null, { skipApprovedEmail: true });
+
+      const emailReg = approveResult.registration || paidReg;
+      await sendAcademyEmail(emailReg, 'online_confirmed');
       await db
         .from('academy_registrations')
         .update({ last_email_type: 'online_confirmed', email_sent_at: new Date().toISOString() })
         .eq('id', registrationId);
-
-      const approveResult = await tryAutoApprove(db, paidReg);
 
       res.json({
         success: true,
@@ -580,6 +683,15 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       if (req.body.disabled_message_fr != null) {
         patch.disabled_message_fr = String(req.body.disabled_message_fr).slice(0, 2000);
       }
+      if (req.body.online_payment_fee_rate != null) {
+        patch.online_payment_fee_rate = parseAcademyOnlineFeeRate(req.body.online_payment_fee_rate);
+      }
+      if (req.body.sold_out_message_en != null) {
+        patch.sold_out_message_en = String(req.body.sold_out_message_en).slice(0, 2000);
+      }
+      if (req.body.sold_out_message_fr != null) {
+        patch.sold_out_message_fr = String(req.body.sold_out_message_fr).slice(0, 2000);
+      }
       const { data, error } = await db
         .from('academy_settings')
         .update(patch)
@@ -597,6 +709,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
     try {
       const db = getServiceDb();
       if (!db) return res.status(503).json({ error: 'Database not configured' });
+      runAcademyExpirePendingInBackground(db);
       let q = db
         .from('academy_registrations')
         .select('*, academy_promo_codes(code)')

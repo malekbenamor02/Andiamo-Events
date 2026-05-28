@@ -31,8 +31,67 @@ async function getAcademySettings(db) {
       page_enabled: true,
       disabled_message_en: null,
       disabled_message_fr: null,
+      online_payment_fee_rate: 0.05,
+      sold_out_message_en: null,
+      sold_out_message_fr: null,
     }
   );
+}
+
+const DEFAULT_ACADEMY_ONLINE_FEE_RATE = 0.05;
+const MAX_ACADEMY_ONLINE_FEE_RATE = 0.5;
+
+function parseAcademyOnlineFeeRate(raw) {
+  if (raw == null || raw === '') return DEFAULT_ACADEMY_ONLINE_FEE_RATE;
+  const n = Number.parseFloat(String(raw).trim().replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_ACADEMY_ONLINE_FEE_RATE;
+  return Math.min(MAX_ACADEMY_ONLINE_FEE_RATE, n);
+}
+
+async function isAcademySoldOut(db) {
+  const settings = await getAcademySettings(db);
+  const approved = await countApprovedRegistrations(db);
+  return approved >= settings.max_approved_total;
+}
+
+const DEFAULT_DISABLED_EN =
+  'Academy registrations are temporarily closed. Please check back soon.';
+const DEFAULT_DISABLED_FR =
+  "Les inscriptions à l'Academy sont temporairement fermées. Veuillez réessayer bientôt.";
+const DEFAULT_SOLD_OUT_EN = 'Academy registrations are sold out.';
+const DEFAULT_SOLD_OUT_FR = "Les inscriptions à l'Academy sont complètes.";
+
+async function buildAcademyPublicStatus(db) {
+  const settings = await getAcademySettings(db);
+  const approved = await countApprovedRegistrations(db);
+  const soldOut = approved >= settings.max_approved_total;
+  const pageEnabled = settings.page_enabled !== false;
+  const registrationsOpen = pageEnabled && !soldOut;
+
+  let messageEn;
+  let messageFr;
+  if (!pageEnabled) {
+    messageEn = settings.disabled_message_en || DEFAULT_DISABLED_EN;
+    messageFr = settings.disabled_message_fr || DEFAULT_DISABLED_FR;
+  } else if (soldOut) {
+    messageEn = settings.sold_out_message_en || DEFAULT_SOLD_OUT_EN;
+    messageFr = settings.sold_out_message_fr || DEFAULT_SOLD_OUT_FR;
+  } else {
+    messageEn = settings.disabled_message_en || DEFAULT_DISABLED_EN;
+    messageFr = settings.disabled_message_fr || DEFAULT_DISABLED_FR;
+  }
+
+  return {
+    pageEnabled,
+    soldOut,
+    registrationsOpen,
+    enabled: registrationsOpen,
+    messageEn,
+    messageFr,
+    onlinePaymentFeeRate: parseAcademyOnlineFeeRate(settings.online_payment_fee_rate),
+    approvedCount: approved,
+    maxApprovedTotal: settings.max_approved_total,
+  };
 }
 
 async function countApprovedRegistrations(db) {
@@ -130,6 +189,9 @@ module.exports = {
   getAcademySettings,
   countApprovedRegistrations,
   canApproveMore,
+  isAcademySoldOut,
+  buildAcademyPublicStatus,
+  parseAcademyOnlineFeeRate,
   generateRegistrationNumber,
   logAcademyEvent,
   resolvePromoCode,

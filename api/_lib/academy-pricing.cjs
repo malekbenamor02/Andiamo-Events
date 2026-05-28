@@ -1,6 +1,6 @@
 'use strict';
 
-const { computeOnlinePaymentFees } = require('./online-payment-fee.cjs');
+const { parseAcademyOnlineFeeRate } = require('./academy-db.cjs');
 
 /** Server-side formula prices (must match src/data/academyContent.ts) */
 const FORMULA_PRICES_DT = {
@@ -19,9 +19,14 @@ function getFormulaBasePrice(formule) {
 }
 
 /**
- * @param {{ formule: string, paymentMethod: string, discountAmountDt?: number }} params
+ * @param {{ formule: string, paymentMethod: string, discountAmountDt?: number, feeRate?: number }} params
  */
-function computeRegistrationAmounts({ formule, paymentMethod, discountAmountDt = 0 }) {
+function computeRegistrationAmounts({
+  formule,
+  paymentMethod,
+  discountAmountDt = 0,
+  feeRate,
+}) {
   const base = getFormulaBasePrice(formule);
   if (base == null) return null;
   const discount = Math.min(Math.max(0, Number(discountAmountDt) || 0), base);
@@ -29,9 +34,9 @@ function computeRegistrationAmounts({ formule, paymentMethod, discountAmountDt =
   let feeAmount = 0;
   let total = subtotal;
   if (paymentMethod === 'card') {
-    const fees = computeOnlinePaymentFees(subtotal);
-    feeAmount = Number(fees.feeAmount.toFixed(3));
-    total = Number(fees.totalWithFees.toFixed(3));
+    const rate = parseAcademyOnlineFeeRate(feeRate);
+    feeAmount = Number((subtotal * rate).toFixed(3));
+    total = Number((subtotal + feeAmount).toFixed(3));
   }
   return {
     base_amount_dt: base,

@@ -18,7 +18,7 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
   const isReturn = searchParams.get('return') === '1';
   const isInit = searchParams.get('init') === '1';
 
-  const [state, setState] = useState<'loading' | 'success' | 'failed' | 'redirecting'>('loading');
+  const [state, setState] = useState<'loading' | 'success' | 'failed' | 'expired' | 'redirecting'>('loading');
   const [error, setError] = useState<string | null>(null);
 
   const t =
@@ -30,6 +30,9 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
             'Your payment has been confirmed. You will receive a confirmation email shortly.',
           failedTitle: 'Payment failed',
           failedMessage: 'Your payment could not be completed. Please try again or contact us.',
+          expiredTitle: 'Registration expired',
+          expiredMessage:
+            'Your registration was not completed in time. Please register again to book your place.',
           back: 'Back to Academy',
           noId: 'Invalid request. No registration ID.',
           generic: 'Something went wrong. Please try again.',
@@ -42,6 +45,9 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
           failedTitle: 'Paiement échoué',
           failedMessage:
             'Votre paiement n\'a pas pu être traité. Veuillez réessayer ou nous contacter.',
+          expiredTitle: 'Inscription expirée',
+          expiredMessage:
+            'Votre inscription n\'a pas été finalisée à temps. Veuillez vous réinscrire pour réserver votre place.',
           back: 'Retour à l\'Academy',
           noId: 'Requête invalide.',
           generic: 'Une erreur s\'est produite.',
@@ -64,6 +70,11 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
           body: JSON.stringify({ registrationId, language }),
         });
         const data = await res.json().catch(() => ({}));
+        if (res.status === 410 || data.error === 'registration_expired') {
+          setState('expired');
+          setError(data.message || t.expiredMessage);
+          return;
+        }
         const formUrl = data.formUrl || data.form_url;
         if (formUrl) {
           setState('redirecting');
@@ -92,6 +103,9 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
             `/academy/register/confirmation?registrationId=${registrationId}&paid=1`,
             { replace: true }
           );
+        } else if (res.status === 410 || data.error === 'registration_expired') {
+          setState('expired');
+          setError(data.message || t.expiredMessage);
         } else {
           setState('failed');
           setError(data.error || data.message || t.failedMessage);
@@ -127,10 +141,13 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
               <p className="text-muted-foreground mb-6">{t.successMessage}</p>
             </>
           )}
-          {state === 'failed' && (
+          {(state === 'failed' || state === 'expired') && (
             <>
               <XCircle className="w-20 h-20 text-red-500 mx-auto mb-4" />
-              <h1 className="text-2xl font-heading font-bold mb-6">{t.failedTitle}</h1>
+              <h1 className="text-2xl font-heading font-bold mb-2">
+                {state === 'expired' ? t.expiredTitle : t.failedTitle}
+              </h1>
+              {error && <p className="text-muted-foreground mb-6">{error}</p>}
               <Button onClick={() => navigate('/academy/register')}>{t.back}</Button>
             </>
           )}

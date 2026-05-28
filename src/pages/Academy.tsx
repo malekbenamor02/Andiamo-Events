@@ -21,8 +21,8 @@ const Academy = ({ language }: AcademyProps) => {
   const navigate = useNavigate();
   const heroRef = useRef<HTMLDivElement>(null);
   const [heroVisible, setHeroVisible] = useState(false);
-  const { loading, enabled, message } = useAcademyPublicStatus(language);
-  const contentReady = !loading && enabled;
+  const { loading, registrationsOpen, soldOut, message } = useAcademyPublicStatus(language);
+  const contentReady = !loading && registrationsOpen;
 
   useEffect(() => {
     if (!contentReady) {
@@ -72,8 +72,8 @@ const Academy = ({ language }: AcademyProps) => {
         <div className="flex justify-center py-24">
           <Loader size="lg" />
         </div>
-      ) : !enabled ? (
-        <AcademyPageDisabled language={language} message={message} />
+      ) : !registrationsOpen ? (
+        <AcademyPageDisabled language={language} message={message} soldOut={soldOut} />
       ) : (
         <>
           <div

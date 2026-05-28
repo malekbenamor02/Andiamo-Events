@@ -292,6 +292,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/auto-cancel-expired-academy-registrations",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/ambassador/orders",
       "destination": "/api/misc.js"
     },
@@ -607,7 +611,7 @@
     "api/misc.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{api/_lib/**,academyRoutes.cjs,node_modules/@sparticuz/chromium/**}"
+      "includeFiles": "{api/_lib/**,academyRoutes.cjs,node_modules/multer/**,node_modules/busboy/**,node_modules/append-field/**,node_modules/concat-stream/**,node_modules/type-is/**,node_modules/media-typer/**,node_modules/mime-types/**,node_modules/mime-db/**,node_modules/@sparticuz/chromium/**}"
     },
     "api/media.js": {
       "maxDuration": 60,

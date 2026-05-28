@@ -1,13 +1,12 @@
 /**
  * Google Analytics 4 (GA4) integration using gtag.js
  *
- * - Script + config are also in index.html so GA is always connected
- * - Vite env: VITE_GA_MEASUREMENT_ID (fallback: G-ST4MWP7HDE)
+ * - Vite env: VITE_GA_MEASUREMENT_ID
  * - Exposes helpers for page views and custom events
  */
 
 const GA_MEASUREMENT_ID =
-  (import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined)?.trim() || 'G-ST4MWP7HDE';
+  (import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined)?.trim() || '';
 const isProduction = import.meta.env.PROD;
 
 declare global {
@@ -18,6 +17,7 @@ declare global {
 }
 
 let isInitialized = false;
+let isDisabled = false;
 
 function loadGtagScript(measurementId: string): void {
   if (document.querySelector(`script[src*="googletagmanager.com/gtag/js?id=${measurementId}"]`)) {
@@ -27,6 +27,9 @@ function loadGtagScript(measurementId: string): void {
   const script = document.createElement('script');
   script.async = true;
   script.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`;
+  script.onerror = () => {
+    isDisabled = true;
+  };
   document.head.appendChild(script);
 }
 
@@ -45,7 +48,9 @@ function initGtag(measurementId: string): void {
 
 export function initGA(): void {
   if (isInitialized) return;
+  if (!isProduction) return;
   const id = GA_MEASUREMENT_ID;
+  if (!id || isDisabled) return;
   try {
     loadGtagScript(id);
     initGtag(id);
@@ -68,7 +73,7 @@ export function trackPageView(
   path: string,
   params: PageViewParams = {}
 ): void {
-  if (!window.gtag || !GA_MEASUREMENT_ID) {
+  if (!window.gtag || !GA_MEASUREMENT_ID || !isInitialized || isDisabled) {
     return;
   }
 
@@ -97,7 +102,7 @@ interface TrackEventParams {
  * @param params Additional event parameters
  */
 export function trackEvent(name: string, params: TrackEventParams = {}): void {
-  if (!window.gtag || !GA_MEASUREMENT_ID) {
+  if (!window.gtag || !GA_MEASUREMENT_ID || !isInitialized || isDisabled) {
     return;
   }
 

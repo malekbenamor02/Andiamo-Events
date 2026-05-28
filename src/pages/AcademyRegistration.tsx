@@ -17,7 +17,7 @@ interface AcademyRegistrationProps {
 const AcademyRegistration = ({ language }: AcademyRegistrationProps) => {
   const [searchParams] = useSearchParams();
   const selectedFormula = parseAcademyFormulaParam(searchParams.get('formula'));
-  const { loading, enabled, message } = useAcademyPublicStatus(language);
+  const { loading, registrationsOpen, soldOut, message } = useAcademyPublicStatus(language);
 
   const backLabel = language === 'en' ? 'Back to Academy' : 'Retour à l\'Académie';
   const pageTitle = language === 'en' ? 'Academy registration' : 'Inscription Académie';
@@ -49,8 +49,8 @@ const AcademyRegistration = ({ language }: AcademyRegistrationProps) => {
         <div className="flex justify-center py-24">
           <Loader size="lg" />
         </div>
-      ) : !enabled ? (
-        <AcademyPageDisabled language={language} message={message} />
+      ) : !registrationsOpen ? (
+        <AcademyPageDisabled language={language} message={message} soldOut={soldOut} />
       ) : (
         <AcademyRegistrationForm language={language} selectedFormula={selectedFormula} />
       )}

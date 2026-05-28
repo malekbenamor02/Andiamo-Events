@@ -17,7 +17,7 @@ interface AcademyTermsProps {
 
 const AcademyTerms = ({ language }: AcademyTermsProps) => {
   const ui = ACADEMY_TERMS_UI;
-  const { loading, enabled, message } = useAcademyPublicStatus(language);
+  const { loading, registrationsOpen, soldOut, message } = useAcademyPublicStatus(language);
 
   if (loading) {
     return (
@@ -27,10 +27,10 @@ const AcademyTerms = ({ language }: AcademyTermsProps) => {
     );
   }
 
-  if (!enabled) {
+  if (!registrationsOpen) {
     return (
       <main className="pt-16 min-h-screen bg-gradient-dark">
-        <AcademyPageDisabled language={language} message={message} />
+        <AcademyPageDisabled language={language} message={message} soldOut={soldOut} />
       </main>
     );
   }

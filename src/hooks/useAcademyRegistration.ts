@@ -10,7 +10,7 @@ import {
 } from '@/lib/academy/validation';
 import { normalizeAcademyPromoCodeInput } from '@/lib/academy/promoCode';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
-import { computeOnlinePaymentFeesDisplay } from '@/lib/onlinePaymentFee';
+import { useAcademyPublicStatus } from '@/hooks/useAcademyPublicStatus';
 import type { AcademyFormulaId, AcademyLanguage, AcademyRegistrationFormData } from '@/types/academy';
 import { EMPTY_ACADEMY_FORM } from '@/types/academy';
 
@@ -46,12 +46,20 @@ async function executeRecaptcha(): Promise<string | null> {
   );
 }
 
+function computeAcademyCardFees(subtotal: number, feeRate: number) {
+  const sub = Math.max(0, Number(subtotal) || 0);
+  const rate = Math.min(0.5, Math.max(0, Number(feeRate) || 0));
+  const feeAmount = Number((sub * rate).toFixed(3));
+  return { feeAmount, totalWithFees: sub + feeAmount };
+}
+
 export function useAcademyRegistration(
   language: AcademyLanguage,
   selectedFormula: AcademyFormulaId | null
 ) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { registrationsOpen, soldOut, onlinePaymentFeeRate } = useAcademyPublicStatus(language);
   const mountMs = useRef(Date.now());
   const [formData, setFormData] = useState<AcademyRegistrationFormData>(EMPTY_ACADEMY_FORM);
   const [errors, setErrors] = useState<Partial<Record<keyof AcademyRegistrationFormData, string>>>({});
@@ -92,15 +100,15 @@ export function useAcademyRegistration(
   const displayTotal = useMemo(() => {
     if (!formData.formule || subtotalAfterPromo <= 0) return 0;
     if (formData.paymentMethod === 'card') {
-      return computeOnlinePaymentFeesDisplay(subtotalAfterPromo).totalWithFees;
+      return computeAcademyCardFees(subtotalAfterPromo, onlinePaymentFeeRate).totalWithFees;
     }
     return subtotalAfterPromo;
-  }, [formData.formule, formData.paymentMethod, subtotalAfterPromo]);
+  }, [formData.formule, formData.paymentMethod, subtotalAfterPromo, onlinePaymentFeeRate]);
 
   const onlineFeeAmount = useMemo(() => {
     if (formData.paymentMethod !== 'card' || subtotalAfterPromo <= 0) return 0;
-    return computeOnlinePaymentFeesDisplay(subtotalAfterPromo).feeAmount;
-  }, [formData.paymentMethod, subtotalAfterPromo]);
+    return computeAcademyCardFees(subtotalAfterPromo, onlinePaymentFeeRate).feeAmount;
+  }, [formData.paymentMethod, subtotalAfterPromo, onlinePaymentFeeRate]);
 
   useEffect(() => {
     const raw = formData.promoCode.trim();
@@ -215,6 +223,20 @@ export function useAcademyRegistration(
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      if (!registrationsOpen) {
+        toast({
+          variant: 'destructive',
+          title:
+            soldOut
+              ? language === 'en'
+                ? 'Academy sold out'
+                : 'Academy complet'
+              : language === 'en'
+                ? 'Registrations closed'
+                : 'Inscriptions fermées',
+        });
+        return;
+      }
       const nextErrors = validateAcademyForm(formData, language);
       setErrors(nextErrors);
       if (Object.keys(nextErrors).length > 0) return;
@@ -297,7 +319,7 @@ export function useAcademyRegistration(
         setIsSubmitting(false);
       }
     },
-    [formData, language, honeypot, navigate, toast, promoPreview]
+    [formData, language, honeypot, navigate, toast, promoPreview, registrationsOpen, soldOut]
   );
 
   return {

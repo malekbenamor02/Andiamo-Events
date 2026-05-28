@@ -1,11 +1,11 @@
 /**
  * Meta Pixel integration for Meta Ads (conversion, remarketing, lookalikes).
  * Mirrors GA4 funnel: same events fired to both GA and Meta.
- * Vite env: VITE_META_PIXEL_ID (fallback: 930929995973320)
+ * Vite env: VITE_META_PIXEL_ID
  */
 
 const META_PIXEL_ID =
-  (import.meta.env.VITE_META_PIXEL_ID as string | undefined)?.trim() || '930929995973320';
+  (import.meta.env.VITE_META_PIXEL_ID as string | undefined)?.trim() || '';
 const isProduction = import.meta.env.PROD;
 
 declare global {
@@ -16,6 +16,7 @@ declare global {
 }
 
 let isInitialized = false;
+let isDisabled = false;
 
 const FB_EVENTS_URL = 'https://connect.facebook.net/en_US/fbevents.js';
 
@@ -38,6 +39,9 @@ function loadMetaScript(): void {
   const script = document.createElement('script');
   script.async = true;
   script.src = FB_EVENTS_URL;
+  script.onerror = () => {
+    isDisabled = true;
+  };
   document.head.appendChild(script);
 }
 
@@ -45,8 +49,7 @@ export function initMeta(): void {
   if (isInitialized) return;
   if (!isProduction) return;
   const id = META_PIXEL_ID;
-  if (!id) {
-    console.warn('[Meta] VITE_META_PIXEL_ID not set – Meta Pixel disabled');
+  if (!id || isDisabled) {
     return;
   }
   try {
@@ -67,7 +70,7 @@ export function initMeta(): void {
  * Track a standard Meta PageView (call on each route change, e.g. from App.tsx).
  */
 export function trackMetaPageView(path?: string): void {
-  if (typeof window === 'undefined' || !window.fbq || !META_PIXEL_ID || !isInitialized) {
+  if (typeof window === 'undefined' || !window.fbq || !META_PIXEL_ID || !isInitialized || isDisabled) {
     return;
   }
   if (path) {
@@ -81,7 +84,7 @@ export function trackMetaPageView(path?: string): void {
  * Track a custom Meta Pixel event (e.g. PassPurchaseVisit, PassSelect, OrderSubmitOnline, OrderSubmitAmbassador).
  */
 export function trackMetaEvent(name: string, params?: Record<string, unknown>): void {
-  if (typeof window === 'undefined' || !window.fbq || !META_PIXEL_ID || !isInitialized) {
+  if (typeof window === 'undefined' || !window.fbq || !META_PIXEL_ID || !isInitialized || isDisabled) {
     return;
   }
   window.fbq('trackCustom', name, params);
@@ -101,7 +104,7 @@ function trackStandardEvent(
   params?: MetaStandardParams,
   options: MetaStandardOptions = {}
 ): void {
-  if (typeof window === 'undefined' || !window.fbq || !META_PIXEL_ID || !isInitialized) {
+  if (typeof window === 'undefined' || !window.fbq || !META_PIXEL_ID || !isInitialized || isDisabled) {
     return;
   }
   if (options.eventId) {

@@ -63,6 +63,9 @@ interface AcademySettings {
   page_enabled: boolean;
   disabled_message_en: string | null;
   disabled_message_fr: string | null;
+  online_payment_fee_rate?: number;
+  sold_out_message_en?: string | null;
+  sold_out_message_fr?: string | null;
   approved_count?: number;
   remaining_approved?: number;
 }
@@ -300,6 +303,8 @@ export function AcademyTab({ language }: AcademyTabProps) {
           page_enabled: settings.page_enabled,
           disabled_message_en: settings.disabled_message_en,
           disabled_message_fr: settings.disabled_message_fr,
+          online_payment_fee_rate:
+            (Number(settings.online_payment_fee_rate) || 0.05),
         }),
       });
       toast({ title: isEn ? 'Settings saved' : 'Paramètres enregistrés' });
@@ -366,6 +371,7 @@ export function AcademyTab({ language }: AcademyTabProps) {
                 <SelectItem value="proof_received">proof_received</SelectItem>
                 <SelectItem value="pending_payment">pending_payment</SelectItem>
                 <SelectItem value="pending_online">pending_online</SelectItem>
+                <SelectItem value="cancelled">cancelled</SelectItem>
                 <SelectItem value="paid_online">paid_online</SelectItem>
                 <SelectItem value="approved">approved</SelectItem>
                 <SelectItem value="rejected">rejected</SelectItem>
@@ -599,6 +605,31 @@ export function AcademyTab({ language }: AcademyTabProps) {
                   {isEn ? 'Approved' : 'Approuvées'}: {settings.approved_count ?? 0} —{' '}
                   {isEn ? 'Remaining' : 'Restantes'}: {settings.remaining_approved ?? 0}
                 </p>
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  {isEn ? 'Online card processing fee (%)' : 'Frais carte en ligne (%)'}
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={50}
+                  step={0.1}
+                  value={((settings.online_payment_fee_rate ?? 0.05) * 100).toFixed(2)}
+                  onChange={(e) => {
+                    const pct = parseFloat(e.target.value);
+                    setSettings((s) =>
+                      s
+                        ? {
+                            ...s,
+                            online_payment_fee_rate: Number.isFinite(pct)
+                              ? Math.min(50, Math.max(0, pct)) / 100
+                              : 0.05,
+                          }
+                        : s
+                    );
+                  }}
+                />
               </div>
               <Button onClick={saveSettings}>{isEn ? 'Save settings' : 'Enregistrer'}</Button>
             </>

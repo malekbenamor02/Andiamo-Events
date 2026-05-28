@@ -197,7 +197,12 @@ const {
   buildAcademyApprovedEmailHtml,
 } = require(path.join(root, 'api/_lib/academy-email-html.cjs'));
 
-const academyManualFixture = { ...PREVIEW_FIXTURE, payment_method: 'd17' };
+const academyManualFixture = {
+  ...PREVIEW_FIXTURE,
+  payment_method: 'd17',
+  fee_amount_dt: 0,
+  total_amount_dt: PREVIEW_FIXTURE.base_amount_dt,
+};
 
 write('14-academy-online-confirmed.html', buildAcademyOnlineConfirmedEmailHtml(PREVIEW_FIXTURE).html);
 write(
