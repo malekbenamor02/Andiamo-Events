@@ -1,6 +1,6 @@
 'use strict';
 
-const { parseAcademyOnlineFeeRate } = require('./academy-db.cjs');
+const { parseAcademyOnlineFeeRate } = require('./academy-fee-rate.cjs');
 
 /** Server-side formula prices (must match src/data/academyContent.ts) */
 const FORMULA_PRICES_DT = {

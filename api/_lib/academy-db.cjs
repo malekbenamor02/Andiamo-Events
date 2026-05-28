@@ -38,15 +38,7 @@ async function getAcademySettings(db) {
   );
 }
 
-const DEFAULT_ACADEMY_ONLINE_FEE_RATE = 0.05;
-const MAX_ACADEMY_ONLINE_FEE_RATE = 0.5;
-
-function parseAcademyOnlineFeeRate(raw) {
-  if (raw == null || raw === '') return DEFAULT_ACADEMY_ONLINE_FEE_RATE;
-  const n = Number.parseFloat(String(raw).trim().replace(',', '.'));
-  if (!Number.isFinite(n) || n < 0) return DEFAULT_ACADEMY_ONLINE_FEE_RATE;
-  return Math.min(MAX_ACADEMY_ONLINE_FEE_RATE, n);
-}
+const { parseAcademyOnlineFeeRate } = require('./academy-fee-rate.cjs');
 
 async function isAcademySoldOut(db) {
   const settings = await getAcademySettings(db);
@@ -143,7 +135,7 @@ async function logAcademyEvent(db, { registrationId, eventType, oldStatus, newSt
   });
 }
 
-const { normalizeAcademyPromoCode } = require('./academy-registration-validation.cjs');
+const { normalizeAcademyPromoCode } = require('./academy-promo-code.cjs');
 
 async function resolvePromoCode(db, code) {
   if (!code) return { promo: null, discountAmount: 0 };

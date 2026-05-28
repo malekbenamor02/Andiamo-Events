@@ -1,6 +1,7 @@
 'use strict';
 
 const { FORMULA_IDS, PAYMENT_METHODS } = require('./academy-pricing.cjs');
+const { normalizeAcademyPromoCode, ACADEMY_PROMO_CODE_RE } = require('./academy-promo-code.cjs');
 
 const FORBIDDEN_BODY_KEYS = new Set([
   'total',
@@ -29,17 +30,6 @@ const PROOF_MIME = new Set([
 
 const PROOF_EXT = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'pdf']);
 const PROOF_MAX_BYTES = 5 * 1024 * 1024;
-
-/** Academy promo codes: uppercase letters and digits only (exact match in DB). */
-const ACADEMY_PROMO_CODE_RE = /^[A-Z0-9]+$/;
-
-function normalizeAcademyPromoCode(raw) {
-  const trimmed = String(raw ?? '').trim();
-  if (!trimmed) return '';
-  const upper = trimmed.toUpperCase();
-  if (!ACADEMY_PROMO_CODE_RE.test(upper)) return null;
-  return upper;
-}
 
 function rejectForbiddenKeys(body) {
   if (!body || typeof body !== 'object') return { ok: true, keys: [] };
@@ -133,8 +123,8 @@ function validateRegistrationPayload(body) {
 }
 
 module.exports = {
-  ACADEMY_PROMO_CODE_RE,
   normalizeAcademyPromoCode,
+  ACADEMY_PROMO_CODE_RE,
   FORBIDDEN_BODY_KEYS,
   PROOF_MAX_BYTES,
   rejectForbiddenKeys,
