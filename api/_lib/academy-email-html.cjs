@@ -3,7 +3,6 @@
 const {
   getPublicSiteOrigin,
   transactionalEmailDarkStylesCss,
-  transactionalEmailClosingFooterHtml,
   escapeAttr,
 } = require('./email-branding.cjs');
 
@@ -77,6 +76,32 @@ function paymentSummaryBlockHtml(reg) {
   return `<div class="order-info-block">${rowsHtml}</div>`;
 }
 
+function academyEmailClosingFooterHtml() {
+  return `
+      <div class="support-section">
+        <p class="support-text">
+          Need assistance? Contact us at
+          <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a>.
+        </p>
+      </div>
+      <div class="closing-section">
+        <p class="slogan">We Create Memories</p>
+        <p class="signature">
+          Best regards,<br>
+          The Andiamo Events Team
+        </p>
+      </div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+      <div class="footer-links">
+        <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
+        <span style="color: #888888;">&bull;</span>
+        <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
+      </div>
+    </div>`;
+}
+
 function academyPlainTextLines(reg, lines) {
   const formulaLabel = FORMULA_LABELS[reg.formule] || reg.formule;
   return [
@@ -93,6 +118,10 @@ function academyPlainTextLines(reg, lines) {
     '',
     'We Create Memories',
     'The Andiamo Events Team',
+    '',
+    'Developed by Malek Ben Amor',
+    'https://malekbenamor.dev',
+    'https://www.instagram.com/malekbenamor.dev/',
   ].join('\n');
 }
 
@@ -116,7 +145,7 @@ function wrapAcademyEmail({ title, subtitle, bodyHtml }) {
         <p class="subtitle">${escapeHtml(subtitle)}</p>
       </div>
       ${bodyHtml}
-      ${transactionalEmailClosingFooterHtml()}
+      ${academyEmailClosingFooterHtml()}
   </div>
 </body>
 </html>`;
