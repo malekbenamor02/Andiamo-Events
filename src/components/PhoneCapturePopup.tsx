@@ -42,7 +42,7 @@ const PhoneCapturePopup: React.FC<PhoneCapturePopupProps> = ({
     en: {
       title: 'Stay Connected',
       description: 'Get notified about our latest events and exclusive offers',
-      placeholder: 'Phone Number',
+      placeholder: '28 070 128',
       submit: 'Subscribe',
       maybeLater: 'Maybe Later',
       invalidPhone: 'Invalid Phone Number',
@@ -53,7 +53,7 @@ const PhoneCapturePopup: React.FC<PhoneCapturePopupProps> = ({
     fr: {
       title: 'Restez Connecté',
       description: 'Soyez informé de nos derniers événements et offres exclusives',
-      placeholder: 'Numéro de téléphone',
+      placeholder: '28 070 128',
       submit: 'S\'abonner',
       maybeLater: 'Peut-être plus tard',
       invalidPhone: 'Numéro de téléphone invalide',
@@ -176,6 +176,40 @@ const PhoneCapturePopup: React.FC<PhoneCapturePopupProps> = ({
     }
   };
 
+  const renderPhoneInput = (inputClassName: string) => (
+    <div className="space-y-2">
+      <div
+        className={cn(
+          "flex overflow-hidden rounded-md border border-input bg-background",
+          "focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background",
+          error && "border-destructive focus-within:ring-destructive"
+        )}
+      >
+        <span className="inline-flex items-center px-3 text-sm font-medium text-muted-foreground border-r border-input bg-muted/30 select-none shrink-0">
+          +216
+        </span>
+        <Input
+          type="tel"
+          inputMode="numeric"
+          autoComplete="tel-national"
+          placeholder={t.placeholder}
+          value={phoneNumber}
+          onChange={handlePhoneChange}
+          className={cn(
+            inputClassName,
+            "border-0 rounded-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+          )}
+          maxLength={8}
+          autoFocus
+          disabled={isSubmitting}
+        />
+      </div>
+      {error && (
+        <p className="text-sm text-destructive mt-1">{error}</p>
+      )}
+    </div>
+  );
+
   // Mobile: Use Sheet (bottom sheet)
   if (isMobile) {
     return (
@@ -200,24 +234,7 @@ const PhoneCapturePopup: React.FC<PhoneCapturePopupProps> = ({
           </SheetHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Input
-                type="tel"
-                placeholder={t.placeholder}
-                value={phoneNumber}
-                onChange={handlePhoneChange}
-                className={cn(
-                  "h-14 text-base",
-                  error && "border-destructive focus-visible:ring-destructive"
-                )}
-                maxLength={8}
-                autoFocus
-                disabled={isSubmitting}
-              />
-              {error && (
-                <p className="text-sm text-destructive mt-1">{error}</p>
-              )}
-            </div>
+            {renderPhoneInput("h-14 text-base")}
 
             <div className="flex flex-col gap-3 pt-2">
               <Button
@@ -279,24 +296,7 @@ const PhoneCapturePopup: React.FC<PhoneCapturePopupProps> = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          <div className="space-y-2">
-            <Input
-              type="tel"
-              placeholder={t.placeholder}
-              value={phoneNumber}
-              onChange={handlePhoneChange}
-              className={cn(
-                "h-12",
-                error && "border-destructive focus-visible:ring-destructive"
-              )}
-              maxLength={8}
-              autoFocus
-              disabled={isSubmitting}
-            />
-            {error && (
-              <p className="text-sm text-destructive mt-1">{error}</p>
-            )}
-          </div>
+          {renderPhoneInput("h-12")}
 
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-2">
             <Button
