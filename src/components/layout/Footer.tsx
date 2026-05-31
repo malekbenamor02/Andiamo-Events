@@ -71,12 +71,19 @@ const Footer = ({ language }: FooterProps) => {
     fetchSiteContent();
   }, []);
 
+  const isDuplicateEmailError = (err: unknown): boolean => {
+    if (typeof err !== "object" || err === null) return false;
+    const e = err as { code?: string; message?: string };
+    return e.code === "23505" || /duplicate key|unique constraint/i.test(e.message ?? "");
+  };
+
   const content = {
     en: {
       newsletter: "Stay updated with our latest events",
       subscribe: "Subscribe",
       subscribing: "Subscribing...",
       subscribed: "Thanks for subscribing!",
+      alreadyExists: "This email is already subscribed",
       error: "Something went wrong. Please try again.",
       rights: "All rights reserved.",
       follow: "Follow us",
@@ -89,6 +96,7 @@ const Footer = ({ language }: FooterProps) => {
       subscribe: "S'abonner",
       subscribing: "Abonnement...",
       subscribed: "Merci de vous être abonné!",
+      alreadyExists: "Cet email est déjà abonné",
       error: "Une erreur s'est produite. Veuillez réessayer.",
       rights: "Tous droits réservés.",
       follow: "Suivez-nous",
@@ -115,6 +123,16 @@ const Footer = ({ language }: FooterProps) => {
       { name: "Suggestions", href: "/suggestions" },
       { name: "CGV", href: "/terms" },
     ]
+  };
+
+  const getNewsletterErrorMessage = (err: unknown): string => {
+    if (isDuplicateEmailError(err)) return content[language].alreadyExists;
+    if (err instanceof Error) return err.message;
+    if (typeof err === "object" && err !== null && "message" in err) {
+      const message = (err as { message?: unknown }).message;
+      if (typeof message === "string" && message) return message;
+    }
+    return content[language].error;
   };
 
   const handleNewsletterSubmit = async (e: React.FormEvent) => {
@@ -145,21 +163,23 @@ const Footer = ({ language }: FooterProps) => {
       });
       setEmail("");
     } catch (error) {
-      // Log failed newsletter subscription
+      const duplicate = isDuplicateEmailError(error);
+      const errorMessage = getNewsletterErrorMessage(error);
+
       logFormSubmission('Newsletter Subscription', false, {
         email,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: errorMessage,
+        duplicate,
       }, 'guest');
       logger.error('Newsletter subscription failed', error, {
         category: 'form_submission',
-        details: { formName: 'Newsletter Subscription', email }
+        details: { formName: 'Newsletter Subscription', email, duplicate }
       });
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       toast({
-        title: content[language].error,
-        description: errorMessage,
-        variant: "destructive",
+        title: duplicate ? content[language].alreadyExists : content[language].error,
+        description: duplicate ? undefined : errorMessage,
+        variant: duplicate ? "default" : "destructive",
       });
     }
     setIsLoading(false);
