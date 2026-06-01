@@ -91,9 +91,9 @@ export function BulkEmailSelector({
 
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
-  const [batchSize, setBatchSize] = useState(150);
-  const [emailsPerDay, setEmailsPerDay] = useState(150);
-  const [delayBetweenEmailsMin, setDelayBetweenEmailsMin] = useState('0.5');
+  const [batchSize, setBatchSize] = useState(25);
+  const [emailsPerDay, setEmailsPerDay] = useState(3500);
+  const [delayBetweenEmailsMin, setDelayBetweenEmailsMin] = useState('0');
   const [ctaUrl, setCtaUrl] = useState('');
   const [ctaLabel, setCtaLabel] = useState('');
   const [delayBetweenBatchesMin, setDelayBetweenBatchesMin] = useState('2');
@@ -251,11 +251,23 @@ export function BulkEmailSelector({
       }
     }
 
+    if (recipientMode === 'sources' && !loadingPreview && (previewData?.counts?.unique ?? 0) < 1) {
+      toast({
+        title: language === 'en' ? 'Refresh preview first' : 'Actualisez l\'aperçu',
+        description:
+          language === 'en'
+            ? 'Load the recipient preview with your filters before scheduling sends.'
+            : 'Chargez l\'aperçu des destinataires avec vos filtres avant de planifier l\'envoi.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setStartingCampaign(true);
     const delayEmailsMin = Math.max(0, parseFloat(String(delayBetweenEmailsMin).replace(',', '.')) || 0);
     const delayBatchesMin = Math.max(0, parseFloat(String(delayBetweenBatchesMin).replace(',', '.')) || 0);
-    const dailyCap = Math.min(10000, Math.max(1, emailsPerDay || 150));
-    const batchSz = Math.min(10000, Math.max(1, batchSize || 150));
+    const dailyCap = Math.min(10000, Math.max(1, emailsPerDay || 3500));
+    const batchSz = Math.min(10000, Math.max(1, batchSize || 25));
     try {
       const imagePayload =
         headerImageUrl.trim() !== '' ? { header_image_url: headerImageUrl.trim() } : {};
@@ -272,6 +284,11 @@ export function BulkEmailSelector({
         daily_email_cap: dailyCap
       };
 
+      const expectedUnique =
+        recipientMode === 'custom'
+          ? parseEmailList(customRecipientsRaw).length
+          : previewData?.counts?.unique ?? previewEmails.length;
+
       const createPayload =
         recipientMode === 'custom'
           ? {
@@ -283,6 +300,7 @@ export function BulkEmailSelector({
               recipients: parseEmailList(customRecipientsRaw),
               delay_minutes: delayEmailsMin,
               batch_delay_minutes: delayBatchesMin,
+              expected_unique_count: expectedUnique,
               ...emailExtras
             }
           : (() => {
@@ -300,6 +318,7 @@ export function BulkEmailSelector({
                 filters: sourceFilters,
                 delay_minutes: delayEmailsMin,
                 batch_delay_minutes: delayBatchesMin,
+                expected_unique_count: expectedUnique,
                 ...emailExtras
               };
             })();
@@ -312,6 +331,12 @@ export function BulkEmailSelector({
       });
 
       const createData = await createRes.json();
+      if (!createRes.ok && createData.data?.actual_unique_count != null) {
+        throw new Error(
+          createData.error ||
+            `Recipient count mismatch (preview ${createData.data.expected_unique_count}, server ${createData.data.actual_unique_count}). Refresh preview.`
+        );
+      }
       if (!createData.success || !createData.data?.campaign_id) {
         throw new Error(createData.error || 'Failed to create campaign');
       }
@@ -373,17 +398,40 @@ export function BulkEmailSelector({
       }
     }
     setStartingCampaign(true);
-    const dailyCap = Math.min(10000, Math.max(1, emailsPerDay || 150));
+    const delayEmailsMin = Math.max(0, parseFloat(String(delayBetweenEmailsMin).replace(',', '.')) || 0);
+    const delayBatchesMin = Math.max(0, parseFloat(String(delayBetweenBatchesMin).replace(',', '.')) || 0);
+    const dailyCap = Math.min(10000, Math.max(1, emailsPerDay || 3500));
+    const batchSz = Math.min(10000, Math.max(1, batchSize || 25));
+    const pacingFields = {
+      batch_size: batchSz,
+      delay_minutes: delayEmailsMin,
+      batch_delay_minutes: delayBatchesMin,
+    };
+    const expectedUnique =
+      recipientMode === 'custom'
+        ? parseEmailList(customRecipientsRaw).length
+        : previewData?.counts?.unique ?? previewEmails.length;
     try {
       const payload =
         recipientMode === 'custom'
-          ? { recipients: parseEmailList(customRecipientsRaw), daily_email_cap: dailyCap }
+          ? {
+              recipients: parseEmailList(customRecipientsRaw),
+              daily_email_cap: dailyCap,
+              expected_unique_count: expectedUnique,
+              ...pacingFields,
+            }
           : (() => {
               const sourcesConfig: Record<string, { enabled: boolean; filters: unknown }> = {};
               (Object.keys(selectedSources) as (keyof EmailSourceSelection)[]).forEach((key) => {
                 sourcesConfig[key] = { enabled: selectedSources[key], filters: sourceFilters[key] };
               });
-              return { sources: sourcesConfig, filters: sourceFilters, daily_email_cap: dailyCap };
+              return {
+                sources: sourcesConfig,
+                filters: sourceFilters,
+                daily_email_cap: dailyCap,
+                expected_unique_count: expectedUnique,
+                ...pacingFields,
+              };
             })();
       const res = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN_LAUNCH(launchOnlyCampaignId)), {
         method: 'POST',
@@ -392,6 +440,12 @@ export function BulkEmailSelector({
         body: JSON.stringify(payload)
       });
       const data = await res.json();
+      if (!res.ok && data.data?.actual_unique_count != null) {
+        throw new Error(
+          data.error ||
+            `Recipient count mismatch (preview ${data.data.expected_unique_count}, server ${data.data.actual_unique_count}). Refresh preview.`
+        );
+      }
       if (!data.success) {
         throw new Error(data.error || 'Launch failed');
       }
@@ -456,10 +510,12 @@ export function BulkEmailSelector({
         body: 'Body',
         batchSize: 'Max emails per HTTP batch',
         emailsPerDay: 'Max emails per day (this campaign, UTC)',
-        emailsPerDayHint: 'Stops sending until the next UTC day after this many successful sends.',
+        emailsPerDayHint:
+          'Set ≥ your list size (e.g. 3500 for 3000 sends). Stops until next UTC day after this many sends. Requires cron every 2 min — see env.example.',
         delayEmails: 'Pause between each email (minutes)',
-        delayEmailsHint: 'Default 0.5 = 30 seconds between messages.',
-        delayBatches: 'Used for SMS-style flows; email uses server cron between batches.',
+        delayEmailsHint: 'Use 0 for fast sends (~3000 in 4h with batch 25 and cron every 2 min).',
+        delayBatches: 'Pause between cron batches (minutes)',
+        batchSizeHint: 'Emails per cron tick (25 × cron every 2 min ≈ 3000 in 4 hours).',
         ctaUrl: 'Book now link (optional)',
         ctaLabel: 'Button label',
         ctaHint: 'https://… — button appears under your message text.',
@@ -493,10 +549,12 @@ export function BulkEmailSelector({
         body: 'Corps',
         batchSize: 'Max emails par requête',
         emailsPerDay: 'Max emails par jour (cette campagne, UTC)',
-        emailsPerDayHint: 'L\'envoi reprend le jour UTC suivant après ce nombre d\'envois réussis.',
+        emailsPerDayHint:
+          'Mettez ≥ la taille de la liste (ex. 3500 pour 3000). Reprend le jour UTC suivant. Cron toutes les 2 min — voir env.example.',
         delayEmails: 'Pause entre chaque email (minutes)',
-        delayEmailsHint: 'Par défaut 0,5 = 30 secondes entre chaque message.',
-        delayBatches: 'Pour le SMS ; les emails passent par le cron serveur.',
+        delayEmailsHint: '0 pour envoi rapide (~3000 en 4 h avec lot 25 et cron /2 min).',
+        delayBatches: 'Pause entre lots cron (minutes)',
+        batchSizeHint: 'Emails par tick cron (25 × cron /2 min ≈ 3000 en 4 h).',
         ctaUrl: 'Lien « Réserver » (optionnel)',
         ctaLabel: 'Texte du bouton',
         ctaHint: 'https://… — le bouton s\'affiche sous le corps du message.',
@@ -925,22 +983,25 @@ export function BulkEmailSelector({
                     min={1}
                     max={10000}
                     value={emailsPerDay}
-                    onChange={e => setEmailsPerDay(Math.min(10000, Math.max(1, parseInt(e.target.value, 10) || 150)))}
+                    onChange={e => setEmailsPerDay(Math.min(10000, Math.max(1, parseInt(e.target.value, 10) || 3500)))}
                     className="w-24"
                   />
                 </div>
                 <p className="text-xs text-muted-foreground max-w-xs">{t.emailsPerDayHint}</p>
               </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.batchSize}</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={10000}
-                  value={batchSize}
-                  onChange={e => setBatchSize(Math.min(10000, Math.max(1, parseInt(e.target.value, 10) || 150)))}
-                  className="w-24"
-                />
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.batchSize}</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={batchSize}
+                    onChange={e => setBatchSize(Math.min(10000, Math.max(1, parseInt(e.target.value, 10) || 25)))}
+                    className="w-24"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground max-w-xs">{t.batchSizeHint}</p>
               </div>
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
@@ -997,19 +1058,53 @@ export function BulkEmailSelector({
             <>
               <Separator />
               <div className="space-y-4">
-                <div className="flex flex-col gap-1 max-w-sm">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.emailsPerDay}</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={10000}
-                      value={emailsPerDay}
-                      onChange={(e) => setEmailsPerDay(Math.min(10000, Math.max(1, parseInt(e.target.value, 10) || 150)))}
-                      className="w-24"
-                    />
+                <div className="flex flex-wrap items-start gap-4">
+                  <div className="flex flex-col gap-1 max-w-sm">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.emailsPerDay}</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={10000}
+                        value={emailsPerDay}
+                        onChange={(e) =>
+                          setEmailsPerDay(Math.min(10000, Math.max(1, parseInt(e.target.value, 10) || 3500)))
+                        }
+                        className="w-24"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">{t.emailsPerDayHint}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground">{t.emailsPerDayHint}</p>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.batchSize}</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={10000}
+                        value={batchSize}
+                        onChange={(e) =>
+                          setBatchSize(Math.min(10000, Math.max(1, parseInt(e.target.value, 10) || 25)))
+                        }
+                        className="w-24"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground max-w-xs">{t.batchSizeHint}</p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.delayEmails}</Label>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0"
+                        value={delayBetweenEmailsMin}
+                        onChange={(e) => setDelayBetweenEmailsMin(e.target.value.replace(/[^\d.,]/g, ''))}
+                        className="w-24"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground max-w-[14rem]">{t.delayEmailsHint}</p>
+                  </div>
                 </div>
                 <Button
                   onClick={handleLaunchDraft}

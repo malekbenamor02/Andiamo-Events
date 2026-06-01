@@ -7,7 +7,9 @@ The function calls `POST {MARKETING_CRON_URL}` with `CRON_SECRET` so your app ru
 
 1. Deploy: `supabase functions deploy marketing-email-tick`
 2. Secrets: `supabase secrets set MARKETING_CRON_URL=https://your-domain.com/api/marketing/cron/email-campaigns CRON_SECRET=...` (same `CRON_SECRET` as your server / Vercel env)
-3. Schedule: Supabase Dashboard → Edge Functions → **marketing-email-tick** → **Schedules** → e.g. `*/15 * * * *` (every 15 minutes)
+3. Schedule: Supabase Dashboard → Edge Functions → **marketing-email-tick** → **Schedules**
+   - Normal: `*/15 * * * *` (every 15 minutes)
+   - **~3000 emails in 4 hours:** `*/2 * * * *` (every 2 minutes) with campaign batch **25**, delay **0**, daily cap **≥3500**, and `MARKETING_SEND_BATCH_MAX_MS=120000` on the server (see `env.example`)
 
 Server must have `CRON_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` set.
 

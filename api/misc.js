@@ -532,6 +532,42 @@ function marketingPacingForCampaign(_campaign) {
   };
 }
 
+function parseMarketingBatchSize(raw, fallback) {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(n, 10000);
+}
+
+function parseMarketingDelayMinutes(raw, fallback) {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return n;
+}
+
+/** Campaign row or POST body overrides; otherwise server env defaults. */
+function resolveMarketingEmailPacing(sources, emailTemplate) {
+  const defaults = marketingPacingForCampaign({ type: 'email', email_template: emailTemplate });
+  const src = sources && typeof sources === 'object' ? sources : {};
+  return {
+    batch_size: parseMarketingBatchSize(src.batch_size, defaults.batch_size),
+    delay_minutes: parseMarketingDelayMinutes(src.delay_minutes, defaults.delay_minutes),
+    batch_delay_minutes: parseMarketingDelayMinutes(
+      src.batch_delay_minutes,
+      defaults.batch_delay_minutes
+    ),
+  };
+}
+
+function marketingSendBatchMaxMs() {
+  const n = parseInt(process.env.MARKETING_SEND_BATCH_MAX_MS || '120000', 10);
+  const cap = parseInt(process.env.MARKETING_SEND_BATCH_MAX_MS_CAP || '300000', 10);
+  const ms = Number.isFinite(n) && n >= 10000 ? n : 120000;
+  const maxCap = Number.isFinite(cap) && cap >= ms ? cap : 300000;
+  return Math.min(ms, maxCap);
+}
+
 function sanitizeRecipientDisplayName(name) {
   const t = String(name == null ? '' : name)
     .trim()
@@ -704,77 +740,98 @@ function normalizeMarketingCampaignRow(row) {
   return o;
 }
 
-/** Resolve email recipients from source toggles + filters (same rules as POST /marketing/campaigns). */
+/** Merge top-level filters with nested sources[key].filters (admin preview + launch payloads). */
+function marketingFiltersForSource(sourcesConfig, filtersConfig, key) {
+  const top = filtersConfig?.[key];
+  const nested = sourcesConfig?.[key]?.filters;
+  if (top && nested) return { ...nested, ...top };
+  return top || nested || {};
+}
+
+function hasEnabledMarketingEmailSource(sourcesConfig) {
+  if (!sourcesConfig || typeof sourcesConfig !== 'object') return false;
+  return Object.keys(sourcesConfig).some((k) => sourcesConfig[k]?.enabled === true);
+}
+
+/** Block launch when preview count and server resolve differ (stale filters / pagination bugs). */
+function marketingRecipientCountMismatch(expectedRaw, actual) {
+  const expected = parseInt(expectedRaw, 10);
+  if (!Number.isFinite(expected) || expected < 1 || !Number.isFinite(actual)) return false;
+  const tolerance = Math.max(5, Math.ceil(expected * 0.02));
+  return Math.abs(actual - expected) > tolerance;
+}
+
+/** Resolve email recipients from source toggles + filters (same rules as GET /admin/email-addresses/sources). */
 async function collectMarketingEmailRecipientsFromSources(dbClient, sourcesConfig, filtersConfig) {
-  const filters = filtersConfig || {};
   const seen = new Set();
   const recipients = [];
   if (sourcesConfig.orders?.enabled) {
-    let q = dbClient.from('orders').select('id, user_email, user_name').not('user_email', 'is', null);
-    const f = filters.orders || {};
-    q = applyOrdersMarketingFilters(q, f);
-    const { data: d } = await q;
-    if (d) {
-      d.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.user_email, r.user_name));
-    }
+    const f = marketingFiltersForSource(sourcesConfig, filtersConfig, 'orders');
+    const data = await fetchAllPaginated((offset, pageSize) => {
+      let q = dbClient.from('orders').select('id, user_email, user_name').not('user_email', 'is', null);
+      q = applyOrdersMarketingFilters(q, f);
+      return q.range(offset, offset + pageSize - 1);
+    });
+    data.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.user_email, r.user_name));
   }
   if (sourcesConfig.newsletter_subscribers?.enabled) {
-    let q = dbClient.from('newsletter_subscribers').select('id, email').not('email', 'is', null);
-    const f = filters.newsletter_subscribers || {};
-    q = applyNewsletterSubscriberEmailFilters(q, f);
-    const { data: d } = await q;
-    if (d) {
-      d.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, null));
-    }
+    const f = marketingFiltersForSource(sourcesConfig, filtersConfig, 'newsletter_subscribers');
+    const data = await fetchAllPaginated((offset, pageSize) => {
+      let q = dbClient.from('newsletter_subscribers').select('id, email').not('email', 'is', null);
+      q = applyNewsletterSubscriberEmailFilters(q, f);
+      return q.range(offset, offset + pageSize - 1);
+    });
+    data.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, null));
   }
   if (sourcesConfig.approved_ambassadors?.enabled) {
-    let q = dbClient
-      .from('ambassadors')
-      .select('id, email, full_name')
-      .eq('status', 'approved')
-      .not('email', 'is', null);
-    const f = filters.approved_ambassadors || {};
-    if (f.city) q = q.eq('city', f.city);
-    if (f.ville) q = q.eq('ville', f.ville);
-    const { data: d } = await q;
-    if (d) {
-      d.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, r.full_name));
-    }
+    const f = marketingFiltersForSource(sourcesConfig, filtersConfig, 'approved_ambassadors');
+    const data = await fetchAllPaginated((offset, pageSize) => {
+      let q = dbClient
+        .from('ambassadors')
+        .select('id, email, full_name')
+        .eq('status', 'approved')
+        .not('email', 'is', null);
+      if (f.city) q = q.eq('city', f.city);
+      if (f.ville) q = q.eq('ville', f.ville);
+      return q.range(offset, offset + pageSize - 1);
+    });
+    data.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, r.full_name));
   }
   if (sourcesConfig.ambassador_applications?.enabled) {
-    let q = dbClient
-      .from('ambassador_applications')
-      .select('id, email, full_name')
-      .not('email', 'is', null);
-    const f = filters.ambassador_applications || {};
-    if (f.status?.length) q = q.in('status', f.status);
-    if (f.city) q = q.eq('city', f.city);
-    if (f.ville) q = q.eq('ville', f.ville);
-    const { data: d } = await q;
-    if (d) {
-      d.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, r.full_name));
-    }
+    const f = marketingFiltersForSource(sourcesConfig, filtersConfig, 'ambassador_applications');
+    const data = await fetchAllPaginated((offset, pageSize) => {
+      let q = dbClient
+        .from('ambassador_applications')
+        .select('id, email, full_name')
+        .not('email', 'is', null);
+      if (f.status?.length) q = q.in('status', f.status);
+      if (f.city) q = q.eq('city', f.city);
+      if (f.ville) q = q.eq('ville', f.ville);
+      return q.range(offset, offset + pageSize - 1);
+    });
+    data.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, r.full_name));
   }
   if (sourcesConfig.aio_events_submissions?.enabled) {
-    let q = dbClient
-      .from('aio_events_submissions')
-      .select('id, email, full_name')
-      .not('email', 'is', null);
-    const f = filters.aio_events_submissions || {};
-    if (f.city) q = q.eq('city', f.city);
-    if (f.ville) q = q.eq('ville', f.ville);
-    if (f.status?.length) q = q.in('status', f.status);
-    if (f.event_id) q = q.eq('event_id', f.event_id);
-    const { data: d } = await q;
-    if (d) {
-      d.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, r.full_name));
-    }
+    const f = marketingFiltersForSource(sourcesConfig, filtersConfig, 'aio_events_submissions');
+    const data = await fetchAllPaginated((offset, pageSize) => {
+      let q = dbClient
+        .from('aio_events_submissions')
+        .select('id, email, full_name')
+        .not('email', 'is', null);
+      if (f.city) q = q.eq('city', f.city);
+      if (f.ville) q = q.eq('ville', f.ville);
+      if (f.status?.length) q = q.in('status', f.status);
+      if (f.event_id) q = q.eq('event_id', f.event_id);
+      return q.range(offset, offset + pageSize - 1);
+    });
+    data.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, r.full_name));
   }
   if (sourcesConfig.investors?.enabled) {
-    const { data: inv } = await dbClient.from('investor_contacts').select('email').not('email', 'is', null);
-    if (inv) {
-      inv.forEach((row) => pushMarketingEmailRecipient(seen, recipients, row.email, null));
-    }
+    const data = await fetchAllPaginated((offset, pageSize) => {
+      const q = dbClient.from('investor_contacts').select('email').not('email', 'is', null);
+      return q.range(offset, offset + pageSize - 1);
+    });
+    data.forEach((row) => pushMarketingEmailRecipient(seen, recipients, row.email, null));
   }
   return recipients;
 }
@@ -890,7 +947,7 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
   let sentCount = 0;
   let failCount = 0;
   const now = new Date().toISOString();
-  const maxDurationMs = Math.min(Number(process.env.MARKETING_SEND_BATCH_MAX_MS) || 50000, 55000);
+  const maxDurationMs = marketingSendBatchMaxMs();
   const deadline = Date.now() + maxDurationMs;
 
   const interDelayMs = marketingInterEmailDelayMs(campaign, skipInterEmailDelay);
@@ -9019,6 +9076,9 @@ Billets envoyés par email. We Create Memories`;
             }
           }
         } else {
+          if (!hasEnabledMarketingEmailSource(sourcesConfig)) {
+            return res.status(400).json({ success: false, error: 'Select at least one email source' });
+          }
           recipients = await collectMarketingEmailRecipientsFromSources(dbClient, sourcesConfig, filtersConfig);
         }
 
@@ -9026,8 +9086,35 @@ Billets envoyés par email. We Create Memories`;
           return res.status(400).json({ success: false, error: 'No recipients found for the selected sources and filters' });
         }
 
+        if (
+          !useExplicitRecipients &&
+          marketingRecipientCountMismatch(bodyData.expected_unique_count, recipients.length)
+        ) {
+          return res.status(409).json({
+            success: false,
+            error:
+              'Recipient count does not match preview. Refresh the preview with your current filters, then launch again.',
+            data: {
+              expected_unique_count: parseInt(bodyData.expected_unique_count, 10),
+              actual_unique_count: recipients.length,
+            },
+          });
+        }
+
         const dailyCap = parseMarketingDailyEmailCap(rawDailyCap);
-        const pacing = marketingPacingForCampaign(camp);
+        const { data: campPacingRow } = await dbClient
+          .from('marketing_campaigns')
+          .select('batch_size, delay_minutes, batch_delay_minutes, email_template')
+          .eq('id', campaignId)
+          .single();
+        const pacing = resolveMarketingEmailPacing(
+          {
+            batch_size: bodyData.batch_size ?? campPacingRow?.batch_size,
+            delay_minutes: bodyData.delay_minutes ?? campPacingRow?.delay_minutes,
+            batch_delay_minutes: bodyData.batch_delay_minutes ?? campPacingRow?.batch_delay_minutes,
+          },
+          camp.email_template || campPacingRow?.email_template
+        );
 
         const { error: upErr } = await dbClient
           .from('marketing_campaigns')
@@ -9148,7 +9235,7 @@ Billets envoyés par email. We Create Memories`;
           const posterAttachmentUrl = attachPoster
             ? normalizeMarketingHeaderImageUrl(bodyData.poster_attachment_url)
             : null;
-          const draftPacing = marketingPacingForCampaign({ type: 'email', email_template: emailTemplate });
+          const draftPacing = resolveMarketingEmailPacing(bodyData, emailTemplate);
           const insertPayload = {
             type: 'email',
             name: nameTrimmed,
@@ -9197,25 +9284,21 @@ Billets envoyés par email. We Create Memories`;
 
         const emailTemplateLegacy =
           type === 'email' ? sanitizeEmailTemplate(bodyData.email_template) : 'standard';
-        const transactionalPacing =
-          type === 'email'
-            ? marketingPacingForCampaign({ type: 'email', email_template: emailTemplateLegacy })
-            : null;
+        const emailPacing =
+          type === 'email' ? resolveMarketingEmailPacing(bodyData, emailTemplateLegacy) : null;
         const batchSize =
-          type === 'email'
-            ? transactionalPacing.batch_size
-            : Math.max(1, parseInt(batch_size, 10) || 300);
+          type === 'email' ? emailPacing.batch_size : Math.max(1, parseInt(batch_size, 10) || 300);
         const periodVal = period || 'day';
         const sourcesConfig = sources || {};
         const filtersConfig = filters || {};
         const delayMin =
           type === 'email'
-            ? transactionalPacing.delay_minutes
+            ? emailPacing.delay_minutes
             : delay_minutes != null
               ? Math.max(0, parseFloat(delay_minutes) || 0)
               : null;
         const batchDelayMin =
-          type === 'email' ? transactionalPacing.batch_delay_minutes : marketingDefaultBatchDelayMinutes();
+          type === 'email' ? emailPacing.batch_delay_minutes : marketingDefaultBatchDelayMinutes();
 
         const normalizeCampaignEmail = (e) => {
           if (!e || typeof e !== 'string') return null;
@@ -9351,6 +9434,9 @@ Billets envoyés par email. We Create Memories`;
             }
           });
         } else {
+          if (!hasEnabledMarketingEmailSource(sourcesConfig)) {
+            return res.status(400).json({ success: false, error: 'Select at least one email source' });
+          }
           recipients.push(
             ...(await collectMarketingEmailRecipientsFromSources(dbClient, sourcesConfig, filtersConfig))
           );
@@ -9361,6 +9447,23 @@ Billets envoyés par email. We Create Memories`;
           return res.status(400).json({
             success: false,
             error: 'No recipients found for the selected sources and filters'
+          });
+        }
+
+        if (
+          !useExplicitRecipients &&
+          type === 'email' &&
+          marketingRecipientCountMismatch(bodyData.expected_unique_count, recipients.length)
+        ) {
+          await dbClient.from('marketing_campaigns').delete().eq('id', campaign.id);
+          return res.status(409).json({
+            success: false,
+            error:
+              'Recipient count does not match preview. Refresh the preview with your current filters, then start again.',
+            data: {
+              expected_unique_count: parseInt(bodyData.expected_unique_count, 10),
+              actual_unique_count: recipients.length,
+            },
           });
         }
 

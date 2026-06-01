@@ -1,1 +1,9 @@
 project_id = "ykeryyraxmtjunnotoep"
+
+[functions.marketing-email-tick]
+verify_jwt = false
+
+# Deploy with: supabase functions deploy marketing-email-tick
+# Schedule in Dashboard → Edge Functions → marketing-email-tick → Schedules:
+#   Fast burst (~3000 in 4h): */2 * * * *
+#   Normal: */15 * * * *
