@@ -2121,7 +2121,6 @@ export function EventsTab(p: EventsTabProps) {
                                           {p.language === "en" ? "Add code" : "Ajouter code"}
                                         </Button>
                                       </div>
-                                    </div>
                                     )}
                                   </>
                                 )}
