@@ -38,6 +38,7 @@ import {
   hasSelectedSource
 } from '@/lib/phone-numbers';
 import { BulkSmsResults } from './BulkSmsResults';
+import { supabase } from '@/integrations/supabase/client';
 
 function parsePhoneCampaignList(raw: string): string[] {
   const seen = new Set<string>();
@@ -76,10 +77,10 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
   // Filters state
   const [sourceFilters, setSourceFilters] = useState<SourceFilters>({
     ambassador_applications: { status: [], city: null, ville: null },
-    orders: { city: null, ville: null, status: [], payment_method: null, source: null },
+    orders: { city: null, ville: null, status: [], payment_method: null, source: null, event_id: null },
     aio_events_submissions: { city: null, ville: null, status: [], event_id: null },
     approved_ambassadors: { city: null, ville: null },
-    phone_subscribers: { city: null, dateFrom: null, dateTo: null }
+    phone_subscribers: { city: null, dateFrom: null, dateTo: null, importLabel: null }
   });
 
   // Preview state
@@ -102,13 +103,39 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
   const [delayBetweenBatchesMin, setDelayBetweenBatchesMin] = useState('2');
   const [startingCampaign, setStartingCampaign] = useState(false);
   const cancelAutoSendRef = useRef(false);
+  const previewRequestIdRef = useRef(0);
   const [recipientMode, setRecipientMode] = useState<'sources' | 'custom'>('sources');
   const [customPhonesRaw, setCustomPhonesRaw] = useState('');
+  const [campaignEvents, setCampaignEvents] = useState<Array<{ id: string; name: string; date: string | null }>>([]);
 
   // Load source counts on mount
   useEffect(() => {
     fetchSourceCounts();
+    const loadEvents = async () => {
+      try {
+        const showTest =
+          typeof window !== 'undefined' &&
+          (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+        const { data, error } = await supabase
+          .from('events')
+          .select('id, name, date, is_test')
+          .order('date', { ascending: false })
+          .limit(200);
+        if (error) throw error;
+        const rows = (data || []).filter((e) => showTest || e.is_test !== true);
+        setCampaignEvents(rows.map((e) => ({ id: e.id, name: e.name, date: e.date })));
+      } catch (e) {
+        console.error('Failed to load events for SMS filters:', e);
+      }
+    };
+    loadEvents();
   }, []);
+
+  useEffect(() => {
+    if (selectedSources.phone_subscribers) {
+      fetchSourceCounts();
+    }
+  }, [selectedSources.phone_subscribers]);
 
   // Auto-select phone_subscribers if it has data
   useEffect(() => {
@@ -138,7 +165,8 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
     try {
       const url = buildFullApiUrl(API_ROUTES.ADMIN_PHONE_NUMBERS_COUNTS);
       const response = await fetch(url, {
-        credentials: 'include' // Important for admin auth cookies
+        credentials: 'include',
+        cache: 'no-store',
       });
       
       if (!response.ok) {
@@ -171,7 +199,10 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
   const fetchPhoneNumbersPreview = async () => {
     if (!hasSelectedSource(selectedSources)) return;
 
+    const requestId = ++previewRequestIdRef.current;
     setLoadingPreview(true);
+    setPreviewData(null);
+    setPreviewPhoneNumbers([]);
     try {
       const sourcesConfig: any = {};
       Object.keys(selectedSources).forEach(key => {
@@ -185,11 +216,13 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
       const url = buildFullApiUrl(API_ROUTES.ADMIN_PHONE_NUMBERS_SOURCES);
       const params = new URLSearchParams({
         sources: JSON.stringify(sourcesConfig),
-        includeMetadata: 'true'
+        includeMetadata: 'true',
+        _t: String(Date.now()),
       });
 
       const response = await fetch(`${url}?${params}`, {
-        credentials: 'include' // Important for admin auth cookies
+        credentials: 'include',
+        cache: 'no-store',
       });
 
       if (!response.ok) {
@@ -204,33 +237,22 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
 
       const data = await response.json();
 
+      if (requestId !== previewRequestIdRef.current) return;
+
       if (data.success && data.data) {
-        // Ensure counts are properly set even if empty
-        const previewData = {
+        const nextPreview = {
           phoneNumbers: data.data.phoneNumbers || [],
           counts: {
-            total: data.data.counts?.total ?? (data.data.phoneNumbers?.length || 0),
-            unique: data.data.counts?.unique ?? (data.data.phoneNumbers?.length || 0),
+            total: data.data.counts?.total ?? 0,
+            unique: data.data.counts?.unique ?? 0,
             duplicates: data.data.counts?.duplicates ?? 0,
             bySource: data.data.counts?.bySource || {}
           },
           duplicates: data.data.duplicates || []
         };
-        
-        // Log for debugging if counts are 0 but we have phone numbers
-        if (previewData.phoneNumbers.length > 0 && previewData.counts.total === 0) {
-          console.warn('Preview data mismatch: phoneNumbers exist but counts are 0', {
-            phoneNumbersCount: previewData.phoneNumbers.length,
-            counts: previewData.counts,
-            rawData: data.data
-          });
-          // Fix the counts if they're wrong
-          previewData.counts.total = previewData.phoneNumbers.length;
-          previewData.counts.unique = previewData.phoneNumbers.length;
-        }
-        
-        setPreviewPhoneNumbers(previewData.phoneNumbers);
-        setPreviewData(previewData);
+
+        setPreviewPhoneNumbers(nextPreview.phoneNumbers);
+        setPreviewData(nextPreview);
       } else {
         // Set empty preview data on error
         setPreviewPhoneNumbers([]);
@@ -248,6 +270,7 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
         });
       }
     } catch (error: any) {
+      if (requestId !== previewRequestIdRef.current) return;
       console.error('Error fetching phone numbers:', error);
       const errorMessage = error.message || (language === 'en' ? 'Failed to fetch phone numbers' : 'Échec de la récupération des numéros');
       toast({
@@ -256,7 +279,9 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
         variant: 'destructive'
       });
     } finally {
-      setLoadingPreview(false);
+      if (requestId === previewRequestIdRef.current) {
+        setLoadingPreview(false);
+      }
     }
   };
 
@@ -495,6 +520,19 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
   };
 
   // Get villes based on selected city
+  const formatEventOptionLabel = (event: { id: string; name: string; date: string | null }): string => {
+    if (!event.date) return event.name;
+    const d = new Date(event.date);
+    const dateStr = Number.isNaN(d.getTime())
+      ? event.date
+      : d.toLocaleDateString(language === 'en' ? 'en-GB' : 'fr-FR', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+    return `${event.name} (${dateStr})`;
+  };
+
   const getVillesForCity = (city: string | null): string[] => {
     if (!city) return [];
     if (city === 'Sousse') return SOUSSE_VILLES as any;
@@ -724,6 +762,29 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
                     {getSourceDisplayName('orders', language)}
                   </Label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-2 md:col-span-3">
+                      <Label className="text-xs">{language === 'en' ? 'Event name' : 'Nom de l\'événement'}</Label>
+                      <Select
+                        value={sourceFilters.orders.event_id || 'all'}
+                        onValueChange={(value) =>
+                          handleFilterChange('orders', 'event_id', value === 'all' ? null : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">
+                            {language === 'en' ? 'All events' : 'Tous les événements'}
+                          </SelectItem>
+                          {campaignEvents.map((event) => (
+                            <SelectItem key={event.id} value={event.id}>
+                              {formatEventOptionLabel(event)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="space-y-2">
                       <Label className="text-xs">{language === 'en' ? 'City' : 'Ville'} *</Label>
                       <Select
@@ -769,7 +830,43 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
                 </div>
               )}
 
-              {/* Other sources filters can be added similarly */}
+              {selectedSources.phone_subscribers && (
+                <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-3">
+                  <Label className="text-sm font-medium">
+                    {getSourceDisplayName('phone_subscribers', language)}
+                  </Label>
+                  <div className="space-y-2">
+                    <Label className="text-xs">{language === 'en' ? 'Label name' : 'Nom du libellé'}</Label>
+                    <Select
+                      value={sourceFilters.phone_subscribers.importLabel || '__all__'}
+                      onValueChange={(value) =>
+                        handleFilterChange(
+                          'phone_subscribers',
+                          'importLabel',
+                          value === '__all__' ? null : value
+                        )
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">
+                          {language === 'en' ? 'All subscribers' : 'Tous les abonnés'}
+                        </SelectItem>
+                        <SelectItem value="__website__">
+                          {language === 'en' ? 'Website popup signups' : 'Inscriptions popup site'}
+                        </SelectItem>
+                        {(sourceCounts.phone_subscribers?.importLabels ?? []).map((label) => (
+                          <SelectItem key={label} value={label}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

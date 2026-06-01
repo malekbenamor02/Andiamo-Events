@@ -145,6 +145,7 @@ import type {
 } from "./types";
 import { OverviewTab } from "./components/OverviewTab";
 import type { SuggestionReadFilter, SuggestionTypeFilter } from "./components/SuggestionsTab";
+import type { MarketingTabProps } from "./components/MarketingTab";
 import { peekAndConsumeAdminVerifyCache } from "@/lib/admin-verify-cache";
 
 const LazyReportsAnalytics = React.lazy(() =>
@@ -188,7 +189,7 @@ const LazyAioEventsTab = React.lazy(() =>
 const LazyLogsTab = React.lazy(() => import("./components/LogsTab").then((m) => ({ default: m.LogsTab })));
 const LazyMarketingTab = React.lazy(() =>
   import("./components/MarketingTab").then((m) => ({ default: m.MarketingTab })),
-);
+) as React.LazyExoticComponent<React.ComponentType<MarketingTabProps>>;
 const LazyAmbassadorSalesTab = React.lazy(() =>
   import("./components/AmbassadorSalesTab").then((m) => ({ default: m.AmbassadorSalesTab })),
 );
@@ -417,7 +418,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [uploadingAboutImage, setUploadingAboutImage] = useState(false);
 
   // Marketing/SMS state
-  const [phoneSubscribers, setPhoneSubscribers] = useState<Array<{id: string; phone_number: string; subscribed_at: string; city?: string}>>([]);
+  const [phoneSubscribers, setPhoneSubscribers] = useState<Array<{id: string; phone_number: string; subscribed_at: string; city?: string; import_label?: string | null}>>([]);
   const [loadingSubscribers, setLoadingSubscribers] = useState(false);
   const [importingFromApplications, setImportingFromApplications] = useState(false);
   
@@ -426,6 +427,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
   const [importingPhones, setImportingPhones] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [phoneImportLabel, setPhoneImportLabel] = useState("");
+  const [phoneImportFile, setPhoneImportFile] = useState<File | null>(null);
   
   // Targeted mode (ambassador applications)
   const [targetedMessage, setTargetedMessage] = useState("");
@@ -449,10 +452,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   
   // Email Marketing state
   const [marketingSubTab, setMarketingSubTab] = useState<'sms' | 'email'>('sms');
-  const [emailSubscribers, setEmailSubscribers] = useState<Array<{id: string; email: string; subscribed_at: string; language?: string}>>([]);
+  const [emailSubscribers, setEmailSubscribers] = useState<Array<{id: string; email: string; subscribed_at: string; language?: string; import_label?: string | null}>>([]);
   const [loadingEmailSubscribers, setLoadingEmailSubscribers] = useState(false);
   const [importingEmails, setImportingEmails] = useState(false);
   const [showEmailImportDialog, setShowEmailImportDialog] = useState(false);
+  const [emailImportLabel, setEmailImportLabel] = useState("");
+  const [emailImportFile, setEmailImportFile] = useState<File | null>(null);
   const [emailSubject, setEmailSubject] = useState("");
   const [emailContent, setEmailContent] = useState("");
   const [sendingBulkEmails, setSendingBulkEmails] = useState(false);
@@ -4159,7 +4164,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       while (hasMore) {
         const { data, error } = await supabase
           .from('phone_subscribers' as any)
-          .select('id, phone_number, created_at')
+          .select('id, phone_number, created_at, import_label')
           .order('created_at', { ascending: false })
           .range(offset, offset + PAGE_SIZE - 1);
 
@@ -4178,7 +4183,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         id: item.id,
         phone_number: item.phone_number,
         subscribed_at: item.created_at || new Date().toISOString(),
-        city: undefined
+        city: undefined,
+        import_label: item.import_label ?? null,
       })));
     } catch (error) {
       console.error('Error fetching phone subscribers:', error);
@@ -4390,7 +4396,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       // Add header row
       worksheet.columns = [
-        { header: 'Phone Number', key: 'phone_number', width: 20 }
+        { header: 'Phone Number', key: 'phone_number', width: 20 },
+        { header: 'Import Label', key: 'import_label', width: 24 },
       ];
 
       // Style header row
@@ -4405,7 +4412,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Add data rows
       phoneSubscribers.forEach(subscriber => {
         worksheet.addRow({
-          phone_number: subscriber.phone_number
+          phone_number: subscriber.phone_number,
+          import_label: subscriber.import_label || '',
         });
       });
 
@@ -4438,8 +4446,35 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Import phone numbers from Excel file
-  const handleImportPhonesFromExcel = async (file: File) => {
+  const resetPhoneImportDialog = () => {
+    setPhoneImportLabel("");
+    setPhoneImportFile(null);
+  };
+
+  const normalizeTunisianPhoneFromExcel = (raw: string): string | null => {
+    let phoneValue = String(raw).trim().replace(/[^\d+]/g, '');
+    if (phoneValue.startsWith('+')) phoneValue = phoneValue.substring(1);
+    if (phoneValue.startsWith('00216')) phoneValue = phoneValue.substring(5);
+    else if (phoneValue.startsWith('216')) phoneValue = phoneValue.substring(3);
+    phoneValue = phoneValue.replace(/^0+/, '');
+    const phoneRegex = /^[2594][0-9]{7}$/;
+    return phoneRegex.test(phoneValue) ? phoneValue : null;
+  };
+
+  // Import phone numbers from Excel file with a required import label
+  const handleImportPhonesFromExcel = async (file: File, importLabel: string) => {
+    const label = importLabel.trim();
+    if (!label) {
+      toast({
+        title: language === 'en' ? 'Label required' : 'Libellé requis',
+        description: language === 'en'
+          ? 'Enter a label for this import (e.g. Old Event Summer 2024)'
+          : 'Saisissez un libellé pour cet import (ex. Ancien événement été 2024)',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       setImportingPhones(true);
 
@@ -4452,31 +4487,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         throw new Error(language === 'en' ? 'Invalid Excel file format' : 'Format de fichier Excel invalide');
       }
 
+      const seenInFile = new Set<string>();
       const phoneNumbers: string[] = [];
-      
-      // Read phone numbers from first column (skip header row)
+      let validRowsInFile = 0;
+
       worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return; // Skip header
-        
+        if (rowNumber === 1) return;
+
         const phoneCell = row.getCell(1);
         if (phoneCell && phoneCell.value) {
-          let phoneValue = String(phoneCell.value).trim();
-          
-          // Remove any non-digit characters except leading + if present
-          phoneValue = phoneValue.replace(/[^\d+]/g, '');
-          
-          // Remove leading + if present
-          if (phoneValue.startsWith('+')) {
-            phoneValue = phoneValue.substring(1);
-          }
-          
-          // Validate: exactly 8 digits, starts with 2, 4, 5, or 9
-          const phoneRegex = /^[2594][0-9]{7}$/;
-          if (phoneRegex.test(phoneValue)) {
-            phoneNumbers.push(phoneValue);
+          const normalized = normalizeTunisianPhoneFromExcel(String(phoneCell.value));
+          if (normalized) {
+            validRowsInFile++;
+            if (!seenInFile.has(normalized)) {
+              seenInFile.add(normalized);
+              phoneNumbers.push(normalized);
+            }
           }
         }
       });
+
+      const duplicatesInFile = validRowsInFile - phoneNumbers.length;
 
       if (phoneNumbers.length === 0) {
         toast({
@@ -4489,24 +4520,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Check for duplicates in database
-      const { data: existingSubscribers, error: checkError } = await supabase
-        .from('phone_subscribers')
-        .select('phone_number')
-        .in('phone_number', phoneNumbers);
+      const existingPhoneSet = new Set<string>();
+      const checkChunkSize = 500;
+      for (let i = 0; i < phoneNumbers.length; i += checkChunkSize) {
+        const chunk = phoneNumbers.slice(i, i + checkChunkSize);
+        const { data: existingSubscribers, error: checkError } = await supabase
+          .from('phone_subscribers')
+          .select('phone_number')
+          .in('phone_number', chunk);
 
-      if (checkError) throw checkError;
+        if (checkError) throw checkError;
+        (existingSubscribers || []).forEach((s: { phone_number: string }) => {
+          existingPhoneSet.add(s.phone_number);
+        });
+      }
 
-      const existingPhoneSet = new Set(
-        (existingSubscribers || []).map((s: any) => s.phone_number)
-      );
-
-      // Filter out duplicates
       const newPhonesToImport = phoneNumbers.filter(
         phone => !existingPhoneSet.has(phone)
       );
 
-      let duplicatesCount = phoneNumbers.length - newPhonesToImport.length;
+      let duplicatesCount = phoneNumbers.length - newPhonesToImport.length + duplicatesInFile;
       const results: string[] = [];
       const errors: Array<{ phone: string; error: string }> = [];
 
@@ -4526,7 +4559,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       for (let i = 0; i < newPhonesToImport.length; i += chunkSize) {
         const chunk = newPhonesToImport.slice(i, i + chunkSize).map(phone => ({
           phone_number: phone,
-          language: 'en' as const
+          language: 'en' as const,
+          import_label: label,
         }));
 
         try {
@@ -4574,8 +4608,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       toast({
         title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
         description: language === 'en'
-          ? `Imported: ${results.length}, Duplicates: ${duplicatesCount}, Errors: ${errors.length}`
-          : `Importé: ${results.length}, Doublons: ${duplicatesCount}, Erreurs: ${errors.length}`,
+          ? `Label "${label}" — Imported: ${results.length}, Skipped duplicates: ${duplicatesCount}, Errors: ${errors.length}`
+          : `Libellé « ${label} » — Importé: ${results.length}, Doublons ignorés: ${duplicatesCount}, Erreurs: ${errors.length}`,
         variant: results.length > 0 ? 'default' : 'destructive'
       });
 
@@ -4584,6 +4618,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       setShowImportDialog(false);
+      resetPhoneImportDialog();
     } catch (error: any) {
       console.error('Error importing from Excel:', error);
       toast({
@@ -4608,7 +4643,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       while (hasMore) {
         const { data, error } = await supabase
           .from('newsletter_subscribers')
-          .select('id, email, subscribed_at, language')
+          .select('id, email, subscribed_at, language, import_label')
           .order('subscribed_at', { ascending: false })
           .range(offset, offset + PAGE_SIZE - 1);
 
@@ -4627,7 +4662,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         id: item.id,
         email: item.email,
         subscribed_at: item.subscribed_at || new Date().toISOString(),
-        language: item.language || 'en'
+        language: item.language || 'en',
+        import_label: item.import_label ?? null,
       })));
     } catch (error) {
       console.error('Error fetching email subscribers:', error);
@@ -4655,7 +4691,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const worksheet = workbook.addWorksheet('Email Subscribers');
 
       worksheet.columns = [
-        { header: 'Email', key: 'email', width: 30 }
+        { header: 'Email', key: 'email', width: 30 },
+        { header: 'Import Label', key: 'import_label', width: 24 },
       ];
 
       worksheet.getRow(1).font = { bold: true };
@@ -4668,7 +4705,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       emailSubscribers.forEach(subscriber => {
         worksheet.addRow({
-          email: subscriber.email
+          email: subscriber.email,
+          import_label: subscriber.import_label || '',
         });
       });
 
@@ -4700,8 +4738,25 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Import email addresses from Excel file
-  const handleImportEmailsFromExcel = async (file: File) => {
+  const resetEmailImportDialog = () => {
+    setEmailImportLabel("");
+    setEmailImportFile(null);
+  };
+
+  // Import email addresses from Excel file with a required import label
+  const handleImportEmailsFromExcel = async (file: File, importLabel: string) => {
+    const label = importLabel.trim();
+    if (!label) {
+      toast({
+        title: language === 'en' ? 'Label required' : 'Libellé requis',
+        description: language === 'en'
+          ? 'Enter a label for this import (e.g. Old Event Summer 2024)'
+          : 'Saisissez un libellé pour cet import (ex. Ancien événement été 2024)',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       setImportingEmails(true);
 
@@ -4714,22 +4769,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         throw new Error(language === 'en' ? 'Invalid Excel file format' : 'Format de fichier Excel invalide');
       }
 
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const seenInFile = new Set<string>();
       const emails: string[] = [];
+      let validRowsInFile = 0;
       
       worksheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return;
         
         const emailCell = row.getCell(1);
         if (emailCell && emailCell.value) {
-          let emailValue = String(emailCell.value).trim().toLowerCase();
-          
-          // Basic email validation
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          const emailValue = String(emailCell.value).trim().toLowerCase();
           if (emailRegex.test(emailValue)) {
-            emails.push(emailValue);
+            validRowsInFile++;
+            if (!seenInFile.has(emailValue)) {
+              seenInFile.add(emailValue);
+              emails.push(emailValue);
+            }
           }
         }
       });
+
+      const duplicatesInFile = validRowsInFile - emails.length;
 
       if (emails.length === 0) {
         toast({
@@ -4742,23 +4803,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Check for duplicates
-      const { data: existingSubscribers, error: checkError } = await supabase
-        .from('newsletter_subscribers')
-        .select('email')
-        .in('email', emails);
+      // Check for duplicates against existing subscribers (batch in chunks of 500)
+      const existingEmailSet = new Set<string>();
+      const checkChunkSize = 500;
+      for (let i = 0; i < emails.length; i += checkChunkSize) {
+        const chunk = emails.slice(i, i + checkChunkSize);
+        const { data: existingSubscribers, error: checkError } = await supabase
+          .from('newsletter_subscribers')
+          .select('email')
+          .in('email', chunk);
 
-      if (checkError) throw checkError;
-
-      const existingEmailSet = new Set(
-        (existingSubscribers || []).map((s: any) => s.email.toLowerCase())
-      );
+        if (checkError) throw checkError;
+        (existingSubscribers || []).forEach((s: { email: string }) => {
+          existingEmailSet.add(s.email.toLowerCase());
+        });
+      }
 
       const newEmailsToImport = emails.filter(
         email => !existingEmailSet.has(email.toLowerCase())
       );
 
-      let duplicatesCount = emails.length - newEmailsToImport.length;
+      let duplicatesCount = emails.length - newEmailsToImport.length + duplicatesInFile;
       const results: string[] = [];
       const errors: Array<{ email: string; error: string }> = [];
 
@@ -4778,7 +4843,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       for (let i = 0; i < newEmailsToImport.length; i += chunkSize) {
         const chunk = newEmailsToImport.slice(i, i + chunkSize).map(email => ({
           email: email,
-          language: 'en' as const
+          language: 'en' as const,
+          import_label: label,
         }));
 
         try {
@@ -4823,8 +4889,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       toast({
         title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
         description: language === 'en'
-          ? `Imported: ${results.length}, Duplicates: ${duplicatesCount}, Errors: ${errors.length}`
-          : `Importé: ${results.length}, Doublons: ${duplicatesCount}, Erreurs: ${errors.length}`,
+          ? `Label "${label}" — Imported: ${results.length}, Skipped duplicates: ${duplicatesCount}, Errors: ${errors.length}`
+          : `Libellé « ${label} » — Importé: ${results.length}, Doublons ignorés: ${duplicatesCount}, Erreurs: ${errors.length}`,
         variant: results.length > 0 ? 'default' : 'destructive'
       });
 
@@ -4833,6 +4899,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       setShowEmailImportDialog(false);
+      resetEmailImportDialog();
     } catch (error: any) {
       console.error('Error importing from Excel:', error);
       toast({
@@ -11547,6 +11614,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   handleExportPhones={handleExportPhones}
                   showImportDialog={showImportDialog}
                   setShowImportDialog={setShowImportDialog}
+                  phoneImportLabel={phoneImportLabel}
+                  setPhoneImportLabel={setPhoneImportLabel}
+                  phoneImportFile={phoneImportFile}
+                  setPhoneImportFile={setPhoneImportFile}
+                  resetPhoneImportDialog={resetPhoneImportDialog}
                   handleImportPhonesFromExcel={handleImportPhonesFromExcel}
                   importingPhones={importingPhones}
                   loadingLogs={loadingLogs}
@@ -11557,6 +11629,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   handleExportEmails={handleExportEmails}
                   showEmailImportDialog={showEmailImportDialog}
                   setShowEmailImportDialog={setShowEmailImportDialog}
+                  emailImportLabel={emailImportLabel}
+                  setEmailImportLabel={setEmailImportLabel}
+                  emailImportFile={emailImportFile}
+                  setEmailImportFile={setEmailImportFile}
+                  resetEmailImportDialog={resetEmailImportDialog}
                   handleImportEmailsFromExcel={handleImportEmailsFromExcel}
                   importingEmails={importingEmails}
                   emailSubject={emailSubject}

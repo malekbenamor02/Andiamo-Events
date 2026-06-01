@@ -4421,11 +4421,21 @@ app.post('/api/send-ambassador-order-sms', smsLimiter, async (req, res) => {
 // ============================================
 app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) => {
   try {
+    const mod = await import('./api/misc.js');
+    return await mod.default(req, res);
+  } catch (err) {
+    console.error('Forward phone-numbers/sources to misc.js failed:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Request failed' });
+  }
+});
+
+/* Legacy inline handler removed – use api/misc.js
+app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) => {
+  try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
     }
 
-    // Use service role to bypass RLS (phone_subscribers can block anon key in some setups)
     const db = supabaseService || supabase;
 
     const { sources, includeMetadata } = req.query;
@@ -4549,6 +4559,9 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
       if (filters.source) {
         query = query.eq('source', filters.source);
       }
+      if (filters.event_id) {
+        query = query.eq('event_id', filters.event_id);
+      }
       
       const { data, error } = await query.not('user_phone', 'is', null);
       
@@ -4664,7 +4677,7 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
     if (sourcesConfig.phone_subscribers?.enabled) {
       let query = db
         .from('phone_subscribers')
-        .select('id, phone_number, subscribed_at')
+        .select('id, phone_number, subscribed_at, import_label')
         .not('phone_number', 'is', null);
       
       const filters = sourcesConfig.phone_subscribers.filters || {};
@@ -4674,6 +4687,11 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
       }
       if (filters.dateTo) {
         query = query.lte('subscribed_at', filters.dateTo);
+      }
+      if (filters.importLabel === '__website__') {
+        query = query.is('import_label', null);
+      } else if (filters.importLabel && filters.importLabel !== '__all__') {
+        query = query.eq('import_label', filters.importLabel);
       }
       
       const { data, error } = await query;
@@ -4723,6 +4741,7 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
     });
   }
 });
+*/
 
 // ============================================
 // Email addresses & marketing campaigns (forward to api/misc.js for parity with Vercel)
@@ -4758,13 +4777,15 @@ app.patch('/api/marketing/campaigns/:id', requireAdminAuth, (req, res) => forwar
 // ============================================
 // GET /api/admin/phone-numbers/counts - Get quick counts per source
 // ============================================
+app.get('/api/admin/phone-numbers/counts', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+
+/* Legacy inline counts handler – use api/misc.js
 app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
     }
 
-    // Use service role so RLS does not block counts (e.g. aio_events_submissions requires admin)
     const db = supabaseService || supabase;
 
     const { sources } = req.query;
@@ -4901,6 +4922,7 @@ app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) =>
     });
   }
 });
+*/
 
 // ============================================
 // POST /api/admin/bulk-sms/send - Send bulk SMS to selected phone numbers

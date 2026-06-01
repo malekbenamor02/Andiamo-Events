@@ -22,6 +22,7 @@ export interface OrdersFilters {
   status?: string[];
   payment_method?: string | null;
   source?: string | null;
+  event_id?: string | null;
 }
 
 export interface AioEventsFilters {
@@ -40,6 +41,16 @@ export interface PhoneSubscribersFilters {
   city?: string | null;
   dateFrom?: string | null;
   dateTo?: string | null;
+  /** '__website__' = popup signups only; specific string = import label; null/'__all__' = no filter */
+  importLabel?: string | null;
+}
+
+/** Newsletter list filters (email campaigns + imports). */
+export interface NewsletterSubscribersFilters {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  /** '__website__' = footer signups only; specific string = import label; null/'__all__' = no filter */
+  importLabel?: string | null;
 }
 
 export interface SourceFilters {
@@ -124,6 +135,7 @@ export interface SourceCountsResponse {
   phone_subscribers?: {
     total: number;
     withPhone: number;
+    importLabels?: string[];
   };
 }
 
@@ -140,7 +152,7 @@ export interface EmailSourceSelection {
 
 export interface EmailSourceFilters {
   orders: OrdersFilters;
-  newsletter_subscribers: PhoneSubscribersFilters; // dateFrom, dateTo
+  newsletter_subscribers: NewsletterSubscribersFilters;
   approved_ambassadors: ApprovedAmbassadorsFilters;
   ambassador_applications: AmbassadorApplicationsFilters;
   aio_events_submissions: AioEventsFilters;
@@ -169,7 +181,7 @@ export interface EmailAddressesPreviewResponse {
 
 export interface EmailCountsResponse {
   orders?: { total: number; withEmail: number; byCity?: Record<string, number> };
-  newsletter_subscribers?: { total: number; withEmail: number };
+  newsletter_subscribers?: { total: number; withEmail: number; importLabels?: string[] };
   approved_ambassadors?: { total: number; withEmail: number };
   ambassador_applications?: { total: number; withEmail: number; byStatus?: Record<string, number> };
   aio_events_submissions?: { total: number; withEmail: number };

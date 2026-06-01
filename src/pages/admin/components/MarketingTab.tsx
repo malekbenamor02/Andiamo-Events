@@ -153,7 +153,12 @@ export interface MarketingTabProps {
   handleExportPhones: () => void;
   showImportDialog: boolean;
   setShowImportDialog: (v: boolean) => void;
-  handleImportPhonesFromExcel: (file: File) => void;
+  phoneImportLabel: string;
+  setPhoneImportLabel: (v: string) => void;
+  phoneImportFile: File | null;
+  setPhoneImportFile: (v: File | null) => void;
+  resetPhoneImportDialog: () => void;
+  handleImportPhonesFromExcel: (file: File, importLabel: string) => void | Promise<void>;
   importingPhones: boolean;
   loadingLogs: boolean;
   smsLogs: Array<{ id: string; phone_number: string; message: string; status: string; error_message?: string; sent_at?: string; created_at: string; api_response?: unknown; source?: string }>;
@@ -163,7 +168,12 @@ export interface MarketingTabProps {
   handleExportEmails: () => void;
   showEmailImportDialog: boolean;
   setShowEmailImportDialog: (v: boolean) => void;
-  handleImportEmailsFromExcel: (file: File) => void;
+  emailImportLabel: string;
+  setEmailImportLabel: (v: string) => void;
+  emailImportFile: File | null;
+  setEmailImportFile: (v: File | null) => void;
+  resetEmailImportDialog: () => void;
+  handleImportEmailsFromExcel: (file: File, importLabel: string) => void | Promise<void>;
   importingEmails: boolean;
   emailSubject: string;
   setEmailSubject: (v: string) => void;
@@ -691,7 +701,13 @@ export function MarketingTab(p: MarketingTabProps) {
                             <Download className="w-4 h-4 mr-2" />
                             {p.language === 'en' ? 'Export Excel' : 'Exporter Excel'}
                           </Button>
-                          <Dialog open={p.showImportDialog} onOpenChange={p.setShowImportDialog}>
+                          <Dialog
+                            open={p.showImportDialog}
+                            onOpenChange={(open) => {
+                              p.setShowImportDialog(open);
+                              if (!open) p.resetPhoneImportDialog();
+                            }}
+                          >
                             <DialogTrigger asChild>
                               <Button
                                 variant="outline"
@@ -730,13 +746,13 @@ export function MarketingTab(p: MarketingTabProps) {
                                         </li>
                                         <li>
                                           {p.language === 'en' 
-                                            ? 'Duplicate numbers will be automatically skipped'
-                                            : 'Les numéros en double seront automatiquement ignorés'}
+                                            ? 'Duplicates in the file and numbers already in the database are skipped'
+                                            : 'Les doublons dans le fichier et les numéros déjà en base sont ignorés'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
-                                            ? 'Subscription time will be set automatically to import time'
-                                            : 'La date d\'abonnement sera définie automatiquement à l\'heure d\'importation'}
+                                            ? 'Choose a label to identify this list for targeted SMS campaigns'
+                                            : 'Choisissez un libellé pour identifier cette liste pour les campagnes SMS ciblées'}
                                         </li>
                                       </ul>
                                       <div className="mt-3 p-2 bg-background rounded border border-border">
@@ -753,32 +769,63 @@ export function MarketingTab(p: MarketingTabProps) {
                                   </div>
                                 </div>
 
-                                {/* File Upload */}
                                 <div className="space-y-2">
-                                  <Label>
-                                    {p.language === 'en' ? 'Select Excel File (.xlsx)' : 'Sélectionner un Fichier Excel (.xlsx)'}
+                                  <Label htmlFor="phone-import-label">
+                                    {p.language === 'en' ? 'Import label' : 'Libellé d\'import'} *
                                   </Label>
-                                  <div className="flex items-center gap-2">
-                                    <Input
-                                      type="file"
-                                      accept=".xlsx,.xls"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          p.handleImportPhonesFromExcel(file);
-                                        }
-                                      }}
-                                      disabled={p.importingPhones}
-                                      className="flex-1"
-                                    />
-                                  </div>
-                                  {p.importingPhones && (
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                      <Loader size="sm" />
-                                      {p.language === 'en' ? 'Importing...' : 'Importation...'}
-                                    </div>
+                                  <Input
+                                    id="phone-import-label"
+                                    value={p.phoneImportLabel}
+                                    onChange={(e) => p.setPhoneImportLabel(e.target.value)}
+                                    disabled={p.importingPhones}
+                                    maxLength={120}
+                                  />
+                                </div>
+
+                                <div className="space-y-2">
+                                  <Label htmlFor="phone-import-file">
+                                    {p.language === 'en' ? 'Excel file (.xlsx)' : 'Fichier Excel (.xlsx)'} *
+                                  </Label>
+                                  <Input
+                                    id="phone-import-file"
+                                    type="file"
+                                    accept=".xlsx,.xls"
+                                    onChange={(e) => {
+                                      p.setPhoneImportFile(e.target.files?.[0] ?? null);
+                                    }}
+                                    disabled={p.importingPhones}
+                                    className="flex-1"
+                                  />
+                                  {p.phoneImportFile && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {p.phoneImportFile.name}
+                                    </p>
                                   )}
                                 </div>
+
+                                <Button
+                                  type="button"
+                                  className="w-full"
+                                  disabled={
+                                    p.importingPhones ||
+                                    !p.phoneImportLabel.trim() ||
+                                    !p.phoneImportFile
+                                  }
+                                  onClick={() => {
+                                    if (p.phoneImportFile) {
+                                      p.handleImportPhonesFromExcel(p.phoneImportFile, p.phoneImportLabel);
+                                    }
+                                  }}
+                                >
+                                  {p.importingPhones ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                      <Loader size="sm" className="shrink-0 [background:white]" />
+                                      {p.language === 'en' ? 'Importing...' : 'Importation...'}
+                                    </span>
+                                  ) : (
+                                    p.language === 'en' ? 'Import list' : 'Importer la liste'
+                                  )}
+                                </Button>
                               </div>
                             </DialogContent>
                           </Dialog>
@@ -1097,7 +1144,13 @@ export function MarketingTab(p: MarketingTabProps) {
                             <Download className="w-4 h-4 mr-2" />
                             {p.language === 'en' ? 'Export Excel' : 'Exporter Excel'}
                           </Button>
-                          <Dialog open={p.showEmailImportDialog} onOpenChange={p.setShowEmailImportDialog}>
+                          <Dialog
+                            open={p.showEmailImportDialog}
+                            onOpenChange={(open) => {
+                              p.setShowEmailImportDialog(open);
+                              if (!open) p.resetEmailImportDialog();
+                            }}
+                          >
                             <DialogTrigger asChild>
                               <Button
                                 variant="outline"
@@ -1136,13 +1189,13 @@ export function MarketingTab(p: MarketingTabProps) {
                                         </li>
                                         <li>
                                           {p.language === 'en' 
-                                            ? 'Duplicate emails will be automatically skipped'
-                                            : 'Les emails en double seront automatiquement ignorés'}
+                                            ? 'Duplicates in the file and emails already in the database are skipped'
+                                            : 'Les doublons dans le fichier et les emails déjà en base sont ignorés'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
-                                            ? 'Subscription time will be set automatically to import time'
-                                            : 'La date d\'abonnement sera définie automatiquement à l\'heure d\'importation'}
+                                            ? 'Choose a label to identify this list (e.g. old event name) for targeted campaigns'
+                                            : 'Choisissez un libellé pour identifier cette liste (ex. nom d\'un ancien événement) pour les campagnes ciblées'}
                                         </li>
                                       </ul>
                                       <div className="mt-3 p-2 bg-background rounded border border-border">
@@ -1159,32 +1212,63 @@ export function MarketingTab(p: MarketingTabProps) {
                                   </div>
                                 </div>
 
-                                {/* File Upload */}
                                 <div className="space-y-2">
-                                  <Label>
-                                    {p.language === 'en' ? 'Select Excel File (.xlsx)' : 'Sélectionner un Fichier Excel (.xlsx)'}
+                                  <Label htmlFor="email-import-label">
+                                    {p.language === 'en' ? 'Import label' : 'Libellé d\'import'} *
                                   </Label>
-                                  <div className="flex items-center gap-2">
-                                    <Input
-                                      type="file"
-                                      accept=".xlsx,.xls"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          p.handleImportEmailsFromExcel(file);
-                                        }
-                                      }}
-                                      disabled={p.importingEmails}
-                                      className="flex-1"
-                                    />
-                                  </div>
-                                  {p.importingEmails && (
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                      <Loader size="sm" />
-                                      {p.language === 'en' ? 'Importing...' : 'Importation...'}
-                                    </div>
+                                  <Input
+                                    id="email-import-label"
+                                    value={p.emailImportLabel}
+                                    onChange={(e) => p.setEmailImportLabel(e.target.value)}
+                                    disabled={p.importingEmails}
+                                    maxLength={120}
+                                  />
+                                </div>
+
+                                <div className="space-y-2">
+                                  <Label htmlFor="email-import-file">
+                                    {p.language === 'en' ? 'Excel file (.xlsx)' : 'Fichier Excel (.xlsx)'} *
+                                  </Label>
+                                  <Input
+                                    id="email-import-file"
+                                    type="file"
+                                    accept=".xlsx,.xls"
+                                    onChange={(e) => {
+                                      p.setEmailImportFile(e.target.files?.[0] ?? null);
+                                    }}
+                                    disabled={p.importingEmails}
+                                    className="flex-1"
+                                  />
+                                  {p.emailImportFile && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {p.emailImportFile.name}
+                                    </p>
                                   )}
                                 </div>
+
+                                <Button
+                                  type="button"
+                                  className="w-full"
+                                  disabled={
+                                    p.importingEmails ||
+                                    !p.emailImportLabel.trim() ||
+                                    !p.emailImportFile
+                                  }
+                                  onClick={() => {
+                                    if (p.emailImportFile) {
+                                      p.handleImportEmailsFromExcel(p.emailImportFile, p.emailImportLabel);
+                                    }
+                                  }}
+                                >
+                                  {p.importingEmails ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                      <Loader size="sm" className="shrink-0 [background:white]" />
+                                      {p.language === 'en' ? 'Importing...' : 'Importation...'}
+                                    </span>
+                                  ) : (
+                                    p.language === 'en' ? 'Import list' : 'Importer la liste'
+                                  )}
+                                </Button>
                               </div>
                             </DialogContent>
                           </Dialog>

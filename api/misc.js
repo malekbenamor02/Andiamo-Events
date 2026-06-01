@@ -69,6 +69,50 @@ function getClientIp(req) {
     || 'unknown';
 }
 
+/** Apply newsletter_subscribers filters (dates + import label). */
+function applyNewsletterSubscriberEmailFilters(query, f = {}) {
+  if (f.dateFrom) query = query.gte('subscribed_at', f.dateFrom);
+  if (f.dateTo) query = query.lte('subscribed_at', f.dateTo);
+  if (f.importLabel === '__website__') query = query.is('import_label', null);
+  else if (f.importLabel && f.importLabel !== '__all__') query = query.eq('import_label', f.importLabel);
+  return query;
+}
+
+/** Fetch all rows from a PostgREST query (default 1000-row page cap). */
+async function fetchAllPaginated(buildPageQuery, pageSize = 1000) {
+  const all = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await buildPageQuery(offset, pageSize);
+    if (error) throw error;
+    const chunk = data || [];
+    all.push(...chunk);
+    if (chunk.length < pageSize) break;
+    offset += pageSize;
+  }
+  return all;
+}
+
+/** Apply phone_subscribers filters (dates + import label). */
+function applyPhoneSubscriberMarketingFilters(query, f = {}) {
+  if (f.dateFrom) query = query.gte('subscribed_at', f.dateFrom);
+  if (f.dateTo) query = query.lte('subscribed_at', f.dateTo);
+  if (f.importLabel === '__website__') query = query.is('import_label', null);
+  else if (f.importLabel && f.importLabel !== '__all__') query = query.eq('import_label', f.importLabel);
+  return query;
+}
+
+/** Apply orders filters (city, status, event, etc.) for marketing recipient queries. */
+function applyOrdersMarketingFilters(query, f = {}) {
+  if (f.city) query = query.eq('city', f.city);
+  if (f.ville) query = query.eq('ville', f.ville);
+  if (f.status?.length) query = query.in('status', f.status);
+  if (f.payment_method) query = query.eq('payment_method', f.payment_method);
+  if (f.source) query = query.eq('source', f.source);
+  if (f.event_id) query = query.eq('event_id', f.event_id);
+  return query;
+}
+
 // In-memory rate limits (serverless best-effort; resets on cold start)
 // Ambassador login: 5 attempts per 15 minutes per IP
 const ambassadorLoginAttempts = new Map();
@@ -630,19 +674,14 @@ async function collectMarketingEmailRecipientsFromSources(dbClient, sourcesConfi
   if (sourcesConfig.orders?.enabled) {
     let q = dbClient.from('orders').select('id, user_email').not('user_email', 'is', null);
     const f = filters.orders || {};
-    if (f.city) q = q.eq('city', f.city);
-    if (f.ville) q = q.eq('ville', f.ville);
-    if (f.status?.length) q = q.in('status', f.status);
-    if (f.payment_method) q = q.eq('payment_method', f.payment_method);
-    if (f.source) q = q.eq('source', f.source);
+    q = applyOrdersMarketingFilters(q, f);
     const { data: d } = await q;
     if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmailForMarketing(r.user_email) })).filter(r => r.value));
   }
   if (sourcesConfig.newsletter_subscribers?.enabled) {
     let q = dbClient.from('newsletter_subscribers').select('id, email').not('email', 'is', null);
     const f = filters.newsletter_subscribers || {};
-    if (f.dateFrom) q = q.gte('subscribed_at', f.dateFrom);
-    if (f.dateTo) q = q.lte('subscribed_at', f.dateTo);
+    q = applyNewsletterSubscriberEmailFilters(q, f);
     const { data: d } = await q;
     if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmailForMarketing(r.email) })).filter(r => r.value));
   }
@@ -7812,9 +7851,17 @@ Billets envoyés par email. We Create Memories`;
             .select('*', { count: 'exact', head: true })
             .not('phone_number', 'is', null);
 
+          const { data: psLabelRows } = await dbClient
+            .from('phone_subscribers')
+            .select('import_label')
+            .not('import_label', 'is', null);
+          const importLabels = [...new Set((psLabelRows || []).map((r) => r.import_label).filter(Boolean))].sort(
+            (a, b) => String(a).localeCompare(String(b))
+          );
           counts.phone_subscribers = {
             total: total || 0,
-            withPhone: withPhone || 0
+            withPhone: withPhone || 0,
+            importLabels,
           };
         }
 
@@ -7884,7 +7931,14 @@ Billets envoyés par email. We Create Memories`;
 
         const { count: nsTotal } = await dbClient.from('newsletter_subscribers').select('*', { count: 'exact', head: true });
         const { count: nsWithEmail } = await dbClient.from('newsletter_subscribers').select('*', { count: 'exact', head: true }).not('email', 'is', null);
-        counts.newsletter_subscribers = { total: nsTotal || 0, withEmail: nsWithEmail || 0 };
+        const { data: nsLabelRows } = await dbClient
+          .from('newsletter_subscribers')
+          .select('import_label')
+          .not('import_label', 'is', null);
+        const importLabels = [...new Set((nsLabelRows || []).map((r) => r.import_label).filter(Boolean))].sort(
+          (a, b) => String(a).localeCompare(String(b))
+        );
+        counts.newsletter_subscribers = { total: nsTotal || 0, withEmail: nsWithEmail || 0, importLabels };
 
         const { count: ambTotal } = await dbClient.from('ambassadors').select('*', { count: 'exact', head: true }).eq('status', 'approved');
         const { count: ambWithEmail } = await dbClient.from('ambassadors').select('*', { count: 'exact', head: true }).eq('status', 'approved').not('email', 'is', null);
@@ -8002,15 +8056,16 @@ Billets envoyés par email. We Create Memories`;
         };
 
         if (sourcesConfig.orders?.enabled) {
-          let query = dbClient.from('orders').select('id, user_email, city, ville, status, payment_method, source, user_name, order_number').not('user_email', 'is', null);
           const filters = sourcesConfig.orders.filters || {};
-          if (filters.city) query = query.eq('city', filters.city);
-          if (filters.ville) query = query.eq('ville', filters.ville);
-          if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) query = query.in('status', filters.status);
-          if (filters.payment_method) query = query.eq('payment_method', filters.payment_method);
-          if (filters.source) query = query.eq('source', filters.source);
-          const { data, error } = await query;
-          if (!error && data) {
+          try {
+            const data = await fetchAllPaginated((offset, pageSize) => {
+              let q = dbClient
+                .from('orders')
+                .select('id, user_email, city, ville, status, payment_method, source, user_name, order_number, event_id')
+                .not('user_email', 'is', null);
+              q = applyOrdersMarketingFilters(q, filters);
+              return q.range(offset, offset + pageSize - 1);
+            });
             const emails = data.filter(o => o.user_email).map(o => ({
               email: normalizeEmail(o.user_email),
               source: 'orders',
@@ -8021,26 +8076,34 @@ Billets envoyés par email. We Create Memories`;
             })).filter(p => p.email);
             allEmails.push(...emails);
             sourceCounts.orders = emails.length;
+          } catch (ordersEmailErr) {
+            console.error('Error fetching order emails for preview:', ordersEmailErr);
           }
         }
 
         if (sourcesConfig.newsletter_subscribers?.enabled) {
-          let query = dbClient.from('newsletter_subscribers').select('id, email, subscribed_at').not('email', 'is', null);
           const filters = sourcesConfig.newsletter_subscribers.filters || {};
-          if (filters.dateFrom) query = query.gte('subscribed_at', filters.dateFrom);
-          if (filters.dateTo) query = query.lte('subscribed_at', filters.dateTo);
-          const { data, error } = await query;
-          if (!error && data) {
+          try {
+            const data = await fetchAllPaginated((offset, pageSize) => {
+              let q = dbClient
+                .from('newsletter_subscribers')
+                .select('id, email, subscribed_at, import_label')
+                .not('email', 'is', null);
+              q = applyNewsletterSubscriberEmailFilters(q, filters);
+              return q.range(offset, offset + pageSize - 1);
+            });
             const emails = data.filter(s => s.email).map(s => ({
               email: normalizeEmail(s.email),
               source: 'newsletter_subscribers',
               sourceId: s.id,
               city: null,
               ville: null,
-              metadata: includeMetadata === 'true' ? { subscribed_at: s.subscribed_at } : undefined
+              metadata: includeMetadata === 'true' ? { subscribed_at: s.subscribed_at, import_label: s.import_label } : undefined
             })).filter(p => p.email);
             allEmails.push(...emails);
             sourceCounts.newsletter_subscribers = emails.length;
+          } catch (nsEmailErr) {
+            console.error('Error fetching newsletter emails for preview:', nsEmailErr);
           }
         }
 
@@ -8379,31 +8442,16 @@ Billets envoyés par email. We Create Memories`;
 
         // 2. Orders (Clients)
         if (sourcesConfig.orders?.enabled) {
-          let query = dbClient
-            .from('orders')
-            .select('id, user_phone, city, ville, status, payment_method, source, user_name, order_number');
-          
           const filters = sourcesConfig.orders.filters || {};
-          
-          if (filters.city) {
-            query = query.eq('city', filters.city);
-          }
-          if (filters.ville) {
-            query = query.eq('ville', filters.ville);
-          }
-          if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) {
-            query = query.in('status', filters.status);
-          }
-          if (filters.payment_method) {
-            query = query.eq('payment_method', filters.payment_method);
-          }
-          if (filters.source) {
-            query = query.eq('source', filters.source);
-          }
-          
-          const { data, error } = await query.not('user_phone', 'is', null);
-          
-          if (!error && data) {
+          try {
+            const data = await fetchAllPaginated((offset, pageSize) => {
+              let q = dbClient
+                .from('orders')
+                .select('id, user_phone, city, ville, status, payment_method, source, user_name, order_number')
+                .not('user_phone', 'is', null);
+              q = applyOrdersMarketingFilters(q, filters);
+              return q.range(offset, offset + pageSize - 1);
+            });
             const phones = data
               .filter(order => order.user_phone)
               .map(order => ({
@@ -8421,9 +8469,10 @@ Billets envoyés par email. We Create Memories`;
                 } : undefined
               }))
               .filter(p => p.phone);
-            
             allPhoneNumbers.push(...phones);
             sourceCounts.orders = phones.length;
+          } catch (ordersErr) {
+            console.error('Error fetching order phones for preview:', ordersErr);
           }
         }
 
@@ -8511,25 +8560,18 @@ Billets envoyés par email. We Create Memories`;
           }
         }
 
-        // 5. Phone Subscribers (select only base columns so it works without city migration)
+        // 5. Phone Subscribers
         if (sourcesConfig.phone_subscribers?.enabled) {
-          let query = dbClient
-            .from('phone_subscribers')
-            .select('id, phone_number, subscribed_at')
-            .not('phone_number', 'is', null);
-          
           const filters = sourcesConfig.phone_subscribers.filters || {};
-          
-          if (filters.dateFrom) {
-            query = query.gte('subscribed_at', filters.dateFrom);
-          }
-          if (filters.dateTo) {
-            query = query.lte('subscribed_at', filters.dateTo);
-          }
-          
-          const { data, error } = await query;
-          
-          if (!error && data) {
+          try {
+            const data = await fetchAllPaginated((offset, pageSize) => {
+              let q = dbClient
+                .from('phone_subscribers')
+                .select('id, phone_number, subscribed_at, import_label')
+                .not('phone_number', 'is', null);
+              q = applyPhoneSubscriberMarketingFilters(q, filters);
+              return q.range(offset, offset + pageSize - 1);
+            });
             const phones = data
               .filter(sub => sub.phone_number)
               .map(sub => ({
@@ -8539,13 +8581,15 @@ Billets envoyés par email. We Create Memories`;
                 city: sub.city ?? null,
                 ville: null,
                 metadata: includeMetadata === 'true' ? {
-                  subscribed_at: sub.subscribed_at
+                  subscribed_at: sub.subscribed_at,
+                  import_label: sub.import_label,
                 } : undefined
               }))
               .filter(p => p.phone);
-            
             allPhoneNumbers.push(...phones);
             sourceCounts.phone_subscribers = phones.length;
+          } catch (psErr) {
+            console.error('Error fetching phone_subscribers for preview:', psErr);
           }
         }
 
@@ -9200,11 +9244,7 @@ Billets envoyés par email. We Create Memories`;
           if (sourcesConfig.orders?.enabled) {
             let q = dbClient.from('orders').select('id, user_phone').not('user_phone', 'is', null);
             const f = filtersConfig.orders || {};
-            if (f.city) q = q.eq('city', f.city);
-            if (f.ville) q = q.eq('ville', f.ville);
-            if (f.status?.length) q = q.in('status', f.status);
-            if (f.payment_method) q = q.eq('payment_method', f.payment_method);
-            if (f.source) q = q.eq('source', f.source);
+            q = applyOrdersMarketingFilters(q, f);
             const { data: d } = await q;
             if (d) allPhones.push(...d.map(r => ({ value: normalizeCampaignPhone(r.user_phone) })).filter(r => r.value));
           }
@@ -9229,8 +9269,7 @@ Billets envoyés par email. We Create Memories`;
           if (sourcesConfig.phone_subscribers?.enabled) {
             let q = dbClient.from('phone_subscribers').select('id, phone_number').not('phone_number', 'is', null);
             const f = filtersConfig.phone_subscribers || {};
-            if (f.dateFrom) q = q.gte('subscribed_at', f.dateFrom);
-            if (f.dateTo) q = q.lte('subscribed_at', f.dateTo);
+            q = applyPhoneSubscriberMarketingFilters(q, f);
             const { data: d } = await q;
             if (d) allPhones.push(...d.map(r => ({ value: normalizeCampaignPhone(r.phone_number) })).filter(r => r.value));
           }
@@ -9246,19 +9285,14 @@ Billets envoyés par email. We Create Memories`;
           if (sourcesConfig.orders?.enabled) {
             let q = dbClient.from('orders').select('id, user_email').not('user_email', 'is', null);
             const f = filtersConfig.orders || {};
-            if (f.city) q = q.eq('city', f.city);
-            if (f.ville) q = q.eq('ville', f.ville);
-            if (f.status?.length) q = q.in('status', f.status);
-            if (f.payment_method) q = q.eq('payment_method', f.payment_method);
-            if (f.source) q = q.eq('source', f.source);
+            q = applyOrdersMarketingFilters(q, f);
             const { data: d } = await q;
             if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.user_email) })).filter(r => r.value));
           }
           if (sourcesConfig.newsletter_subscribers?.enabled) {
             let q = dbClient.from('newsletter_subscribers').select('id, email').not('email', 'is', null);
             const f = filtersConfig.newsletter_subscribers || {};
-            if (f.dateFrom) q = q.gte('subscribed_at', f.dateFrom);
-            if (f.dateTo) q = q.lte('subscribed_at', f.dateTo);
+            q = applyNewsletterSubscriberEmailFilters(q, f);
             const { data: d } = await q;
             if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.email) })).filter(r => r.value));
           }

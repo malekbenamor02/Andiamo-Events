@@ -3,7 +3,7 @@
  * Select sources (orders, newsletter, ambassadors, applications, aio), filters, preview (deduplicated), then compose subject + body and Start campaign.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -28,6 +28,7 @@ import type {
   EmailCountsResponse
 } from '@/types/bulk-sms';
 import { getEmailSourceDisplayName, hasSelectedEmailSource } from '@/lib/phone-numbers';
+import { supabase } from '@/integrations/supabase/client';
 
 function parseEmailList(raw: string): string[] {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -43,9 +44,11 @@ function parseEmailList(raw: string): string[] {
   return out;
 }
 
+type CampaignEventOption = { id: string; name: string; date: string | null };
+
 const defaultEmailSourceFilters: EmailSourceFilters = {
-  orders: { city: null, ville: null, status: [], payment_method: null, source: null },
-  newsletter_subscribers: { city: null, dateFrom: null, dateTo: null },
+  orders: { city: null, ville: null, status: [], payment_method: null, source: null, event_id: null },
+  newsletter_subscribers: { dateFrom: null, dateTo: null, importLabel: null },
   approved_ambassadors: { city: null, ville: null },
   ambassador_applications: { status: [], city: null, ville: null },
   aio_events_submissions: { city: null, ville: null, status: [], event_id: null },
@@ -99,10 +102,42 @@ export function BulkEmailSelector({
   const [customRecipientsRaw, setCustomRecipientsRaw] = useState('');
   const [headerImageUrl, setHeaderImageUrl] = useState('');
   const [uploadingHeaderImage, setUploadingHeaderImage] = useState(false);
+  const [campaignEvents, setCampaignEvents] = useState<CampaignEventOption[]>([]);
+  const previewRequestIdRef = useRef(0);
 
   useEffect(() => {
     fetchEmailCounts();
+    const loadEvents = async () => {
+      try {
+        const showTest =
+          typeof window !== 'undefined' &&
+          (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+        const { data, error } = await supabase
+          .from('events')
+          .select('id, name, date, is_test')
+          .order('date', { ascending: false })
+          .limit(200);
+        if (error) throw error;
+        const rows = (data || []).filter((e) => showTest || e.is_test !== true);
+        setCampaignEvents(
+          rows.map((e) => ({
+            id: e.id,
+            name: e.name,
+            date: e.date,
+          }))
+        );
+      } catch (e) {
+        console.error('Failed to load events for email filters:', e);
+      }
+    };
+    loadEvents();
   }, []);
+
+  useEffect(() => {
+    if (selectedSources.newsletter_subscribers) {
+      fetchEmailCounts();
+    }
+  }, [selectedSources.newsletter_subscribers]);
 
   useEffect(() => {
     if (hasSelectedEmailSource(selectedSources)) {
@@ -117,7 +152,7 @@ export function BulkEmailSelector({
   const fetchEmailCounts = async () => {
     try {
       const url = buildFullApiUrl(API_ROUTES.ADMIN_EMAIL_ADDRESSES_COUNTS);
-      const res = await fetch(url, { credentials: 'include' });
+      const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.success) setSourceCounts(data.data || {});
@@ -132,17 +167,25 @@ export function BulkEmailSelector({
 
   const fetchEmailPreview = async () => {
     if (!hasSelectedEmailSource(selectedSources)) return;
+    const requestId = ++previewRequestIdRef.current;
     setLoadingPreview(true);
+    setPreviewData(null);
+    setPreviewEmails([]);
     try {
       const sourcesConfig: Record<string, { enabled: boolean; filters: unknown }> = {};
       (Object.keys(selectedSources) as (keyof EmailSourceSelection)[]).forEach(key => {
         sourcesConfig[key] = { enabled: selectedSources[key], filters: sourceFilters[key] };
       });
       const url = buildFullApiUrl(API_ROUTES.ADMIN_EMAIL_ADDRESSES_SOURCES);
-      const params = new URLSearchParams({ sources: JSON.stringify(sourcesConfig), includeMetadata: 'true' });
-      const res = await fetch(`${url}?${params}`, { credentials: 'include' });
+      const params = new URLSearchParams({
+        sources: JSON.stringify(sourcesConfig),
+        includeMetadata: 'true',
+        _t: String(Date.now()),
+      });
+      const res = await fetch(`${url}?${params}`, { credentials: 'include', cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (requestId !== previewRequestIdRef.current) return;
       if (data.success && data.data) {
         setPreviewEmails(data.data.emailAddresses || []);
         setPreviewData({
@@ -155,6 +198,7 @@ export function BulkEmailSelector({
         setPreviewData(null);
       }
     } catch (e: unknown) {
+      if (requestId !== previewRequestIdRef.current) return;
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description: (e as Error).message || (language === 'en' ? 'Failed to fetch emails' : 'Échec de la récupération des emails'),
@@ -163,7 +207,9 @@ export function BulkEmailSelector({
       setPreviewEmails([]);
       setPreviewData(null);
     } finally {
-      setLoadingPreview(false);
+      if (requestId === previewRequestIdRef.current) {
+        setLoadingPreview(false);
+      }
     }
   };
 
@@ -375,6 +421,19 @@ export function BulkEmailSelector({
     }));
   };
 
+  const formatEventOptionLabel = (event: CampaignEventOption): string => {
+    if (!event.date) return event.name;
+    const d = new Date(event.date);
+    const dateStr = Number.isNaN(d.getTime())
+      ? event.date
+      : d.toLocaleDateString(language === 'en' ? 'en-GB' : 'fr-FR', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+    return `${event.name} (${dateStr})`;
+  };
+
   const getVillesForCity = (city: string | null): string[] => {
     if (!city) return [];
     if (city === 'Sousse') return SOUSSE_VILLES as unknown as string[];
@@ -531,6 +590,27 @@ export function BulkEmailSelector({
                   <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-3">
                     <Label className="text-sm font-medium">{getEmailSourceDisplayName('orders', language)}</Label>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="space-y-2 md:col-span-3">
+                        <Label className="text-xs">{language === 'en' ? 'Event name' : 'Nom de l\'événement'}</Label>
+                        <Select
+                          value={sourceFilters.orders.event_id || 'all'}
+                          onValueChange={v =>
+                            handleFilterChange('orders', 'event_id', v === 'all' ? null : v)
+                          }
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">
+                              {language === 'en' ? 'All events' : 'Tous les événements'}
+                            </SelectItem>
+                            {campaignEvents.map(event => (
+                              <SelectItem key={event.id} value={event.id}>
+                                {formatEventOptionLabel(event)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div className="space-y-2">
                         <Label className="text-xs">{language === 'en' ? 'City' : 'Ville'}</Label>
                         <Select
@@ -562,6 +642,39 @@ export function BulkEmailSelector({
                           </Select>
                         </div>
                       )}
+                    </div>
+                  </div>
+                )}
+                {selectedSources.newsletter_subscribers && (
+                  <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-3">
+                    <Label className="text-sm font-medium">{getEmailSourceDisplayName('newsletter_subscribers', language)}</Label>
+                    <div className="space-y-2">
+                      <Label className="text-xs">{language === 'en' ? 'Label name' : 'Nom du libellé'}</Label>
+                      <Select
+                        value={sourceFilters.newsletter_subscribers.importLabel || '__all__'}
+                        onValueChange={v =>
+                          handleFilterChange(
+                            'newsletter_subscribers',
+                            'importLabel',
+                            v === '__all__' ? null : v
+                          )
+                        }
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">
+                            {language === 'en' ? 'All subscribers' : 'Tous les abonnés'}
+                          </SelectItem>
+                          <SelectItem value="__website__">
+                            {language === 'en' ? 'Website signups' : 'Inscriptions site web'}
+                          </SelectItem>
+                          {(sourceCounts.newsletter_subscribers?.importLabels ?? []).map(label => (
+                            <SelectItem key={label} value={label}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 )}
