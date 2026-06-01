@@ -93,6 +93,27 @@ async function fetchAllPaginated(buildPageQuery, pageSize = 1000) {
   return all;
 }
 
+/** Accurate sent/failed/pending totals (PostgREST default select cap is 1000 rows). */
+async function countMarketingCampaignRecipients(dbClient, campaignId) {
+  const countFor = async (status) => {
+    let q = dbClient
+      .from('marketing_campaign_recipients')
+      .select('*', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId);
+    if (status) q = q.eq('status', status);
+    const { count, error } = await q;
+    if (error) throw error;
+    return count ?? 0;
+  };
+  const [total, sent, failed, pending] = await Promise.all([
+    countFor(null),
+    countFor('sent'),
+    countFor('failed'),
+    countFor('pending')
+  ]);
+  return { total, sent, failed, pending };
+}
+
 /** Apply phone_subscribers filters (dates + import label). */
 function applyPhoneSubscriberMarketingFilters(query, f = {}) {
   if (f.dateFrom) query = query.gte('subscribed_at', f.dateFrom);
@@ -560,12 +581,42 @@ function resolveMarketingEmailPacing(sources, emailTemplate) {
   };
 }
 
+/** Vercel `maxDuration` for api/misc.js (seconds). Must match vercel.json unless overridden. */
+function marketingFunctionMaxDurationMs() {
+  const sec = parseInt(
+    process.env.MARKETING_FUNCTION_MAX_DURATION_SEC || process.env.VERCEL_MAX_DURATION || '60',
+    10
+  );
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 60000;
+}
+
+function marketingSendDeadlineBufferMs() {
+  const n = parseInt(process.env.MARKETING_SEND_DEADLINE_BUFFER_MS || '5000', 10);
+  return Number.isFinite(n) && n >= 1000 ? n : 5000;
+}
+
+function marketingSendEstimatedMsPerEmail() {
+  const n = parseInt(process.env.MARKETING_SEND_ESTIMATED_MS || '5000', 10);
+  return Number.isFinite(n) && n >= 1000 ? n : 5000;
+}
+
+/** Wall-clock budget for one send-batch / cron tick (never exceeds Vercel function limit). */
 function marketingSendBatchMaxMs() {
   const n = parseInt(process.env.MARKETING_SEND_BATCH_MAX_MS || '120000', 10);
   const cap = parseInt(process.env.MARKETING_SEND_BATCH_MAX_MS_CAP || '300000', 10);
-  const ms = Number.isFinite(n) && n >= 10000 ? n : 120000;
-  const maxCap = Number.isFinite(cap) && cap >= ms ? cap : 300000;
-  return Math.min(ms, maxCap);
+  const configured = Number.isFinite(n) && n >= 10000 ? n : 120000;
+  const maxCap = Number.isFinite(cap) && cap >= configured ? cap : 300000;
+  const platformMs = marketingFunctionMaxDurationMs() - marketingSendDeadlineBufferMs();
+  return Math.min(Math.min(configured, maxCap), Math.max(10000, platformMs));
+}
+
+/** Max recipients per invocation so the loop finishes before the platform kills the function. */
+function marketingMaxEmailsPerInvocation(campaign, maxDurationMs, skipInterEmailDelay) {
+  const interDelayMs = marketingInterEmailDelayMs(campaign, skipInterEmailDelay);
+  const sendMs = campaign.type === 'email' ? marketingSendEstimatedMsPerEmail() : 2000;
+  const perRecipient = sendMs + interDelayMs;
+  if (perRecipient <= 0) return 10000;
+  return Math.max(1, Math.floor(maxDurationMs / perRecipient));
 }
 
 function sanitizeRecipientDisplayName(name) {
@@ -919,6 +970,9 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
     }
   }
 
+  const maxDurationMs = marketingSendBatchMaxMs();
+  cap = Math.min(cap, marketingMaxEmailsPerInvocation(campaign, maxDurationMs, skipInterEmailDelay));
+
   const { data: pending, error: pendErr } = await dbClient
     .from('marketing_campaign_recipients')
     .select('id, recipient_value, recipient_display_name')
@@ -928,8 +982,13 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
     .limit(cap);
 
   if (pendErr || !pending || pending.length === 0) {
-    const { data: rem } = await dbClient.from('marketing_campaign_recipients').select('id').eq('campaign_id', campaignId).eq('status', 'pending');
-    const remaining = rem?.length ?? 0;
+    const { count: remainingCount, error: remErr } = await dbClient
+      .from('marketing_campaign_recipients')
+      .select('*', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('status', 'pending');
+    if (remErr) throw remErr;
+    const remaining = remainingCount ?? 0;
     if (remaining === 0) {
       await dbClient.from('marketing_campaigns').update({ status: 'completed' }).eq('id', campaignId);
     }
@@ -947,9 +1006,6 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
   let sentCount = 0;
   let failCount = 0;
   const now = new Date().toISOString();
-  const maxDurationMs = marketingSendBatchMaxMs();
-  const deadline = Date.now() + maxDurationMs;
-
   const interDelayMs = marketingInterEmailDelayMs(campaign, skipInterEmailDelay);
 
   let posterAttachment = null;
@@ -978,6 +1034,8 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
     campaign.type === 'email' && sanitizeEmailTemplate(campaign.email_template) === 'investor_vanguard';
   const envelope = campaign.type === 'email' ? marketingEmailEnvelope(campaign) : null;
   const brevoKeyOpt = campaign.type === 'email' ? brevoApiKeyForCampaign(campaign) : null;
+
+  const deadline = Date.now() + maxDurationMs;
 
   for (let i = 0; i < pending.length; i++) {
     if (Date.now() >= deadline) break;
@@ -1089,11 +1147,20 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
     }
     const delayMs = interDelayMs;
     const isLastInThisBatch = i === pending.length - 1;
-    if (delayMs > 0 && !isLastInThisBatch) await new Promise(r => setTimeout(r, delayMs));
+    if (delayMs > 0 && !isLastInThisBatch) {
+      const roomForAnother =
+        Date.now() + delayMs + marketingSendEstimatedMsPerEmail() < deadline;
+      if (roomForAnother) await new Promise((r) => setTimeout(r, delayMs));
+    }
   }
 
-  const { data: remainingRecs } = await dbClient.from('marketing_campaign_recipients').select('id').eq('campaign_id', campaignId).eq('status', 'pending');
-  const remaining = remainingRecs?.length ?? 0;
+  const { count: remainingCount, error: remErr } = await dbClient
+    .from('marketing_campaign_recipients')
+    .select('*', { count: 'exact', head: true })
+    .eq('campaign_id', campaignId)
+    .eq('status', 'pending');
+  if (remErr) throw remErr;
+  const remaining = remainingCount ?? 0;
   if (remaining === 0) {
     await dbClient.from('marketing_campaigns').update({ status: 'completed' }).eq('id', campaignId);
   }
@@ -9536,15 +9603,8 @@ Billets envoyés par email. We Create Memories`;
         }
 
         const withCounts = await Promise.all((campaigns || []).map(async (c) => {
-          const { data: recs } = await dbClient
-            .from('marketing_campaign_recipients')
-            .select('status')
-            .eq('campaign_id', c.id);
-          const total = recs?.length || 0;
-          const sent = recs?.filter(r => r.status === 'sent').length || 0;
-          const failed = recs?.filter(r => r.status === 'failed').length || 0;
-          const pending = recs?.filter(r => r.status === 'pending').length || 0;
-          return { ...c, counts: { total, sent, failed, pending } };
+          const counts = await countMarketingCampaignRecipients(dbClient, c.id);
+          return { ...c, counts };
         }));
 
         return res.json({ success: true, data: withCounts });
@@ -9597,14 +9657,7 @@ Billets envoyés par email. We Create Memories`;
           return res.status(404).json({ success: false, error: 'Campaign not found' });
         }
 
-        const { data: recs } = await dbClient
-          .from('marketing_campaign_recipients')
-          .select('status')
-          .eq('campaign_id', campaignId);
-        const total = recs?.length || 0;
-        const sent = recs?.filter((r) => r.status === 'sent').length || 0;
-        const failed = recs?.filter((r) => r.status === 'failed').length || 0;
-        const pending = recs?.filter((r) => r.status === 'pending').length || 0;
+        const counts = await countMarketingCampaignRecipients(dbClient, campaignId);
 
         const wantRecipients =
           queryParams.include_recipients === '1' || queryParams.include_recipients === 'true';
@@ -9623,7 +9676,7 @@ Billets envoyés par email. We Create Memories`;
           success: true,
           data: {
             ...c,
-            counts: { total, sent, failed, pending },
+            counts,
             ...(recipients != null ? { recipients } : {})
           }
         });
