@@ -1,6 +1,6 @@
 'use strict';
 
-const { emailLogoHeaderHtml } = require('./email-branding.cjs');
+const { emailLogoHeaderHtml, campaignEmailBrandLogoHtml } = require('./email-branding.cjs');
 
 function escapeHtmlAttr(s) {
   return String(s)
@@ -29,7 +29,7 @@ function sanitizeCampaignCtaLabel(raw, fallback = 'Book now') {
   return t || fallback;
 }
 
-// Official campaign email template — structured for readability; lighter promo signals than heavy “deal” layouts (Primary vs Promotions is decided by Gmail).
+// Official campaign email template ? structured for readability; lighter promo signals than heavy ?deal? layouts (Primary vs Promotions is decided by Gmail).
 function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', headerImageUrl = null, ctaUrl = null, ctaLabel = null) {
   const content = String(body || '').replace(/\n/g, '<br>');
   const emailSubject = subject || 'Update from Andiamo Events';
@@ -245,7 +245,7 @@ function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', 
             <tr>
               <td class="content-card" bgcolor="#f4f4f4" style="background:#f4f4f4 !important;background-color:#f4f4f4 !important;background-image:linear-gradient(#f4f4f4,#f4f4f4) !important;border:1px solid #e5e5e5;border-radius:12px;padding:36px 28px;color:#333333 !important;">
       <div class="title-section" style="text-align:center;margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid #e0e0e0;">
-        <p class="title" style="margin:0 0 8px;font-size:22px;font-weight:600;color:#1a1a1a !important;">Andiamo Events</p>
+        ${campaignEmailBrandLogoHtml()}
         <p class="subtitle" style="margin:0;font-size:15px;color:#666666 !important;">${emailSubject.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
       </div>
       ${headerImageBlock}

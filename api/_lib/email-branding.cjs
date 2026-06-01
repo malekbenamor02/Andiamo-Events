@@ -46,6 +46,24 @@ function getEmailLogoBlackUrl() {
   return `${origin}/email-assets/logo-black.png`;
 }
 
+/** Campaign / newsletter header logo (public/email-assets/logo-email.png). */
+function getEmailCampaignLogoUrl() {
+  const override = process.env.EMAIL_CAMPAIGN_LOGO_URL;
+  if (override != null && String(override).trim() !== '') {
+    return String(override).trim();
+  }
+  const origin = getPublicSiteOrigin().replace(/\/$/, '');
+  return `${origin}/email-assets/logo-email.png`;
+}
+
+/** Replaces plain-text “Andiamo Events” in campaign email title sections. */
+function campaignEmailBrandLogoHtml() {
+  const url = getEmailCampaignLogoUrl();
+  return `<div class="brand-logo-wrap" style="text-align:center;margin:0 0 10px;">
+  <img src="${escapeAttr(url)}" alt="Andiamo Events" width="300" style="max-width:100%;height:auto;display:block;margin:0 auto;border:0;outline:none;" />
+</div>`;
+}
+
 function escapeAttr(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -426,6 +444,8 @@ module.exports = {
   getPublicSiteOrigin,
   getEmailLogoUrl,
   getEmailLogoBlackUrl,
+  getEmailCampaignLogoUrl,
+  campaignEmailBrandLogoHtml,
   emailLogoHeaderHtml,
   transactionalEmailDarkStylesCss,
   invitationEmailDarkStylesCss,

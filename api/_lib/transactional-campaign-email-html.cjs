@@ -2,6 +2,7 @@
 
 const {
   emailLogoHeaderHtml,
+  campaignEmailBrandLogoHtml,
   transactionalEmailDarkStylesCss,
   transactionalOrderStyleSupportAndClosingHtml,
   transactionalOrderStyleDeveloperFooterHtml,
@@ -45,8 +46,8 @@ function wrapTransactionalCampaignEmail({ title, bodyHtml }) {
   <div class="email-wrapper">
     <div class="content-card">
       <div class="title-section">
+        ${campaignEmailBrandLogoHtml()}
         <h1 class="title">${escapeHtml(title)}</h1>
-        <p class="subtitle">Andiamo Events</p>
       </div>
       ${bodyHtml}
       ${transactionalOrderStyleSupportAndClosingHtml()}

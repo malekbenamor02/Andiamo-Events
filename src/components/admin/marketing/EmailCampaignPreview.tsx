@@ -174,7 +174,11 @@ export function EmailCampaignPreview({
           style={{ backgroundColor: INNER_BG, borderColor: '#e5e5e5' }}
         >
           <div className="mb-7 pb-5 border-b border-[#e0e0e0] text-center">
-            <p className="text-[22px] font-semibold text-[#1a1a1a] mb-2">Andiamo Events</p>
+            <img
+              src="/email-assets/logo-email.png"
+              alt="Andiamo Events"
+              className="mx-auto mb-2 h-auto w-full max-w-[300px] object-contain"
+            />
             <p className="text-[15px] text-[#666666]">{emailSubject}</p>
           </div>
           {showImage && hasHeader ? (
