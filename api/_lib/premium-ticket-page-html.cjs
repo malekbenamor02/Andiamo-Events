@@ -16,6 +16,9 @@ function splitEventHeadline(name) {
   const words = s.split(/\s+/).filter(Boolean);
   if (words.length === 0) return { line1: 'Event', line2: '' };
   if (words.length === 1) return { line1: '', line2: words[0] };
+  // Two-word titles (e.g. "Coming Soon") stay on one line — splitting duplicates poster
+  // watermarks and breaks in Chromium PDF when paired with gradient headline text.
+  if (words.length === 2) return { line1: '', line2: s };
   const mid = Math.ceil(words.length / 2);
   return {
     line1: words.slice(0, mid).join(' '),
@@ -208,10 +211,7 @@ function buildPremiumTicketsPdfHtmlDocument(opts) {
       color: #fff;
     }
     .hl-muted {
-      background: linear-gradient(90deg, #fff, rgba(255,255,255,0.38));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
+      color: rgba(255, 255, 255, 0.72);
     }
     .hl-accent { color: #e11934; }
     .grid3 {
