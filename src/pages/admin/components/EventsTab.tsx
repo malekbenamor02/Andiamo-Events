@@ -950,6 +950,17 @@ export function EventsTab(p: EventsTabProps) {
                             accept="image/*"
                           />
                         </div>
+                        <div>
+                          <Label>{p.t.eventSeatingChart}</Label>
+                          <p className="text-sm text-muted-foreground mb-2">{p.t.eventSeatingChartHint}</p>
+                          <FileUpload
+                            label={p.t.eventSeatingChart}
+                            onFileSelect={(file) => p.setEditingEvent(prev => prev ? { ...prev, _uploadSeatingChartFile: file } : prev)}
+                            onUrlChange={(url) => p.setEditingEvent(prev => prev ? { ...prev, seating_chart_url: url || null } : prev)}
+                            currentUrl={p.editingEvent?.seating_chart_url ?? undefined}
+                            accept="image/*"
+                          />
+                        </div>
                         {/* Gallery Images & Videos — gallery type or completed (recap) */}
                         {(p.editingEvent?.event_type === "gallery" ||
                           p.editingEvent?.event_status === "completed") && (

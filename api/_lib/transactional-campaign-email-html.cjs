@@ -1,9 +1,16 @@
 'use strict';
 
-const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./email-branding.cjs');
+const {
+  emailLogoHeaderHtml,
+  transactionalEmailDarkStylesCss,
+  transactionalOrderStyleSupportAndClosingHtml,
+  transactionalOrderStyleDeveloperFooterHtml,
+  transactionalOrderStylePlainTextFooterLines,
+} = require('./email-branding.cjs');
 const {
   normalizeMarketingHeaderImageUrl,
   sanitizeCampaignCtaLabel,
+  escapeHtmlAttr,
 } = require('./campaign-email-html.cjs');
 
 function escapeHtml(s) {
@@ -20,26 +27,6 @@ function sanitizeRecipientName(raw) {
     .slice(0, 80)
     .replace(/[<>]/g, '');
   return t || 'there';
-}
-
-function transactionalCampaignClosingFooterHtml() {
-  return `
-      <div class="support-section">
-        <p class="support-text">
-          Questions? Reply to this email or contact us at
-          <a href="mailto:contact@andiamoevents.com" class="support-email">contact@andiamoevents.com</a>.
-        </p>
-      </div>
-      <div class="closing-section">
-        <p class="signature">
-          Best regards,<br>
-          The Andiamo Events Team
-        </p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
 }
 
 function wrapTransactionalCampaignEmail({ title, bodyHtml }) {
@@ -62,48 +49,51 @@ function wrapTransactionalCampaignEmail({ title, bodyHtml }) {
         <p class="subtitle">Andiamo Events</p>
       </div>
       ${bodyHtml}
-      ${transactionalCampaignClosingFooterHtml()}`;
+      ${transactionalOrderStyleSupportAndClosingHtml()}
+    </div>
+    ${transactionalOrderStyleDeveloperFooterHtml()}
+  </div>
+</body>
+</html>`;
 }
 
 /**
- * Standard campaign email — same dark transactional layout as order/ticket mail.
- * @param {{ subject?: string, body?: string, recipientName?: string, ctaUrl?: string|null, ctaLabel?: string|null }} opts
+ * Standard campaign email — dark transactional layout aligned with order/ticket mail.
+ * @param {{ subject?: string, body?: string, ctaUrl?: string|null, ctaLabel?: string|null }} opts
  */
 function buildTransactionalCampaignEmailHtml(opts) {
   const subject = String(opts.subject || '').trim() || 'Update from Andiamo Events';
-  const recipientName = sanitizeRecipientName(opts.recipientName);
   const bodyHtml = escapeHtml(String(opts.body || '')).replace(/\n/g, '<br>');
   const safeCtaUrl = normalizeMarketingHeaderImageUrl(opts.ctaUrl);
-  const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(opts.ctaLabel, 'View details') : '';
+  const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(opts.ctaLabel, 'Book now') : '';
   const ctaBlock = safeCtaUrl
-    ? `<p class="message" style="margin-top:24px;">
-  <a href="${escapeHtml(safeCtaUrl)}" target="_blank" rel="noopener noreferrer" style="color:#E21836 !important;font-weight:600;text-decoration:underline;">${escapeHtml(safeCtaLabel)}</a>
-</p>`
+    ? `<div style="text-align:center;margin:32px 0 8px;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;border-collapse:separate;">
+    <tr>
+      <td style="border-radius:10px;background:#E21836;">
+        <a href="${escapeHtmlAttr(safeCtaUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 32px;font-size:16px;font-weight:600;line-height:1.25;color:#FFFFFF !important;text-decoration:none;border-radius:10px;">${escapeHtml(safeCtaLabel)}</a>
+      </td>
+    </tr>
+  </table>
+</div>`
     : '';
 
   const inner = `
-    <p class="greeting">Dear <strong>${escapeHtml(recipientName)}</strong>,</p>
     <div class="message">${bodyHtml}</div>
     ${ctaBlock}`;
 
   return wrapTransactionalCampaignEmail({ title: subject, bodyHtml: inner });
 }
 
-function buildTransactionalCampaignEmailPlainText(subject, body, recipientName = 'there', ctaUrl = null, ctaLabel = null) {
+function buildTransactionalCampaignEmailPlainText(subject, body, _recipientName, ctaUrl = null, ctaLabel = null) {
   const emailSubject = subject || 'Update from Andiamo Events';
-  const name = sanitizeRecipientName(recipientName);
   const safeCtaUrl = normalizeMarketingHeaderImageUrl(ctaUrl);
-  const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'View details') : '';
-  const lines = [emailSubject, '', `Dear ${name},`, '', String(body || '').trim(), ''];
+  const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'Book now') : '';
+  const lines = [emailSubject, '', String(body || '').trim(), ''];
   if (safeCtaUrl) {
     lines.push(`${safeCtaLabel}: ${safeCtaUrl}`, '');
   }
-  lines.push(
-    'Questions? Reply to this email or contact@andiamoevents.com',
-    '',
-    'Best regards,',
-    'The Andiamo Events Team'
-  );
+  lines.push(...transactionalOrderStylePlainTextFooterLines());
   return lines.join('\n');
 }
 

@@ -380,6 +380,48 @@ function emailLogoHeaderHtml() {
   return '';
 }
 
+/** Support + closing inside content-card (matches order confirmation emails). */
+function transactionalOrderStyleSupportAndClosingHtml() {
+  return `
+      <div class="support-section">
+        <p class="support-text">Need assistance? Contact us at
+          <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a> or in our Instagram page
+          <a href="https://www.instagram.com/andiamo.events/" target="_blank" class="support-email">@andiamo.events</a> or contact with
+          <a href="tel:28070128" class="support-email">28070128</a>.
+        </p>
+      </div>
+      <div class="closing-section">
+        <p class="slogan">We Create Memories</p>
+        <p class="signature">Best regards,<br>The Andiamo Events Team</p>
+      </div>`;
+}
+
+/** Developer footer below content-card (matches order confirmation emails). */
+function transactionalOrderStyleDeveloperFooterHtml() {
+  return `
+        <div class="footer">
+          <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+          <div class="footer-links">
+            <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
+            <span style="color: #888888;">&bull;</span>
+            <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
+          </div>
+        </div>`;
+}
+
+function transactionalOrderStylePlainTextFooterLines() {
+  return [
+    'Need assistance? Contact@andiamoevents.com — Instagram @andiamo.events — 28070128',
+    '',
+    'We Create Memories',
+    '',
+    'Best regards,',
+    'The Andiamo Events Team',
+    '',
+    'Developed by Malek Ben Amor — https://www.instagram.com/malekbenamor.dev/ — https://malekbenamor.dev/',
+  ];
+}
+
 module.exports = {
   getPublicSiteOrigin,
   getEmailLogoUrl,
@@ -388,4 +430,7 @@ module.exports = {
   transactionalEmailDarkStylesCss,
   invitationEmailDarkStylesCss,
   escapeAttr,
+  transactionalOrderStyleSupportAndClosingHtml,
+  transactionalOrderStyleDeveloperFooterHtml,
+  transactionalOrderStylePlainTextFooterLines,
 };

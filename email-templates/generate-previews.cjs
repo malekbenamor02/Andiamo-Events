@@ -24,10 +24,7 @@ function write(name, html) {
 const { buildOnlineTicketEmailHtml } = require(path.join(root, 'api/_lib/online-ticket-email-html.cjs'));
 const { buildOrderConfirmationEmailHtml } = require(path.join(root, 'api/_lib/order-confirmation-email-html.cjs'));
 const { createOfficialInvitationEmailHTML } = require(path.join(root, 'api/_lib/official-invitation-email-html.cjs'));
-const { buildTransactionalCampaignEmailHtml } = require(path.join(
-  root,
-  'api/_lib/transactional-campaign-email-html.cjs'
-));
+const { buildCampaignEmailHtml } = require(path.join(root, 'api/_lib/campaign-email-html.cjs'));
 const { getBaseEmailHtml } = require(path.join(root, 'api/_lib/career-email-base-html.cjs'));
 const { emailLogoHeaderHtml } = require(path.join(root, 'api/_lib/email-branding.cjs'));
 
@@ -115,16 +112,17 @@ write(
   }).html
 );
 
-// --- 06 Marketing / standard transactional campaign ---
+// --- 06 Marketing / standard campaign ---
 write(
   '06-marketing-campaign.html',
-  buildTransactionalCampaignEmailHtml({
-    subject: 'Important update about your event',
-    body: 'We wanted to share an important update with you.\n\nThank you for being part of Andiamo Events.',
-    recipientName: 'Alex',
-    ctaUrl: null,
-    ctaLabel: null,
-  })
+  buildCampaignEmailHtml(
+    'Important update from Andiamo Events',
+    'We wanted to share an important update with you.\n\nThank you for being part of Andiamo Events.',
+    'Subscriber',
+    null,
+    'https://www.andiamoevents.com',
+    'Book now'
+  )
 );
 
 // --- 07–08 Career (base layout) ---

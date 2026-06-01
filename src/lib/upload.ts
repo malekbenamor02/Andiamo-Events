@@ -59,7 +59,7 @@ async function deleteFromBucket(path: string, bucket: string): Promise<boolean> 
 
 export const uploadImage = async (file: File, folder: string = 'posters'): Promise<UploadResult> => {
   const filePath = makeStoragePath(file, folder);
-  const longCache = folder === 'posters' || folder === 'gallery';
+  const longCache = folder === 'posters' || folder === 'gallery' || folder === 'seating-charts';
   return uploadToBucket(
     file,
     'images',

@@ -59,6 +59,8 @@ export interface Event {
   city: string;
   description?: string;
   poster_url?: string;
+  /** Optional venue seating plan for pass-purchase; null hides the section. */
+  seating_chart_url?: string | null;
   /** When true, event is hidden from production; on localhost it still appears in lists (incl. admin selector, labeled). */
   is_test?: boolean;
   event_type?: 'upcoming' | 'gallery'; // New field to distinguish event types
@@ -74,6 +76,7 @@ export interface Event {
   created_at: string;
   updated_at: string;
   _uploadFile?: File | null;
+  _uploadSeatingChartFile?: File | null;
   _pendingGalleryImages?: File[]; // Temporary storage for pending gallery image files
   _pendingGalleryVideos?: File[]; // Temporary storage for pending gallery video files
 }

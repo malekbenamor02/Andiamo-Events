@@ -27,6 +27,7 @@ import { AmbassadorSelector } from '@/components/orders/AmbassadorSelector';
 import { OrderSummary } from '@/components/orders/OrderSummary';
 import { OrderSuccessScreen } from '@/components/orders/OrderSuccessScreen';
 import { PassPurchaseEventDetails } from '@/components/orders/PassPurchaseEventDetails';
+import { PassPurchaseSeatingChart } from '@/components/orders/PassPurchaseSeatingChart';
 import { usePaymentOptions } from '@/hooks/usePaymentOptions';
 import { useActiveAmbassadors } from '@/hooks/useActiveAmbassadors';
 import { PaymentMethod } from '@/lib/constants/orderStatuses';
@@ -79,6 +80,7 @@ interface Event {
   venue: string;
   city: string;
   poster_url?: string;
+  seating_chart_url?: string | null;
   passes?: EventPass[];
   is_test?: boolean;
   event_status?: string;
@@ -1732,8 +1734,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
               <PassPurchaseEventDetails event={event} language={language} />
             </div>
 
-            {/* Main Form — wizard; scroll-into-view on step change keeps this card visible after Continue/Back */}
+            {/* Seating map + purchase wizard */}
             <div className="flex flex-col gap-4 lg:col-span-2">
+              {event.seating_chart_url?.trim() ? (
+                <PassPurchaseSeatingChart
+                  language={language}
+                  imageUrl={event.seating_chart_url.trim()}
+                />
+              ) : null}
+
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm text-muted-foreground">
                 <span aria-live="polite">
                   {t[language].stepOf.replace('{n}', String(wizardStep)).replace('{total}', String(WIZARD_STEP_COUNT))}

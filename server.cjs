@@ -6329,6 +6329,7 @@ app.post('/api/admin/events', requireAdminAuth, async (req, res) => {
       city: payload.city ?? null,
       description: payload.description ?? null,
       poster_url: payload.poster_url ?? null,
+      seating_chart_url: payload.seating_chart_url ?? null,
       event_status: payload.event_status === 'completed' || payload.event_status === 'cancelled' || payload.event_status === 'active'
         ? payload.event_status
         : 'active',
@@ -6405,6 +6406,7 @@ app.patch('/api/admin/events/:id', requireAdminAuth, async (req, res) => {
       city: payload.city ?? null,
       description: payload.description ?? null,
       poster_url: payload.poster_url ?? null,
+      seating_chart_url: payload.seating_chart_url ?? null,
       event_status: normalizedStatus,
       event_type: eventType,
       gallery_images: payload.gallery_images ?? [],

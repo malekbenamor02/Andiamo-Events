@@ -222,7 +222,7 @@ const ONLINE_ORDERS_SELECT =
   "id, created_at, updated_at, event_id, source, user_name, user_phone, user_email, city, ville, ambassador_id, quantity, total_price, total_with_fees, status, payment_status, payment_method, payment_gateway_reference, payment_confirm_response, order_number, notes, admin_notes, cancelled_at, cancellation_reason, accepted_at, completed_at, assigned_at, presale_code_id, payment_status_set_by, payment_status_set_at, payment_status_set_by_name, order_passes(id, order_id, pass_type, quantity, price, created_at, updated_at)";
 
 const EVENTS_ADMIN_LIST_COLUMNS =
-  "id, name, date, venue, city, description, poster_url, is_test, event_type, event_status, gallery_images, gallery_videos, presale_enabled, presale_active_from, presale_active_until, presale_hide_from_public_list, presale_pass_video_url, presale_pass_mux_playback_id, created_at, updated_at";
+  "id, name, date, venue, city, description, poster_url, seating_chart_url, is_test, event_type, event_status, gallery_images, gallery_videos, presale_enabled, presale_active_from, presale_active_until, presale_hide_from_public_list, presale_pass_video_url, presale_pass_mux_playback_id, created_at, updated_at";
 
 const APPLICATIONS_LIST_COLUMNS =
   "id, full_name, age, phone_number, email, city, ville, social_link, motivation, status, created_at, reapply_delay_date, manually_added, reviewed_by_admin_id, reviewed_at, reviewed_by_name";
@@ -1299,6 +1299,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       eventCity: "City",
       eventDescription: "Description",
       eventPoster: "Poster URL",
+      eventSeatingChart: "Seating plan (optional)",
+      eventSeatingChartHint: "Shown on the pass purchase page. Leave empty to hide the seating section.",
       eventInstagramLink: "Instagram Link",
       eventFeatured: "Featured Event",
       eventStandardPrice: "Standard Price (TND)",
@@ -1402,6 +1404,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       eventCity: "Ville",
       eventDescription: "Description",
       eventPoster: "URL de l'Affiche",
+      eventSeatingChart: "Plan de salle (optionnel)",
+      eventSeatingChartHint: "Affiché sur la page d'achat de passes. Laissez vide pour masquer la section.",
       eventInstagramLink: "Lien Instagram",
       eventFeatured: "Événement en vedette",
       eventStandardPrice: "Prix Standard (TND)",
@@ -8330,6 +8334,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // No pass validation or saving needed here - passes are managed independently
 
       let posterUrl = event.poster_url;
+      let seatingChartUrl = event.seating_chart_url?.trim() || null;
 
       // Upload image if file is provided
       if (uploadedFile) {
@@ -8349,6 +8354,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
         
         posterUrl = uploadResult.url;
+        setUploadingImage(false);
+      }
+
+      if (event._uploadSeatingChartFile) {
+        setUploadingImage(true);
+        const { optimizeImageToWebp } = await loadHeroMediaPreprocess();
+        const optimizedSeating = await optimizeImageToWebp(event._uploadSeatingChartFile, { maxEdge: 1920, quality: 0.84 });
+        const seatingUpload = await uploadImage(optimizedSeating, 'seating-charts');
+        if (seatingUpload.error) {
+          toast({
+            title: t.error,
+            description: language === 'en' ? `Failed to upload seating plan: ${seatingUpload.error}` : `Échec du téléchargement du plan de salle: ${seatingUpload.error}`,
+            variant: "destructive",
+          });
+          setUploadingImage(false);
+          return false;
+        }
+        seatingChartUrl = seatingUpload.url;
         setUploadingImage(false);
       }
 
@@ -8427,6 +8450,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         city: event.city,
         description: event.description,
         poster_url: posterUrl,
+        seating_chart_url: seatingChartUrl,
         event_status: normalizedEventStatus,
         event_type: effectiveEventType,
         gallery_images: finalGalleryImages,
@@ -8493,7 +8517,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             ? { 
                 ...e, 
                 ...event, 
-                poster_url: posterUrl, 
+                poster_url: posterUrl,
+                seating_chart_url: seatingChartUrl,
                 date: persistedDate,
                 // Keep existing passes (not modified in edit dialog)
                 gallery_images: finalGalleryImages,

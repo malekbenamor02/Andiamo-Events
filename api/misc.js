@@ -36,12 +36,6 @@ const {
   buildInvestorVanguardEmailPlainText,
 } = requireFromRoot(path.join(__dirname, '_lib', 'investor-campaign-email-html.cjs'));
 
-const {
-  buildTransactionalCampaignEmailHtml,
-  buildTransactionalCampaignEmailPlainText,
-  sanitizeRecipientName,
-} = requireFromRoot(path.join(__dirname, '_lib', 'transactional-campaign-email-html.cjs'));
-
 const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot(
   path.join(__dirname, '_lib', 'online-payment-fee.cjs')
 );
@@ -447,18 +441,22 @@ function parseMarketingDailyEmailCap(raw) {
 /** Plain-text part for multipart/alternative — helps inbox classification vs HTML-only blasts (Gmail tab placement is not guaranteed). */
 function buildCampaignEmailPlainText(subject, body, recipientDisplay = 'Subscriber', ctaUrl = null, ctaLabel = null) {
   const emailSubject = subject || 'Update from Andiamo Events';
-  const greetingName = String(recipientDisplay || 'there').trim() || 'there';
   const safeCtaUrl = normalizeMarketingHeaderImageUrl(ctaUrl);
-  const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'View details') : '';
-  const lines = [emailSubject, '', `Dear ${greetingName},`, '', String(body || '').trim(), ''];
+  const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'Book now') : '';
+  const lines = [emailSubject, '', String(body || '').trim(), ''];
   if (safeCtaUrl) {
     lines.push(`${safeCtaLabel}: ${safeCtaUrl}`, '');
   }
   lines.push(
-    'Questions? Reply to this email or contact@andiamoevents.com',
+    'Need assistance? Contact@andiamoevents.com — Instagram @andiamo.events — 28070128',
+    'https://www.andiamoevents.com/contact',
+    '',
+    'We Create Memories',
     '',
     'Best regards,',
-    'The Andiamo Events Team'
+    'The Andiamo Events Team',
+    '',
+    'Developed by Malek Ben Amor — https://www.instagram.com/malekbenamor.dev/ — https://malekbenamor.dev/'
   );
   return lines.join('\n');
 }
@@ -526,30 +524,7 @@ function marketingCronBatchSize() {
   return Math.max(1, Math.min(10000, parseInt(process.env.MARKETING_CRON_BATCH_SIZE || '25', 10) || 25));
 }
 
-function marketingTransactionalBatchSize() {
-  return Math.max(1, parseInt(process.env.MARKETING_TRANSACTIONAL_BATCH_SIZE || '1', 10) || 1);
-}
-
-function marketingTransactionalDelayMinutes() {
-  const v = parseFloat(process.env.MARKETING_TRANSACTIONAL_DELAY_MINUTES || '3');
-  return Number.isFinite(v) && v >= 0 ? v : 3;
-}
-
-/** Standard email campaigns use order-style transactional HTML and one-recipient pacing. */
-function isStandardTransactionalCampaign(campaign) {
-  if (!campaign || campaign.type !== 'email') return false;
-  return sanitizeEmailTemplate(campaign.email_template) === 'standard';
-}
-
-function marketingPacingForCampaign(campaign) {
-  if (isStandardTransactionalCampaign(campaign)) {
-    const delay = marketingTransactionalDelayMinutes();
-    return {
-      batch_size: marketingTransactionalBatchSize(),
-      delay_minutes: delay,
-      batch_delay_minutes: delay,
-    };
-  }
+function marketingPacingForCampaign(_campaign) {
   return {
     batch_size: marketingCronBatchSize(),
     delay_minutes: marketingDefaultDelayMinutesBetweenEmails(),
@@ -557,12 +532,18 @@ function marketingPacingForCampaign(campaign) {
   };
 }
 
-const ORDER_CONTACT_FROM = '"Andiamo Events" <contact@andiamoevents.com>';
+function sanitizeRecipientDisplayName(name) {
+  const t = String(name == null ? '' : name)
+    .trim()
+    .slice(0, 120)
+    .replace(/[<>\n\r]/g, '');
+  return t || 'there';
+}
 
 function recipientDisplayFromEmail(email) {
   if (!email || typeof email !== 'string' || !email.includes('@')) return 'there';
   const local = (email.split('@')[0] || 'there').replace(/[^a-zA-Z0-9._-]/g, ' ').trim();
-  return sanitizeRecipientName(local || 'there');
+  return sanitizeRecipientDisplayName(local || 'there');
 }
 
 function pushMarketingEmailRecipient(seen, recipients, email, displayName) {
@@ -571,7 +552,7 @@ function pushMarketingEmailRecipient(seen, recipients, email, displayName) {
   seen.add(value);
   const name =
     displayName != null && String(displayName).trim() !== ''
-      ? sanitizeRecipientName(String(displayName).trim())
+      ? sanitizeRecipientDisplayName(String(displayName).trim())
       : recipientDisplayFromEmail(value);
   recipients.push({
     recipient_type: 'email',
@@ -846,10 +827,6 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
   }
 
   let cap = campaign.batch_size;
-  const standardTransactional = isStandardTransactionalCampaign(campaign);
-  if (standardTransactional) {
-    cap = Math.min(cap, marketingTransactionalBatchSize());
-  }
   if (campaign.type === 'email') {
     const dailyCap = parseMarketingDailyEmailCap(campaign.daily_email_cap);
     const today = new Date().toISOString().split('T')[0];
@@ -919,30 +896,19 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
   const interDelayMs = marketingInterEmailDelayMs(campaign, skipInterEmailDelay);
 
   let posterAttachment = null;
-  if (
-    campaign.type === 'email' &&
-    !standardTransactional &&
-    campaign.attach_poster &&
-    campaign.poster_attachment_url
-  ) {
+  if (campaign.type === 'email' && campaign.attach_poster && campaign.poster_attachment_url) {
     try {
       posterAttachment = await fetchMarketingPosterAttachment(campaign.poster_attachment_url);
     } catch (e) {
       console.error('[marketing-email] poster fetch failed:', e.message || e);
     }
-  } else if (
-    campaign.type === 'email' &&
-    !standardTransactional &&
-    campaign.attach_poster &&
-    !campaign.poster_attachment_url
-  ) {
+  } else if (campaign.type === 'email' && campaign.attach_poster && !campaign.poster_attachment_url) {
     console.warn('[marketing-email] attach_poster is true but poster_attachment_url is empty', {
       campaign_id: campaignId,
     });
   }
   if (
     campaign.type === 'email' &&
-    !standardTransactional &&
     campaign.attach_poster &&
     campaign.poster_attachment_url &&
     (!posterAttachment || !posterAttachment.buffer || !posterAttachment.buffer.length)
@@ -953,14 +919,8 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
   }
   const investorTpl =
     campaign.type === 'email' && sanitizeEmailTemplate(campaign.email_template) === 'investor_vanguard';
-  const envelope =
-    campaign.type === 'email'
-      ? standardTransactional
-        ? { from: ORDER_CONTACT_FROM, replyTo: ORDER_CONTACT_FROM }
-        : marketingEmailEnvelope(campaign)
-      : null;
-  const brevoKeyOpt =
-    campaign.type === 'email' && !standardTransactional ? brevoApiKeyForCampaign(campaign) : null;
+  const envelope = campaign.type === 'email' ? marketingEmailEnvelope(campaign) : null;
+  const brevoKeyOpt = campaign.type === 'email' ? brevoApiKeyForCampaign(campaign) : null;
 
   for (let i = 0; i < pending.length; i++) {
     if (Date.now() >= deadline) break;
@@ -977,7 +937,7 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
           });
         const recipientDisplay =
           rec.recipient_display_name && String(rec.recipient_display_name).trim()
-            ? sanitizeRecipientName(rec.recipient_display_name)
+            ? sanitizeRecipientDisplayName(rec.recipient_display_name)
             : recipientDisplayFromEmail(rec.recipient_value);
         const subj =
           campaign.subject ||
@@ -990,42 +950,25 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
               ctaUrl: campaign.cta_url,
               ctaLabel: campaign.cta_label,
             })
-          : standardTransactional
-            ? buildTransactionalCampaignEmailHtml({
-                subject: subj,
-                body: campaign.body,
-                recipientName: recipientDisplay,
-                ctaUrl: campaign.cta_url,
-                ctaLabel: campaign.cta_label,
-              })
-            : buildCampaignEmailHtml(
-                subj,
-                campaign.body,
-                recipientDisplay,
-                campaign.header_image_url,
-                campaign.cta_url,
-                campaign.cta_label
-              );
+          : buildCampaignEmailHtml(
+              subj,
+              campaign.body,
+              recipientDisplay,
+              campaign.header_image_url,
+              campaign.cta_url,
+              campaign.cta_label
+            );
         const text = investorTpl
           ? buildInvestorVanguardEmailPlainText(subj, campaign.body, campaign.cta_url, campaign.cta_label)
-          : standardTransactional
-            ? buildTransactionalCampaignEmailPlainText(
-                subj,
-                campaign.body,
-                recipientDisplay,
-                campaign.cta_url,
-                campaign.cta_label
-              )
-            : buildCampaignEmailPlainText(
-                subj,
-                campaign.body,
-                recipientDisplay,
-                campaign.cta_url,
-                campaign.cta_label
-              );
+          : buildCampaignEmailPlainText(
+              subj,
+              campaign.body,
+              recipientDisplay,
+              campaign.cta_url,
+              campaign.cta_label
+            );
         const isInvestorSend = isInvestorMarketingSend(campaign);
-        const allowInvestorAttachments =
-          !standardTransactional && (!isInvestorSend || shouldAllowInvestorAttachments());
+        const allowInvestorAttachments = !isInvestorSend || shouldAllowInvestorAttachments();
         if (isInvestorSend && campaign.attach_poster && !allowInvestorAttachments) {
           console.log('[marketing-email] investor attachment suppressed for deliverability', {
             campaign_id: campaignId,
@@ -1043,9 +986,7 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
           subject: subj,
           text,
           html,
-          transactional: true,
-          messageRef: `${campaignId}:${rec.id}`,
-          suppressListUnsubscribe: true,
+          suppressListUnsubscribe: isInvestorSend,
           ...(attachments ? { attachments } : {}),
           ...(brevoKeyOpt ? { brevoApiKey: brevoKeyOpt } : {}),
         };
@@ -2434,6 +2375,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           city: payload.city ?? null,
           description: payload.description ?? null,
           poster_url: payload.poster_url ?? null,
+          seating_chart_url: payload.seating_chart_url ?? null,
           event_status: payload.event_status === 'completed' || payload.event_status === 'cancelled' || payload.event_status === 'active'
             ? payload.event_status
             : 'active',
@@ -2508,6 +2450,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           city: payload.city ?? null,
           description: payload.description ?? null,
           poster_url: payload.poster_url ?? null,
+          seating_chart_url: payload.seating_chart_url ?? null,
           event_status: normalizedStatus,
           event_type: eventType,
           gallery_images: payload.gallery_images ?? [],
@@ -9122,7 +9065,7 @@ Billets envoyés par email. We Create Memories`;
             campaign_id: campaignId,
             total_recipients: recipients.length,
             status: 'scheduled',
-            transactional_pacing: isStandardTransactionalCampaign(camp),
+            transactional_pacing: false,
             campaign_snapshot: snap
               ? {
                   email_template: snap.email_template,
@@ -9439,7 +9382,7 @@ Billets envoyés par email. We Create Memories`;
           data: {
             campaign_id: campaign.id,
             total_recipients: recipients.length,
-            transactional_pacing: type === 'email' && isStandardTransactionalCampaign({ type: 'email', email_template: emailTemplateLegacy }),
+            transactional_pacing: false,
           },
         });
       } catch (error) {
