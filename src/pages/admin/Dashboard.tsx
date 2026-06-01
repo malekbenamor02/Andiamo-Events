@@ -10645,6 +10645,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (!isTabAllowedOnMobile(tab)) return;
     if (tab === "online-orders" && onlineOrders.length === 0) fetchOnlineOrders();
     if (tab === "ambassador-sales" && codAmbassadorOrders.length === 0) fetchAmbassadorSalesData();
+    if (tab === "marketing") {
+      if (phoneSubscribers.length === 0) void fetchPhoneSubscribers();
+      if (smsLogs.length === 0) void fetchSmsLogs();
+    }
     setActiveTab(tab);
     setMobileNavOpen(false);
   };
@@ -10667,6 +10671,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     { key: "pos", label: "Point de Vente", icon: Store },
     ...(currentAdminRole === "super_admin"
       ? [{ key: "scanners" as const, label: language === "en" ? "Scanners" : "Scanners", icon: QrCode }]
+      : []),
+    ...(currentAdminRole === "super_admin"
+      ? [{ key: "marketing" as const, label: "SMS - E-mail", icon: Megaphone }]
       : []),
     { key: "tickets", label: language === "en" ? "Reports" : "Rapports", icon: DollarSign },
     ...(currentAdminRole === "super_admin" ? [{ key: "settings", label: t.settings, icon: Settings }] : []),
@@ -10719,6 +10726,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {activeTab === "pos" && (language === 'en' ? 'Point de Vente' : 'Point de Vente')}
               {activeTab === "scanners" && (language === 'en' ? 'Scanners' : 'Scanners')}
               {activeTab === "tickets" && (language === 'en' ? 'Reports' : 'Rapports')}
+              {activeTab === "marketing" && 'SMS - E-mail'}
               {activeTab === "settings" && t.settings}
               {activeTab === "consultation-inquiries" && (language === 'en' ? 'B2B Leads' : 'B2B Leads')}
             </span>
@@ -10974,6 +10982,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 >
                   <DollarSign className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Reports' : 'Rapports'}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("marketing") && isAdminTabAllowedForRole("marketing", currentAdminRole) && (
+                <button
+                  type="button"
+                  data-active={activeTab === "marketing"}
+                  onClick={() => {
+                    handleMobileNavSelect("marketing");
+                    if (phoneSubscribers.length === 0) void fetchPhoneSubscribers();
+                    if (smsLogs.length === 0) void fetchSmsLogs();
+                  }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "marketing" && "shadow-lg")}
+                  style={{ background: activeTab === "marketing" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <Megaphone className="w-4 h-4 shrink-0" />
+                  <span>SMS - E-mail</span>
                 </button>
               )}
             </div>
