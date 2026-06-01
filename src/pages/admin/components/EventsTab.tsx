@@ -269,6 +269,9 @@ export function EventsTab(p: EventsTabProps) {
   const [openingEditEventId, setOpeningEditEventId] = React.useState<string | null>(null);
   /** Only the latest `loadPresaleCodes` result may update state (avoids stale responses wiping a freshly added row). */
   const presaleCodesFetchGenRef = React.useRef(0);
+  /** Avoid refetch loops when pass list loads (discount drafts read latest passes via ref). */
+  const passesForManagementRef = React.useRef(p.passesForManagement);
+  passesForManagementRef.current = p.passesForManagement;
   /** Plaintext label for a row we just created, until GET returns it from the DB. */
   const presaleLabelHintByIdRef = React.useRef<Record<string, string>>({});
   const newPassFormScrollRef = React.useRef<HTMLDivElement | null>(null);
@@ -351,7 +354,10 @@ export function EventsTab(p: EventsTabProps) {
           );
           setCodeDiscountEditDrafts(
             Object.fromEntries(
-              merged.map((c) => [c.id, discountEditDraftFromCode(c, p.passesForManagement)])
+              merged.map((c) => [
+                c.id,
+                discountEditDraftFromCode(c, passesForManagementRef.current),
+              ])
             )
           );
           return merged;
@@ -369,7 +375,7 @@ export function EventsTab(p: EventsTabProps) {
         }
       }
     },
-    [p.t.error, p.passesForManagement, toast]
+    [p.t.error, toast]
   );
 
   const savePresaleUnlockCapForCode = React.useCallback(
@@ -517,6 +523,8 @@ export function EventsTab(p: EventsTabProps) {
 
   React.useEffect(() => {
     if (!p.isEventDialogOpen || !p.editingEvent?.id || !p.editingEvent.presale_enabled) {
+      presaleCodesFetchGenRef.current += 1;
+      setPresaleCodesLoading(false);
       setPresaleCodes([]);
       setCodeMaxDrafts({});
       setCodeUnlockMaxDrafts({});
@@ -525,6 +533,9 @@ export function EventsTab(p: EventsTabProps) {
       return;
     }
     void loadPresaleCodes(p.editingEvent.id);
+    return () => {
+      presaleCodesFetchGenRef.current += 1;
+    };
   }, [p.isEventDialogOpen, p.editingEvent?.id, p.editingEvent?.presale_enabled, loadPresaleCodes]);
 
   React.useEffect(() => {
@@ -633,6 +644,14 @@ export function EventsTab(p: EventsTabProps) {
                       <Button 
                         onClick={() => {
                           // Initialize with empty passes and default event_type - admin must add at least one pass
+                          presaleCodesFetchGenRef.current += 1;
+                          setPresaleCodesLoading(false);
+                          setPresaleCodes([]);
+                          setCodeMaxDrafts({});
+                          setCodeUnlockMaxDrafts({});
+                          setExpandedPresaleCodeId(null);
+                          presaleLabelHintByIdRef.current = {};
+                          p.setPassesForManagement([]);
                           p.setEditingEvent({
                             passes: [],
                             event_type: 'upcoming',
@@ -1200,7 +1219,13 @@ export function EventsTab(p: EventsTabProps) {
                                 </div>
                                 {p.editingEvent?.presale_enabled && (
                                   <>
-                                    {p.editingEvent.id && (
+                                    {!p.editingEvent.id ? (
+                                      <p className="text-sm text-muted-foreground pt-2 border-t border-border/60">
+                                        {p.language === "en"
+                                          ? "Save the event first, then reopen it to add presale codes."
+                                          : "Enregistrez l'événement d'abord, puis rouvrez-le pour ajouter des codes prévente."}
+                                      </p>
+                                    ) : (
                                       <div className="space-y-3 pt-2 border-t border-border/60">
                                         <div className="flex items-center justify-between">
                                           <span className="text-sm font-medium">
@@ -2096,6 +2121,7 @@ export function EventsTab(p: EventsTabProps) {
                                           {p.language === "en" ? "Add code" : "Ajouter code"}
                                         </Button>
                                       </div>
+                                    </div>
                                     )}
                                   </>
                                 )}
@@ -3974,6 +4000,14 @@ export function EventsTab(p: EventsTabProps) {
                                   ...eventWithoutPasses,
                                   passes: finalPasses,
                                 };
+                                presaleCodesFetchGenRef.current += 1;
+                                setPresaleCodesLoading(false);
+                                setPresaleCodes([]);
+                                setCodeMaxDrafts({});
+                                setCodeUnlockMaxDrafts({});
+                                setExpandedPresaleCodeId(null);
+                                presaleLabelHintByIdRef.current = {};
+                                p.setPassesForManagement(finalPasses);
                                 p.setPendingGalleryImages([]);
                                 p.setPendingGalleryVideos([]);
                                 p.setPassValidationErrors({});
