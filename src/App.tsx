@@ -270,10 +270,10 @@ const App = () => {
       return;
     }
 
-    // First visit: force and persist light mode as the product default.
-    persistTheme("light");
-    if (theme !== "light") {
-      setTheme("light");
+    // First visit: force and persist dark mode as the product default.
+    persistTheme("dark");
+    if (theme !== "dark") {
+      setTheme("dark");
     }
   }, [setTheme, theme]);
   

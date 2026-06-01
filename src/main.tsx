@@ -453,7 +453,7 @@ createRoot(root).render(
   >
     <ThemeProvider
       attribute="class"
-      defaultTheme="light"
+      defaultTheme="dark"
       enableSystem={false}
       storageKey="andiamo-theme-mode"
     >
