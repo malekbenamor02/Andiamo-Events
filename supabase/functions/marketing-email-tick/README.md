@@ -12,3 +12,16 @@ The function calls `POST {MARKETING_CRON_URL}` with `CRON_SECRET` so your app ru
 Server must have `CRON_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` set.
 
 Sending behaviour (batch size, delay between emails, max milliseconds per tick, daily cap at launch, etc.) is defined in **application code** (`api/misc.js` and the launch API), not in Supabase secrets. Only `MARKETING_CRON_URL` and `CRON_SECRET` are required on the Edge Function.
+
+### Standard (transactional) email campaigns
+
+- **Layout:** same dark transactional HTML as ticket/order emails (`api/_lib/transactional-campaign-email-html.cjs`).
+- **Pacing:** `batch_size` = 1 and `delay_minutes` = `MARKETING_TRANSACTIONAL_DELAY_MINUTES` (default **3**) between recipients.
+- **Env (optional):** `MARKETING_TRANSACTIONAL_BATCH_SIZE` (default `1`), `MARKETING_TRANSACTIONAL_DELAY_MINUTES` (default `3`).
+
+### Manual Gmail test checklist
+
+1. Create a **Standard** draft, preview dark layout, launch to two test inboxes.
+2. Confirm cron sends **one** email per tick (~3 minutes apart with defaults).
+3. Compare headers with a ticket email: `List-Unsubscribe` absent, `X-Entity-Ref-ID` present when `transactional: true`.
+4. Run an **Investors** campaign to verify investor HTML and mailbox are unchanged.

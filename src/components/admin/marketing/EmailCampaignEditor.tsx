@@ -50,6 +50,8 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
   const [saving, setSaving] = useState(false);
   const [localId, setLocalId] = useState<string | null>(campaignId);
 
+  const isStandardTransactional = emailTemplate === 'standard';
+
   const t =
     language === 'en'
       ? {
@@ -76,8 +78,11 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           attachPickFile: 'Choose file',
           attachRemove: 'Remove file',
           template: 'Email type',
-          templateStandard: 'Standard',
+          templateStandard: 'Standard (transactional — like tickets)',
           templateInvestor: 'Investors',
+          templateStandardHint:
+            'Uses the same dark layout and delivery style as ticket emails (one recipient per send). Banner, button, and attachments are disabled — use Investors for promotional layout.',
+          promoInvestorOnly: 'Available with the Investors template only.',
           save: 'Save',
           create: 'Create draft',
           preview: 'Preview',
@@ -109,8 +114,11 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           attachPickFile: 'Choisir un fichier',
           attachRemove: 'Retirer le fichier',
           template: 'Type d’email',
-          templateStandard: 'Standard',
+          templateStandard: 'Standard (transactionnel — comme les billets)',
           templateInvestor: 'Investisseurs',
+          templateStandardHint:
+            'Même mise en page sombre et envoi que les e-mails de billets (un destinataire à la fois). Bannière, bouton et pièces jointes désactivés — utilisez Investisseurs pour une mise en page promo.',
+          promoInvestorOnly: 'Disponible uniquement avec le modèle Investisseurs.',
           save: 'Enregistrer',
           create: 'Créer brouillon',
           preview: 'Aperçu',
@@ -208,6 +216,7 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
     setSaving(true);
     try {
       const intendedTemplate = normalizeEmailTemplateLabel(emailTemplate);
+      const isStd = intendedTemplate === 'standard';
       const res = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGNS), {
         method: 'POST',
         credentials: 'include',
@@ -218,13 +227,14 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           name: name.trim() ? name.trim().slice(0, 500) : null,
           subject: (subject.trim() || 'Untitled').slice(0, 500),
           body,
-          header_image_url: enableImage && headerImageUrl.trim() ? headerImageUrl.trim() : null,
-          cta_url: enableButton && ctaUrl.trim() ? ctaUrl.trim() : null,
-          cta_label: enableButton && ctaUrl.trim() ? (ctaLabel.trim() || null) : null,
+          header_image_url: isStd ? null : enableImage && headerImageUrl.trim() ? headerImageUrl.trim() : null,
+          cta_url: isStd ? null : enableButton && ctaUrl.trim() ? ctaUrl.trim() : null,
+          cta_label: isStd ? null : enableButton && ctaUrl.trim() ? (ctaLabel.trim() || null) : null,
           email_template: emailTemplate,
           sender_profile: intendedTemplate === 'investor_vanguard' ? 'investor' : 'default',
-          attach_poster: attachPoster,
-          poster_attachment_url: attachPoster && posterAttachmentUrl.trim() ? posterAttachmentUrl.trim() : null
+          attach_poster: isStd ? false : attachPoster,
+          poster_attachment_url:
+            isStd ? null : attachPoster && posterAttachmentUrl.trim() ? posterAttachmentUrl.trim() : null
         })
       });
       const data = await res.json();
@@ -280,6 +290,7 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
     setSaving(true);
     try {
       const intendedTemplate = normalizeEmailTemplateLabel(emailTemplate);
+      const isStd = intendedTemplate === 'standard';
       const res = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN(localId)), {
         method: 'PATCH',
         credentials: 'include',
@@ -288,13 +299,14 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           name: name.trim() ? name.trim().slice(0, 500) : null,
           subject: subject.trim(),
           body,
-          header_image_url: enableImage && headerImageUrl.trim() ? headerImageUrl.trim() : null,
-          cta_url: enableButton && ctaUrl.trim() ? ctaUrl.trim() : null,
-          cta_label: enableButton && ctaUrl.trim() ? (ctaLabel.trim() || null) : null,
+          header_image_url: isStd ? null : enableImage && headerImageUrl.trim() ? headerImageUrl.trim() : null,
+          cta_url: isStd ? null : enableButton && ctaUrl.trim() ? ctaUrl.trim() : null,
+          cta_label: isStd ? null : enableButton && ctaUrl.trim() ? (ctaLabel.trim() || null) : null,
           email_template: emailTemplate,
           sender_profile: intendedTemplate === 'investor_vanguard' ? 'investor' : 'default',
-          attach_poster: attachPoster,
-          poster_attachment_url: attachPoster && posterAttachmentUrl.trim() ? posterAttachmentUrl.trim() : null
+          attach_poster: isStd ? false : attachPoster,
+          poster_attachment_url:
+            isStd ? null : attachPoster && posterAttachmentUrl.trim() ? posterAttachmentUrl.trim() : null
         })
       });
       const data = await res.json();
@@ -364,6 +376,16 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                     onValueChange={(v) => {
                       const tpl = v === 'investor_vanguard' ? 'investor_vanguard' : 'standard';
                       setEmailTemplate(tpl);
+                      if (tpl === 'standard') {
+                        setEnableImage(false);
+                        setHeaderImageUrl('');
+                        setEnableButton(false);
+                        setCtaUrl('');
+                        setCtaLabel('');
+                        setAttachPoster(false);
+                        setPosterAttachmentUrl('');
+                        setPosterAttachmentLabel('');
+                      }
                     }}
                   >
                     <SelectTrigger className="mt-1.5">
@@ -374,6 +396,9 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                       <SelectItem value="investor_vanguard">{t.templateInvestor}</SelectItem>
                     </SelectContent>
                   </Select>
+                  {isStandardTransactional ? (
+                    <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{t.templateStandardHint}</p>
+                  ) : null}
                 </div>
               </div>
 
@@ -382,24 +407,30 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                   <h3 className="text-sm font-semibold text-foreground">{t.sectionContent}</h3>
                 </div>
 
-                <div className="rounded-md border border-border bg-card p-3 space-y-3">
+                <div
+                  className={`rounded-md border border-border bg-card p-3 space-y-3 ${isStandardTransactional ? 'opacity-60' : ''}`}
+                >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                     <div className="min-w-0 flex-1 space-y-1">
                       <Label htmlFor="campaign-enable-image" className="text-sm font-medium">
                         {t.rowHero}
                       </Label>
+                      {isStandardTransactional ? (
+                        <p className="text-xs text-muted-foreground">{t.promoInvestorOnly}</p>
+                      ) : null}
                     </div>
                     <Switch
                       id="campaign-enable-image"
                       className="shrink-0"
                       checked={enableImage}
+                      disabled={isStandardTransactional}
                       onCheckedChange={(checked) => {
                         setEnableImage(checked);
                         if (!checked) setHeaderImageUrl('');
                       }}
                     />
                   </div>
-                  {enableImage ? (
+                  {enableImage && !isStandardTransactional ? (
                     <div className="space-y-2 pl-0 sm:pl-1 border-t border-border/60 pt-3">
                       <Label className="flex items-center gap-2 text-xs text-muted-foreground">
                         <ImagePlus className="w-3.5 h-3.5" />
@@ -445,17 +476,23 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                   ) : null}
                 </div>
 
-                <div className="rounded-md border border-border bg-card p-3 space-y-3">
+                <div
+                  className={`rounded-md border border-border bg-card p-3 space-y-3 ${isStandardTransactional ? 'opacity-60' : ''}`}
+                >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                     <div className="min-w-0 flex-1 space-y-1">
                       <Label htmlFor="campaign-enable-button" className="text-sm font-medium">
                         {t.rowCta}
                       </Label>
+                      {isStandardTransactional ? (
+                        <p className="text-xs text-muted-foreground">{t.promoInvestorOnly}</p>
+                      ) : null}
                     </div>
                     <Switch
                       id="campaign-enable-button"
                       className="shrink-0"
                       checked={enableButton}
+                      disabled={isStandardTransactional}
                       onCheckedChange={(checked) => {
                         setEnableButton(checked);
                         if (!checked) {
@@ -465,7 +502,7 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                       }}
                     />
                   </div>
-                  {enableButton ? (
+                  {enableButton && !isStandardTransactional ? (
                     <div className="space-y-2 border-t border-border/60 pt-3">
                       <div className="space-y-2">
                         <Label className="text-xs">{t.ctaLink}</Label>
@@ -490,17 +527,23 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                   ) : null}
                 </div>
 
-                <div className="rounded-md border border-border bg-card p-3 space-y-3">
+                <div
+                  className={`rounded-md border border-border bg-card p-3 space-y-3 ${isStandardTransactional ? 'opacity-60' : ''}`}
+                >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                     <div className="min-w-0 flex-1 space-y-1">
                       <Label htmlFor="campaign-attach-poster" className="text-sm font-medium">
                         {t.rowAttach}
                       </Label>
+                      {isStandardTransactional ? (
+                        <p className="text-xs text-muted-foreground">{t.promoInvestorOnly}</p>
+                      ) : null}
                     </div>
                     <Switch
                       id="campaign-attach-poster"
                       className="shrink-0"
                       checked={attachPoster}
+                      disabled={isStandardTransactional}
                       onCheckedChange={(checked) => {
                         setAttachPoster(checked);
                         if (!checked) {
@@ -510,7 +553,7 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                       }}
                     />
                   </div>
-                  {attachPoster ? (
+                  {attachPoster && !isStandardTransactional ? (
                     <div className="space-y-2 border-t border-border/60 pt-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <Input

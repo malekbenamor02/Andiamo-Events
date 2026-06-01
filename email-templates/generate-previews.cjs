@@ -24,7 +24,10 @@ function write(name, html) {
 const { buildOnlineTicketEmailHtml } = require(path.join(root, 'api/_lib/online-ticket-email-html.cjs'));
 const { buildOrderConfirmationEmailHtml } = require(path.join(root, 'api/_lib/order-confirmation-email-html.cjs'));
 const { createOfficialInvitationEmailHTML } = require(path.join(root, 'api/_lib/official-invitation-email-html.cjs'));
-const { buildCampaignEmailHtml } = require(path.join(root, 'api/_lib/campaign-email-html.cjs'));
+const { buildTransactionalCampaignEmailHtml } = require(path.join(
+  root,
+  'api/_lib/transactional-campaign-email-html.cjs'
+));
 const { getBaseEmailHtml } = require(path.join(root, 'api/_lib/career-email-base-html.cjs'));
 const { emailLogoHeaderHtml } = require(path.join(root, 'api/_lib/email-branding.cjs'));
 
@@ -112,17 +115,16 @@ write(
   }).html
 );
 
-// --- 06 Marketing / newsletter ---
+// --- 06 Marketing / standard transactional campaign ---
 write(
   '06-marketing-campaign.html',
-  buildCampaignEmailHtml(
-    'Spring lineup is here',
-    'Hi {name},\n\nWe are excited to share our next events with you.\n\n— Andiamo',
-    'preview_fan',
-    'https://placehold.co/520x200/png?text=Header',
-    'https://www.andiamoevents.com/events',
-    'See events'
-  )
+  buildTransactionalCampaignEmailHtml({
+    subject: 'Important update about your event',
+    body: 'We wanted to share an important update with you.\n\nThank you for being part of Andiamo Events.',
+    recipientName: 'Alex',
+    ctaUrl: null,
+    ctaLabel: null,
+  })
 );
 
 // --- 07–08 Career (base layout) ---

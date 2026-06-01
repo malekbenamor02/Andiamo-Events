@@ -36,6 +36,12 @@ const {
   buildInvestorVanguardEmailPlainText,
 } = requireFromRoot(path.join(__dirname, '_lib', 'investor-campaign-email-html.cjs'));
 
+const {
+  buildTransactionalCampaignEmailHtml,
+  buildTransactionalCampaignEmailPlainText,
+  sanitizeRecipientName,
+} = requireFromRoot(path.join(__dirname, '_lib', 'transactional-campaign-email-html.cjs'));
+
 const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot(
   path.join(__dirname, '_lib', 'online-payment-fee.cjs')
 );
@@ -441,22 +447,18 @@ function parseMarketingDailyEmailCap(raw) {
 /** Plain-text part for multipart/alternative — helps inbox classification vs HTML-only blasts (Gmail tab placement is not guaranteed). */
 function buildCampaignEmailPlainText(subject, body, recipientDisplay = 'Subscriber', ctaUrl = null, ctaLabel = null) {
   const emailSubject = subject || 'Update from Andiamo Events';
+  const greetingName = String(recipientDisplay || 'there').trim() || 'there';
   const safeCtaUrl = normalizeMarketingHeaderImageUrl(ctaUrl);
-  const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'Book now') : '';
-  const lines = [emailSubject, '', String(body || '').trim(), ''];
+  const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'View details') : '';
+  const lines = [emailSubject, '', `Dear ${greetingName},`, '', String(body || '').trim(), ''];
   if (safeCtaUrl) {
     lines.push(`${safeCtaLabel}: ${safeCtaUrl}`, '');
   }
   lines.push(
-    'Need assistance? Contact@andiamoevents.com — Instagram @andiamo.events — 28070128',
-    'https://www.andiamoevents.com/contact',
-    '',
-    'We Create Memories',
+    'Questions? Reply to this email or contact@andiamoevents.com',
     '',
     'Best regards,',
-    'The Andiamo Events Team',
-    '',
-    'Developed by Malek Ben Amor — https://www.instagram.com/malekbenamor.dev/ — https://malekbenamor.dev/'
+    'The Andiamo Events Team'
   );
   return lines.join('\n');
 }
@@ -522,6 +524,60 @@ function normalizeCampaignPhoneForMarketing(p) {
 
 function marketingCronBatchSize() {
   return Math.max(1, Math.min(10000, parseInt(process.env.MARKETING_CRON_BATCH_SIZE || '25', 10) || 25));
+}
+
+function marketingTransactionalBatchSize() {
+  return Math.max(1, parseInt(process.env.MARKETING_TRANSACTIONAL_BATCH_SIZE || '1', 10) || 1);
+}
+
+function marketingTransactionalDelayMinutes() {
+  const v = parseFloat(process.env.MARKETING_TRANSACTIONAL_DELAY_MINUTES || '3');
+  return Number.isFinite(v) && v >= 0 ? v : 3;
+}
+
+/** Standard email campaigns use order-style transactional HTML and one-recipient pacing. */
+function isStandardTransactionalCampaign(campaign) {
+  if (!campaign || campaign.type !== 'email') return false;
+  return sanitizeEmailTemplate(campaign.email_template) === 'standard';
+}
+
+function marketingPacingForCampaign(campaign) {
+  if (isStandardTransactionalCampaign(campaign)) {
+    const delay = marketingTransactionalDelayMinutes();
+    return {
+      batch_size: marketingTransactionalBatchSize(),
+      delay_minutes: delay,
+      batch_delay_minutes: delay,
+    };
+  }
+  return {
+    batch_size: marketingCronBatchSize(),
+    delay_minutes: marketingDefaultDelayMinutesBetweenEmails(),
+    batch_delay_minutes: marketingDefaultBatchDelayMinutes(),
+  };
+}
+
+const ORDER_CONTACT_FROM = '"Andiamo Events" <contact@andiamoevents.com>';
+
+function recipientDisplayFromEmail(email) {
+  if (!email || typeof email !== 'string' || !email.includes('@')) return 'there';
+  const local = (email.split('@')[0] || 'there').replace(/[^a-zA-Z0-9._-]/g, ' ').trim();
+  return sanitizeRecipientName(local || 'there');
+}
+
+function pushMarketingEmailRecipient(seen, recipients, email, displayName) {
+  const value = normalizeCampaignEmailForMarketing(email);
+  if (!value || seen.has(value)) return;
+  seen.add(value);
+  const name =
+    displayName != null && String(displayName).trim() !== ''
+      ? sanitizeRecipientName(String(displayName).trim())
+      : recipientDisplayFromEmail(value);
+  recipients.push({
+    recipient_type: 'email',
+    recipient_value: value,
+    recipient_display_name: name,
+  });
 }
 
 function marketingDefaultDelayMinutesBetweenEmails() {
@@ -670,65 +726,75 @@ function normalizeMarketingCampaignRow(row) {
 /** Resolve email recipients from source toggles + filters (same rules as POST /marketing/campaigns). */
 async function collectMarketingEmailRecipientsFromSources(dbClient, sourcesConfig, filtersConfig) {
   const filters = filtersConfig || {};
-  const allEmails = [];
+  const seen = new Set();
+  const recipients = [];
   if (sourcesConfig.orders?.enabled) {
-    let q = dbClient.from('orders').select('id, user_email').not('user_email', 'is', null);
+    let q = dbClient.from('orders').select('id, user_email, user_name').not('user_email', 'is', null);
     const f = filters.orders || {};
     q = applyOrdersMarketingFilters(q, f);
     const { data: d } = await q;
-    if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmailForMarketing(r.user_email) })).filter(r => r.value));
+    if (d) {
+      d.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.user_email, r.user_name));
+    }
   }
   if (sourcesConfig.newsletter_subscribers?.enabled) {
     let q = dbClient.from('newsletter_subscribers').select('id, email').not('email', 'is', null);
     const f = filters.newsletter_subscribers || {};
     q = applyNewsletterSubscriberEmailFilters(q, f);
     const { data: d } = await q;
-    if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmailForMarketing(r.email) })).filter(r => r.value));
+    if (d) {
+      d.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, null));
+    }
   }
   if (sourcesConfig.approved_ambassadors?.enabled) {
-    let q = dbClient.from('ambassadors').select('id, email').eq('status', 'approved').not('email', 'is', null);
+    let q = dbClient
+      .from('ambassadors')
+      .select('id, email, full_name')
+      .eq('status', 'approved')
+      .not('email', 'is', null);
     const f = filters.approved_ambassadors || {};
     if (f.city) q = q.eq('city', f.city);
     if (f.ville) q = q.eq('ville', f.ville);
     const { data: d } = await q;
-    if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmailForMarketing(r.email) })).filter(r => r.value));
+    if (d) {
+      d.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, r.full_name));
+    }
   }
   if (sourcesConfig.ambassador_applications?.enabled) {
-    let q = dbClient.from('ambassador_applications').select('id, email').not('email', 'is', null);
+    let q = dbClient
+      .from('ambassador_applications')
+      .select('id, email, full_name')
+      .not('email', 'is', null);
     const f = filters.ambassador_applications || {};
     if (f.status?.length) q = q.in('status', f.status);
     if (f.city) q = q.eq('city', f.city);
     if (f.ville) q = q.eq('ville', f.ville);
     const { data: d } = await q;
-    if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmailForMarketing(r.email) })).filter(r => r.value));
+    if (d) {
+      d.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, r.full_name));
+    }
   }
   if (sourcesConfig.aio_events_submissions?.enabled) {
-    let q = dbClient.from('aio_events_submissions').select('id, email').not('email', 'is', null);
+    let q = dbClient
+      .from('aio_events_submissions')
+      .select('id, email, full_name')
+      .not('email', 'is', null);
     const f = filters.aio_events_submissions || {};
     if (f.city) q = q.eq('city', f.city);
     if (f.ville) q = q.eq('ville', f.ville);
     if (f.status?.length) q = q.in('status', f.status);
     if (f.event_id) q = q.eq('event_id', f.event_id);
     const { data: d } = await q;
-    if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmailForMarketing(r.email) })).filter(r => r.value));
+    if (d) {
+      d.forEach((r) => pushMarketingEmailRecipient(seen, recipients, r.email, r.full_name));
+    }
   }
   if (sourcesConfig.investors?.enabled) {
     const { data: inv } = await dbClient.from('investor_contacts').select('email').not('email', 'is', null);
     if (inv) {
-      inv.forEach((row) => {
-        const v = normalizeCampaignEmailForMarketing(row.email);
-        if (v) allEmails.push({ value: v });
-      });
+      inv.forEach((row) => pushMarketingEmailRecipient(seen, recipients, row.email, null));
     }
   }
-  const seen = new Set();
-  const recipients = [];
-  allEmails.forEach((p) => {
-    if (p.value && !seen.has(p.value)) {
-      seen.add(p.value);
-      recipients.push({ recipient_type: 'email', recipient_value: p.value });
-    }
-  });
   return recipients;
 }
 
@@ -780,6 +846,10 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
   }
 
   let cap = campaign.batch_size;
+  const standardTransactional = isStandardTransactionalCampaign(campaign);
+  if (standardTransactional) {
+    cap = Math.min(cap, marketingTransactionalBatchSize());
+  }
   if (campaign.type === 'email') {
     const dailyCap = parseMarketingDailyEmailCap(campaign.daily_email_cap);
     const today = new Date().toISOString().split('T')[0];
@@ -817,7 +887,7 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
 
   const { data: pending, error: pendErr } = await dbClient
     .from('marketing_campaign_recipients')
-    .select('id, recipient_value')
+    .select('id, recipient_value, recipient_display_name')
     .eq('campaign_id', campaignId)
     .eq('status', 'pending')
     .order('created_at', { ascending: true })
@@ -849,19 +919,30 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
   const interDelayMs = marketingInterEmailDelayMs(campaign, skipInterEmailDelay);
 
   let posterAttachment = null;
-  if (campaign.type === 'email' && campaign.attach_poster && campaign.poster_attachment_url) {
+  if (
+    campaign.type === 'email' &&
+    !standardTransactional &&
+    campaign.attach_poster &&
+    campaign.poster_attachment_url
+  ) {
     try {
       posterAttachment = await fetchMarketingPosterAttachment(campaign.poster_attachment_url);
     } catch (e) {
       console.error('[marketing-email] poster fetch failed:', e.message || e);
     }
-  } else if (campaign.type === 'email' && campaign.attach_poster && !campaign.poster_attachment_url) {
+  } else if (
+    campaign.type === 'email' &&
+    !standardTransactional &&
+    campaign.attach_poster &&
+    !campaign.poster_attachment_url
+  ) {
     console.warn('[marketing-email] attach_poster is true but poster_attachment_url is empty', {
       campaign_id: campaignId,
     });
   }
   if (
     campaign.type === 'email' &&
+    !standardTransactional &&
     campaign.attach_poster &&
     campaign.poster_attachment_url &&
     (!posterAttachment || !posterAttachment.buffer || !posterAttachment.buffer.length)
@@ -872,8 +953,14 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
   }
   const investorTpl =
     campaign.type === 'email' && sanitizeEmailTemplate(campaign.email_template) === 'investor_vanguard';
-  const envelope = campaign.type === 'email' ? marketingEmailEnvelope(campaign) : null;
-  const brevoKeyOpt = campaign.type === 'email' ? brevoApiKeyForCampaign(campaign) : null;
+  const envelope =
+    campaign.type === 'email'
+      ? standardTransactional
+        ? { from: ORDER_CONTACT_FROM, replyTo: ORDER_CONTACT_FROM }
+        : marketingEmailEnvelope(campaign)
+      : null;
+  const brevoKeyOpt =
+    campaign.type === 'email' && !standardTransactional ? brevoApiKeyForCampaign(campaign) : null;
 
   for (let i = 0; i < pending.length; i++) {
     if (Date.now() >= deadline) break;
@@ -888,10 +975,13 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
             secure: false,
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
           });
-        const recipientDisplay = rec.recipient_value && rec.recipient_value.includes('@')
-          ? (rec.recipient_value.split('@')[0] || 'Subscriber').replace(/[^a-zA-Z0-9._-]/g, ' ') || 'Subscriber'
-          : 'Subscriber';
-        const subj = campaign.subject || (investorTpl ? 'Andiamo Events' : 'Newsletter');
+        const recipientDisplay =
+          rec.recipient_display_name && String(rec.recipient_display_name).trim()
+            ? sanitizeRecipientName(rec.recipient_display_name)
+            : recipientDisplayFromEmail(rec.recipient_value);
+        const subj =
+          campaign.subject ||
+          (investorTpl ? 'Andiamo Events' : 'Update from Andiamo Events');
         const html = investorTpl
           ? buildInvestorVanguardEmailHtml({
               subject: subj,
@@ -900,25 +990,42 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
               ctaUrl: campaign.cta_url,
               ctaLabel: campaign.cta_label,
             })
-          : buildCampaignEmailHtml(
-              subj,
-              campaign.body,
-              recipientDisplay,
-              campaign.header_image_url,
-              campaign.cta_url,
-              campaign.cta_label
-            );
+          : standardTransactional
+            ? buildTransactionalCampaignEmailHtml({
+                subject: subj,
+                body: campaign.body,
+                recipientName: recipientDisplay,
+                ctaUrl: campaign.cta_url,
+                ctaLabel: campaign.cta_label,
+              })
+            : buildCampaignEmailHtml(
+                subj,
+                campaign.body,
+                recipientDisplay,
+                campaign.header_image_url,
+                campaign.cta_url,
+                campaign.cta_label
+              );
         const text = investorTpl
           ? buildInvestorVanguardEmailPlainText(subj, campaign.body, campaign.cta_url, campaign.cta_label)
-          : buildCampaignEmailPlainText(
-              subj,
-              campaign.body,
-              recipientDisplay,
-              campaign.cta_url,
-              campaign.cta_label
-            );
+          : standardTransactional
+            ? buildTransactionalCampaignEmailPlainText(
+                subj,
+                campaign.body,
+                recipientDisplay,
+                campaign.cta_url,
+                campaign.cta_label
+              )
+            : buildCampaignEmailPlainText(
+                subj,
+                campaign.body,
+                recipientDisplay,
+                campaign.cta_url,
+                campaign.cta_label
+              );
         const isInvestorSend = isInvestorMarketingSend(campaign);
-        const allowInvestorAttachments = !isInvestorSend || shouldAllowInvestorAttachments();
+        const allowInvestorAttachments =
+          !standardTransactional && (!isInvestorSend || shouldAllowInvestorAttachments());
         if (isInvestorSend && campaign.attach_poster && !allowInvestorAttachments) {
           console.log('[marketing-email] investor attachment suppressed for deliverability', {
             campaign_id: campaignId,
@@ -936,7 +1043,9 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
           subject: subj,
           text,
           html,
-          suppressListUnsubscribe: isInvestorSend,
+          transactional: true,
+          messageRef: `${campaignId}:${rec.id}`,
+          suppressListUnsubscribe: true,
           ...(attachments ? { attachments } : {}),
           ...(brevoKeyOpt ? { brevoApiKey: brevoKeyOpt } : {}),
         };
@@ -8925,7 +9034,7 @@ Billets envoyés par email. We Create Memories`;
 
         const { data: camp, error: cErr } = await dbClient
           .from('marketing_campaigns')
-          .select('id, type, status')
+          .select('id, type, status, email_template')
           .eq('id', campaignId)
           .single();
 
@@ -8959,7 +9068,11 @@ Billets envoyés par email. We Create Memories`;
             const normalized = normalizeCampaignEmailForMarketing(val);
             if (normalized && !seen.has(normalized)) {
               seen.add(normalized);
-              recipients.push({ recipient_type: 'email', recipient_value: normalized });
+              recipients.push({
+                recipient_type: 'email',
+                recipient_value: normalized,
+                recipient_display_name: recipientDisplayFromEmail(normalized),
+              });
             }
           }
         } else {
@@ -8971,18 +9084,16 @@ Billets envoyés par email. We Create Memories`;
         }
 
         const dailyCap = parseMarketingDailyEmailCap(rawDailyCap);
-        const batchSize = marketingCronBatchSize();
-        const delayMin = marketingDefaultDelayMinutesBetweenEmails();
-        const batchDelayMin = marketingDefaultBatchDelayMinutes();
+        const pacing = marketingPacingForCampaign(camp);
 
         const { error: upErr } = await dbClient
           .from('marketing_campaigns')
           .update({
             status: 'scheduled',
             daily_email_cap: dailyCap,
-            batch_size: batchSize,
-            delay_minutes: delayMin,
-            batch_delay_minutes: batchDelayMin
+            batch_size: pacing.batch_size,
+            delay_minutes: pacing.delay_minutes,
+            batch_delay_minutes: pacing.batch_delay_minutes,
           })
           .eq('id', campaignId);
 
@@ -8994,7 +9105,8 @@ Billets envoyés par email. We Create Memories`;
           campaign_id: campaignId,
           recipient_type: r.recipient_type,
           recipient_value: r.recipient_value,
-          status: 'pending'
+          recipient_display_name: r.recipient_display_name || null,
+          status: 'pending',
         }));
         const { error: insError } = await dbClient.from('marketing_campaign_recipients').insert(rows);
         if (insError) {
@@ -9010,6 +9122,7 @@ Billets envoyés par email. We Create Memories`;
             campaign_id: campaignId,
             total_recipients: recipients.length,
             status: 'scheduled',
+            transactional_pacing: isStandardTransactionalCampaign(camp),
             campaign_snapshot: snap
               ? {
                   email_template: snap.email_template,
@@ -9092,16 +9205,17 @@ Billets envoyés par email. We Create Memories`;
           const posterAttachmentUrl = attachPoster
             ? normalizeMarketingHeaderImageUrl(bodyData.poster_attachment_url)
             : null;
+          const draftPacing = marketingPacingForCampaign({ type: 'email', email_template: emailTemplate });
           const insertPayload = {
             type: 'email',
             name: nameTrimmed,
             subject: subj,
             body: bod,
             status: 'draft',
-            batch_size: marketingCronBatchSize(),
+            batch_size: draftPacing.batch_size,
             period: 'day',
-            delay_minutes: marketingDefaultDelayMinutesBetweenEmails(),
-            batch_delay_minutes: marketingDefaultBatchDelayMinutes(),
+            delay_minutes: draftPacing.delay_minutes,
+            batch_delay_minutes: draftPacing.batch_delay_minutes,
             header_image_url: headerImageUrl,
             daily_email_cap: null,
             cta_url: ctaUrl,
@@ -9138,20 +9252,27 @@ Billets envoyés par email. We Create Memories`;
           });
         }
 
+        const emailTemplateLegacy =
+          type === 'email' ? sanitizeEmailTemplate(bodyData.email_template) : 'standard';
+        const transactionalPacing =
+          type === 'email'
+            ? marketingPacingForCampaign({ type: 'email', email_template: emailTemplateLegacy })
+            : null;
         const batchSize =
           type === 'email'
-            ? Math.max(1, parseInt(batch_size, 10) || marketingCronBatchSize())
+            ? transactionalPacing.batch_size
             : Math.max(1, parseInt(batch_size, 10) || 300);
         const periodVal = period || 'day';
         const sourcesConfig = sources || {};
         const filtersConfig = filters || {};
         const delayMin =
           type === 'email'
-            ? (delay_minutes !== undefined && delay_minutes !== null
-                ? Math.max(0, parseFloat(delay_minutes) || 0)
-                : marketingDefaultDelayMinutesBetweenEmails())
-            : (delay_minutes != null ? Math.max(0, parseFloat(delay_minutes) || 0) : null);
-        const batchDelayMin = batch_delay_minutes != null ? Math.max(0, parseFloat(batch_delay_minutes) || 0) : marketingDefaultBatchDelayMinutes();
+            ? transactionalPacing.delay_minutes
+            : delay_minutes != null
+              ? Math.max(0, parseFloat(delay_minutes) || 0)
+              : null;
+        const batchDelayMin =
+          type === 'email' ? transactionalPacing.batch_delay_minutes : marketingDefaultBatchDelayMinutes();
 
         const normalizeCampaignEmail = (e) => {
           if (!e || typeof e !== 'string') return null;
@@ -9191,10 +9312,10 @@ Billets envoyés par email. We Create Memories`;
           cta_label: type === 'email' ? ctaLabel : null,
           ...(type === 'email'
             ? {
-                email_template: 'standard',
+                email_template: emailTemplateLegacy,
                 attach_poster: false,
                 poster_attachment_url: null,
-                sender_profile: 'default',
+                sender_profile: sanitizeSenderProfile(bodyData.sender_profile, emailTemplateLegacy),
               }
             : {}),
         };
@@ -9221,7 +9342,13 @@ Billets envoyés par email. We Create Memories`;
             const normalized = type === 'email' ? normalizeCampaignEmail(val) : normalizeCampaignPhone(val);
             if (normalized && !seen.has(normalized)) {
               seen.add(normalized);
-              recipients.push({ recipient_type: recipientType, recipient_value: normalized });
+              recipients.push({
+                recipient_type: recipientType,
+                recipient_value: normalized,
+                ...(type === 'email'
+                  ? { recipient_display_name: recipientDisplayFromEmail(normalized) }
+                  : {}),
+              });
             }
           }
           if (recipients.length === 0) {
@@ -9281,64 +9408,9 @@ Billets envoyés par email. We Create Memories`;
             }
           });
         } else {
-          const allEmails = [];
-          if (sourcesConfig.orders?.enabled) {
-            let q = dbClient.from('orders').select('id, user_email').not('user_email', 'is', null);
-            const f = filtersConfig.orders || {};
-            q = applyOrdersMarketingFilters(q, f);
-            const { data: d } = await q;
-            if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.user_email) })).filter(r => r.value));
-          }
-          if (sourcesConfig.newsletter_subscribers?.enabled) {
-            let q = dbClient.from('newsletter_subscribers').select('id, email').not('email', 'is', null);
-            const f = filtersConfig.newsletter_subscribers || {};
-            q = applyNewsletterSubscriberEmailFilters(q, f);
-            const { data: d } = await q;
-            if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.email) })).filter(r => r.value));
-          }
-          if (sourcesConfig.approved_ambassadors?.enabled) {
-            let q = dbClient.from('ambassadors').select('id, email').eq('status', 'approved').not('email', 'is', null);
-            const f = filtersConfig.approved_ambassadors || {};
-            if (f.city) q = q.eq('city', f.city);
-            if (f.ville) q = q.eq('ville', f.ville);
-            const { data: d } = await q;
-            if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.email) })).filter(r => r.value));
-          }
-          if (sourcesConfig.ambassador_applications?.enabled) {
-            let q = dbClient.from('ambassador_applications').select('id, email').not('email', 'is', null);
-            const f = filtersConfig.ambassador_applications || {};
-            if (f.status?.length) q = q.in('status', f.status);
-            if (f.city) q = q.eq('city', f.city);
-            if (f.ville) q = q.eq('ville', f.ville);
-            const { data: d } = await q;
-            if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.email) })).filter(r => r.value));
-          }
-          if (sourcesConfig.aio_events_submissions?.enabled) {
-            let q = dbClient.from('aio_events_submissions').select('id, email').not('email', 'is', null);
-            const f = filtersConfig.aio_events_submissions || {};
-            if (f.city) q = q.eq('city', f.city);
-            if (f.ville) q = q.eq('ville', f.ville);
-            if (f.status?.length) q = q.in('status', f.status);
-            if (f.event_id) q = q.eq('event_id', f.event_id);
-            const { data: d } = await q;
-            if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.email) })).filter(r => r.value));
-          }
-          if (sourcesConfig.investors?.enabled) {
-            const { data: inv } = await dbClient.from('investor_contacts').select('email').not('email', 'is', null);
-            if (inv) {
-              inv.forEach((row) => {
-                const v = normalizeCampaignEmail(row.email);
-                if (v) allEmails.push({ value: v });
-              });
-            }
-          }
-          const seen = new Set();
-          allEmails.forEach(p => {
-            if (p.value && !seen.has(p.value)) {
-              seen.add(p.value);
-              recipients.push({ recipient_type: 'email', recipient_value: p.value });
-            }
-          });
+          recipients.push(
+            ...(await collectMarketingEmailRecipientsFromSources(dbClient, sourcesConfig, filtersConfig))
+          );
         }
 
         if (recipients.length === 0) {
@@ -9349,11 +9421,12 @@ Billets envoyés par email. We Create Memories`;
           });
         }
 
-        const rows = recipients.map(r => ({
+        const rows = recipients.map((r) => ({
           campaign_id: campaign.id,
           recipient_type: r.recipient_type,
           recipient_value: r.recipient_value,
-          status: 'pending'
+          recipient_display_name: r.recipient_display_name || null,
+          status: 'pending',
         }));
         const { error: insError } = await dbClient.from('marketing_campaign_recipients').insert(rows);
         if (insError) {
@@ -9363,7 +9436,11 @@ Billets envoyés par email. We Create Memories`;
 
         return res.json({
           success: true,
-          data: { campaign_id: campaign.id, total_recipients: recipients.length }
+          data: {
+            campaign_id: campaign.id,
+            total_recipients: recipients.length,
+            transactional_pacing: type === 'email' && isStandardTransactionalCampaign({ type: 'email', email_template: emailTemplateLegacy }),
+          },
         });
       } catch (error) {
         console.error('Error creating campaign:', error);

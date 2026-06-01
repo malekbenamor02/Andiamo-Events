@@ -24,15 +24,31 @@ function normalizeMarketingHeaderImageUrl(raw) {
   }
 }
 
-function sanitizeCampaignCtaLabel(raw, fallback = 'Book now') {
+function sanitizeCampaignCtaLabel(raw, fallback = 'View details') {
   const t = String(raw == null ? '' : raw).trim().slice(0, 120).replace(/[<>]/g, '');
   return t || fallback;
 }
 
-// Official campaign email template — structured for readability; lighter promo signals than heavy “deal” layouts (Primary vs Promotions is decided by Gmail).
+function sanitizeRecipientGreeting(raw) {
+  const t = String(raw == null ? '' : raw)
+    .trim()
+    .slice(0, 80)
+    .replace(/[<>]/g, '');
+  return t || 'there';
+}
+
+function escapeHtmlText(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Official campaign email — personal greeting, text-style links (no promo button), minimal footer (Gmail Primary vs Promotions is ML-based, not guaranteed).
 function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', headerImageUrl = null, ctaUrl = null, ctaLabel = null) {
   const content = String(body || '').replace(/\n/g, '<br>');
   const emailSubject = subject || 'Update from Andiamo Events';
+  const greetingName = escapeHtmlText(sanitizeRecipientGreeting(recipientDisplay));
   const safeHeaderUrl = normalizeMarketingHeaderImageUrl(headerImageUrl);
   const headerImageBlock = safeHeaderUrl
     ? `<div class="campaign-header-image" style="text-align:center;margin:0 0 28px;">
@@ -40,17 +56,11 @@ function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', 
 </div>`
     : '';
   const safeCtaUrl = normalizeMarketingHeaderImageUrl(ctaUrl);
-  const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'Book now') : '';
+  const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'View details') : '';
   const ctaBlock = safeCtaUrl
-    ? `<div style="text-align:center;margin:28px 0 8px;">
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;border-collapse:separate;">
-    <tr>
-      <td style="border-radius:10px;background:#E21836 !important;background-color:#E21836 !important;mso-padding-alt:14px 32px;">
-        <a href="${escapeHtmlAttr(safeCtaUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:16px;font-weight:600;line-height:1.25;color:#FFFFFE !important;text-decoration:none;border-radius:10px;mso-line-height-rule:exactly;">${escapeHtmlAttr(safeCtaLabel)}</a>
-      </td>
-    </tr>
-  </table>
-</div>`
+    ? `<p style="margin:24px 0 0;font-size:16px;line-height:1.7;color:#333333 !important;">
+  <a href="${escapeHtmlAttr(safeCtaUrl)}" target="_blank" rel="noopener noreferrer" style="color:#1a1a1a !important;font-weight:600;text-decoration:underline;">${escapeHtmlAttr(safeCtaLabel)}</a>
+</p>`
     : '';
   return `<!DOCTYPE html>
 <!-- andiamo:campaign-email -->
@@ -244,10 +254,11 @@ function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', 
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f4f4f4" style="margin:0;border-collapse:separate;border:0;background:#f4f4f4 !important;background-color:#f4f4f4 !important;background-image:linear-gradient(#f4f4f4,#f4f4f4) !important;">
             <tr>
               <td class="content-card" bgcolor="#f4f4f4" style="background:#f4f4f4 !important;background-color:#f4f4f4 !important;background-image:linear-gradient(#f4f4f4,#f4f4f4) !important;border:1px solid #e5e5e5;border-radius:12px;padding:36px 28px;color:#333333 !important;">
-      <div class="title-section" style="text-align:center;margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid #e0e0e0;">
-        <p class="title" style="margin:0 0 8px;font-size:22px;font-weight:600;color:#1a1a1a !important;">Andiamo Events</p>
-        <p class="subtitle" style="margin:0;font-size:15px;color:#666666 !important;">${emailSubject.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+      <div class="title-section" style="margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #e0e0e0;">
+        <p class="title" style="margin:0 0 6px;font-size:20px;font-weight:600;color:#1a1a1a !important;">${escapeHtmlText(emailSubject)}</p>
+        <p class="subtitle" style="margin:0;font-size:14px;color:#666666 !important;">Andiamo Events</p>
       </div>
+      <p style="margin:0 0 20px;font-size:16px;line-height:1.7;color:#333333 !important;">Dear <strong>${greetingName}</strong>,</p>
       ${headerImageBlock}
       <div class="message-content" style="font-size:16px;line-height:1.7;color:#333333 !important;">${content}</div>
       ${ctaBlock}
@@ -256,19 +267,10 @@ function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', 
         bgcolor="#fcf1f1"
         style="margin-top:28px;border-left:3px solid #e57373;border-radius:6px;background:#fcf1f1 !important;background-color:#fcf1f1 !important;padding:20px 18px;"
       >
-        <p class="support-text" style="margin:0;font-size:14px;line-height:1.7;color:#555555 !important;">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email" style="color:#E57373 !important;font-weight:500;text-decoration:none;">Contact@andiamoevents.com</a> or in our Instagram page <a href="https://www.instagram.com/andiamo.events/" target="_blank" rel="noopener noreferrer" class="support-email" style="color:#E57373 !important;font-weight:500;text-decoration:none;">@andiamo.events</a> or contact with <a href="tel:28070128" class="support-email" style="color:#E57373 !important;font-weight:500;text-decoration:none;">28070128</a>.</p>
+        <p class="support-text" style="margin:0;font-size:14px;line-height:1.7;color:#555555 !important;">Questions? Reply to this email or write to <a href="mailto:contact@andiamoevents.com" class="support-email" style="color:#1a1a1a !important;font-weight:500;text-decoration:underline;">contact@andiamoevents.com</a>.</p>
       </div>
-      <div class="closing-section" style="margin:36px 0 0;padding-top:28px;border-top:1px solid #e0e0e0;text-align:center;">
-        <p class="slogan" style="margin:0 0 20px;font-size:22px;font-style:italic;font-weight:300;color:#E57373 !important;">We Create Memories</p>
-        <p class="signature" style="margin:0;font-size:16px;line-height:1.7;color:#666666 !important;">Best regards,<br>The Andiamo Events Team</p>
-      </div>
-      <div class="footer" style="margin-top:28px;padding:22px 14px 18px;text-align:center;border-top:1px solid #e0e0e0;background:#f4f4f4 !important;background-color:#f4f4f4 !important;background-image:linear-gradient(#f4f4f4,#f4f4f4) !important;">
-        <p class="footer-text" style="margin:0 0 10px;font-size:12px;line-height:1.6;color:#666666 !important;">Developed by <span style="color: #E57373 !important;">Malek Ben Amor</span></p>
-        <div class="footer-links" style="margin:8px auto 0;text-align:center;">
-          <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link" style="color:#888888 !important;text-decoration:none;font-size:13px;margin:0 8px;">Instagram</a>
-          <span style="color: #888888 !important;">&bull;</span>
-          <a href="https://malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link" style="color:#888888 !important;text-decoration:none;font-size:13px;margin:0 8px;">Website</a>
-        </div>
+      <div class="closing-section" style="margin:28px 0 0;padding-top:20px;border-top:1px solid #e0e0e0;">
+        <p class="signature" style="margin:0;font-size:15px;line-height:1.7;color:#666666 !important;">Best regards,<br>The Andiamo Events Team</p>
       </div>
               </td>
             </tr>

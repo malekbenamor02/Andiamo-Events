@@ -205,6 +205,7 @@ export interface MarketingCampaign {
   daily_email_cap?: number | null;
   cta_url?: string | null;
   cta_label?: string | null;
+  /** standard = dark transactional layout (like ticket emails); investor_vanguard = institutional promo */
   email_template?: 'standard' | 'investor_vanguard' | string;
   attach_poster?: boolean;
   poster_attachment_url?: string | null;

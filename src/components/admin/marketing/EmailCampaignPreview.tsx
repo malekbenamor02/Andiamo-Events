@@ -1,5 +1,5 @@
 /**
- * Live preview for email campaigns — layout mirrors api/misc.js buildCampaignEmailHtml (keep in sync manually).
+ * Live preview for email campaigns — Standard mirrors transactional-campaign-email-html; investor mirrors investor template.
  */
 import React from 'react';
 
@@ -10,13 +10,10 @@ const HERO_HEIGHT = 273;
 /** Admin preview only — caps tall posters so the pane stays usable (sent email unchanged). */
 const PREVIEW_HERO_MAX_HEIGHT = 'min(300px, 42vh)';
 
-/** Outer gutter (body / wrapper) — matches sent email */
-const OUTER_BG = '#f2f2f2';
-/** Main card fill — matches sent email */
-const INNER_BG = '#f4f4f4';
-/** Support callout — pink tint */
-const SUPPORT_BG = '#fcf1f1';
-const CORAL = '#E57373';
+/** Transactional (standard) — matches order/ticket emails */
+const TX_BG = '#101010';
+const TX_CARD = '#1A1A1A';
+const TX_ACCENT = '#E21836';
 
 function esc(s: string) {
   return s
@@ -57,7 +54,7 @@ export function EmailCampaignPreview({
   const emailSubject = subject.trim() || 'Update from Andiamo Events';
   const content = body.replace(/\n/g, '<br>');
   const showCta = showButton && Boolean(ctaUrl?.trim());
-  const btnText = (ctaLabel || 'Learn more').trim() || 'Learn more';
+  const btnText = (ctaLabel || 'View details').trim() || 'View details';
   const hasHeader = showImage && Boolean(headerImageUrl?.trim());
   const investorSubject = subject.trim() || 'Andiamo Events';
   const linkedinUrl = 'https://www.linkedin.com/company/andiamoevents/';
@@ -166,128 +163,47 @@ export function EmailCampaignPreview({
   return (
     <div
       className="rounded-lg border overflow-hidden max-h-[min(70vh,640px)] overflow-y-auto min-w-0"
-      style={{ backgroundColor: OUTER_BG, borderColor: '#d8d8d8' }}
+      style={{ backgroundColor: TX_BG, borderColor: '#333' }}
     >
-      <div className="max-w-[600px] w-full min-w-0 mx-auto" style={{ backgroundColor: OUTER_BG }}>
+      <div className="max-w-[600px] w-full min-w-0 mx-auto" style={{ backgroundColor: TX_BG }}>
+        <div className="text-center py-6 px-4">
+          <img
+            src="/email-assets/logo-white.png"
+            alt="Andiamo Events"
+            className="mx-auto h-10 w-auto max-w-[200px] object-contain"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        </div>
         <div
-          className="mx-4 sm:mx-5 mb-6 rounded-xl px-6 sm:px-7 py-9 border min-w-0 text-[#333333]"
-          style={{ backgroundColor: INNER_BG, borderColor: '#e5e5e5' }}
+          className="mx-4 sm:mx-5 mb-6 rounded-xl px-6 sm:px-8 py-10 border min-w-0"
+          style={{ backgroundColor: TX_CARD, borderColor: 'rgba(255,255,255,0.08)' }}
         >
-          <div className="mb-7 pb-5 border-b border-[#e0e0e0] text-center">
-            <p className="text-[22px] font-semibold text-[#1a1a1a] mb-2">Andiamo Events</p>
-            <p className="text-[15px] text-[#666666]">{emailSubject}</p>
+          <div className="mb-8 pb-6 border-b border-white/10 text-center">
+            <h2 className="text-2xl font-bold text-white mb-2 tracking-tight">{esc(emailSubject)}</h2>
+            <p className="text-sm text-[#B8B8B8]">Andiamo Events</p>
           </div>
-          {showImage && hasHeader ? (
-            <div className="flex justify-center mb-7 min-w-0">
-              <img
-                src={headerImageUrl!.trim()}
-                alt=""
-                className="h-auto max-w-full w-auto rounded-[10px] block border-0"
-                style={{
-                  maxWidth: `min(100%, ${HERO_WIDTH}px)`,
-                  maxHeight: PREVIEW_HERO_MAX_HEIGHT
-                }}
-              />
-            </div>
-          ) : showImage ? (
-            <div className="text-center mb-7">
-              <div
-                className="mx-auto flex flex-col items-center justify-center rounded-[10px] border-2 border-dashed text-[#555555] px-3 py-4"
-                style={{
-                  backgroundColor: SUPPORT_BG,
-                  borderColor: '#e8b4b4',
-                  width: '100%',
-                  maxWidth: HERO_WIDTH,
-                  minHeight: HERO_HEIGHT,
-                  aspectRatio: `${HERO_WIDTH} / ${HERO_HEIGHT}`
-                }}
-              >
-                <span className="text-sm font-semibold tracking-tight">Header image placeholder</span>
-                <span className="text-xs mt-1.5 text-center leading-snug">
-                  {HERO_WIDTH} × {HERO_HEIGHT} px recommended
-                  <br />
-                  <span className="text-[11px] opacity-90">(matches max width in the sent email)</span>
-                </span>
-              </div>
-            </div>
-          ) : null}
+          <p className="text-lg text-[#F0F0F0] mb-6 leading-relaxed m-0">
+            Dear <strong style={{ color: TX_ACCENT }}>Subscriber</strong>,
+          </p>
           <div
-            className="text-base text-[#333333] mb-5 leading-relaxed"
+            className="text-base text-[#B8B8B8] mb-6 leading-relaxed"
             dangerouslySetInnerHTML={{ __html: content || '&nbsp;' }}
           />
-          {showCta ? (
-            <div className="my-7 flex justify-center">
-              <a
-                href={ctaUrl!.trim()}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-block rounded-[10px] bg-[#E21836] px-8 py-3.5 text-center text-base font-semibold text-white no-underline shadow-sm transition-opacity hover:opacity-[0.92]"
-              >
-                {esc(btnText)}
-              </a>
-            </div>
-          ) : null}
-          <div
-            className="mt-7 rounded-md border-l-[3px] px-6 py-5"
-            style={{ backgroundColor: SUPPORT_BG, borderLeftColor: CORAL }}
-          >
-            <p className="text-sm text-[#555555] leading-relaxed m-0">
-              Need assistance? Contact us at{' '}
-              <a href="mailto:Contact@andiamoevents.com" className="font-medium no-underline" style={{ color: CORAL }}>
-                Contact@andiamoevents.com
-              </a>{' '}
-              or in our Instagram page{' '}
-              <a
-                href="https://www.instagram.com/andiamo.events/"
-                target="_blank"
-                rel="noreferrer"
-                className="font-medium no-underline"
-                style={{ color: CORAL }}
-              >
-                @andiamo.events
-              </a>{' '}
-              or contact with{' '}
-              <a href="tel:28070128" className="font-medium no-underline" style={{ color: CORAL }}>
-                28070128
+          <div className="mt-8 pt-6 border-t border-white/10">
+            <p className="text-sm text-[#B8B8B8] leading-relaxed m-0">
+              Questions? Reply to this email or contact{' '}
+              <a href="mailto:contact@andiamoevents.com" className="text-[#E21836] underline">
+                contact@andiamoevents.com
               </a>
               .
             </p>
-          </div>
-          <div className="mt-9 pt-7 border-t border-[#e0e0e0] text-center">
-            <p className="text-[22px] italic font-light mb-5" style={{ color: CORAL }}>
-              We Create Memories
-            </p>
-            <p className="text-base text-[#666666] leading-relaxed m-0">
+            <p className="text-base text-[#B8B8B8] leading-relaxed mt-6 mb-0">
               Best regards,
               <br />
               The Andiamo Events Team
             </p>
-          </div>
-          <div className="mt-7 pt-6 text-center text-xs text-[#666666] leading-relaxed border-t border-[#e0e0e0]">
-            <p className="mb-2.5 m-0">
-              Developed by <span style={{ color: CORAL }}>Malek Ben Amor</span>
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-2 text-[13px] text-[#888888]">
-              <a
-                href="https://www.instagram.com/malekbenamor.dev/"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[#888888] hover:opacity-80 no-underline"
-              >
-                Instagram
-              </a>
-              <span className="text-[#888888]" aria-hidden>
-                &bull;
-              </span>
-              <a
-                href="https://malekbenamor.dev/"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[#888888] hover:opacity-80 no-underline"
-              >
-                Website
-              </a>
-            </div>
           </div>
         </div>
       </div>
