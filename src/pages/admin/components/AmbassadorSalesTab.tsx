@@ -19,7 +19,22 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { calculateAmbassadorIncome } from "@/lib/ambassadors/ambassadorIncome";
+import { OrderPromoCornerRibbon } from "@/components/admin/OrderPromoCornerRibbon";
+import { orderHasPromoAttribution, parsePromoFromOrder, resolvePromoBadgeColor } from "@/lib/eventPromo/promoOrder";
 import type { AmbassadorOrderFilters, AmbassadorFilterOptions, AmbassadorOrderLog } from "../types";
+
+function promoColorForCodOrder(order: CodOrder): string {
+  return resolvePromoBadgeColor(parsePromoFromOrder(order), order);
+}
+
+function promoCodeLabelForCodOrder(order: CodOrder): string | null {
+  const promo = parsePromoFromOrder(order);
+  return promo?.code?.trim() || null;
+}
+
+function codOrderHasAttributionRibbon(order: CodOrder): boolean {
+  return !!(order.presale_code_id || orderHasPromoAttribution(order));
+}
 
 export interface CodOrder {
   id: string;
@@ -37,6 +52,10 @@ export interface CodOrder {
   rejected_at?: string;
   passes?: Array<{ pass_type?: string; passName?: string; quantity?: number; price?: number }>;
   pass_type?: string;
+  presale_code_id?: string | null;
+  event_promo_code_id?: string | null;
+  event_promo_codes?: { badge_color?: string | null } | null;
+  notes?: string | Record<string, unknown> | null;
 }
 
 export interface AmbassadorSalesTabProps {
@@ -545,6 +564,17 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                           {p.language === "en" ? "Presale" : "Presale"}
                                         </span>
                                       </div>
+                                    ) : promoCodeLabelForCodOrder(order) ? (
+                                      <OrderPromoCornerRibbon
+                                        variant="table"
+                                        code={promoCodeLabelForCodOrder(order)!}
+                                        color={promoColorForCodOrder(order)}
+                                        title={
+                                          p.language === "en"
+                                            ? `Promo code: ${promoCodeLabelForCodOrder(order)}`
+                                            : `Code promo : ${promoCodeLabelForCodOrder(order)}`
+                                        }
+                                      />
                                     ) : null}
                                     {passes.length > 0 ? (
                                       <div className="flex flex-col items-center gap-1">
@@ -713,7 +743,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                               </TooltipContent>
                             </Tooltip>
                             <span
-                              className={cn("text-xs", order.presale_code_id ? "text-left" : "text-right")}
+                              className={cn("text-xs", codOrderHasAttributionRibbon(order) ? "text-left" : "text-right")}
                               style={{ color: "#B0B0B0" }}
                             >
                               {getStatusLabel(order.status)}
@@ -735,9 +765,20 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                   {p.language === "en" ? "Presale" : "Presale"}
                                 </span>
                               </div>
+                            ) : promoCodeLabelForCodOrder(order) ? (
+                              <OrderPromoCornerRibbon
+                                variant="card"
+                                code={promoCodeLabelForCodOrder(order)!}
+                                color={promoColorForCodOrder(order)}
+                                title={
+                                  p.language === "en"
+                                    ? `Promo code: ${promoCodeLabelForCodOrder(order)}`
+                                    : `Code promo : ${promoCodeLabelForCodOrder(order)}`
+                                }
+                              />
                             ) : null}
                             <CardContent className="p-4">
-                              {!order.presale_code_id ? (
+                              {!codOrderHasAttributionRibbon(order) ? (
                                 <div className="flex items-start justify-end gap-3">
                                   <div className="flex items-center gap-2">{codMobileStatus}</div>
                                 </div>
@@ -746,7 +787,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                               <div
                                 className={cn(
                                   "mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2",
-                                  order.presale_code_id && "pr-[5.25rem]",
+                                  codOrderHasAttributionRibbon(order) && "pr-[5.25rem]",
                                 )}
                               >
                                 <div className="space-y-2">

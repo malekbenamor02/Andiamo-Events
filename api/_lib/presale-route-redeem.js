@@ -12,7 +12,12 @@ import {
   PRESALE_SESSION_TTL_SEC,
   requirePresalePepperOr503,
 } from './presale-server.js';
-import { buildPresaleDiscountPolicy, presaleDiscountPolicyToApi, validateAdminPassDiscounts } from './presale-discount.js';
+import {
+  buildPresaleDiscountPolicy,
+  presaleDiscountPolicyToApi,
+  validateAdminPassDiscounts,
+} from './presale-discount.js';
+import { presaleApiError, PUBLIC_ERROR_CODES, publicApiError } from './public-api-error.js';
 
 let corsUtils = null;
 async function getCorsUtils() {
@@ -35,12 +40,7 @@ async function verifyRecaptcha(recaptchaToken) {
 
 function requireServiceDb(res) {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    res.status(503).json({
-      success: false,
-      reason: 'missing_service_role',
-      message:
-        'Presale requires SUPABASE_SERVICE_ROLE_KEY on the API server (RLS blocks anon reads on presale_codes).',
-    });
+    presaleApiError(res, 503, 'missing_service_role', 'SUPABASE_SERVICE_ROLE_KEY missing');
     return null;
   }
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -59,12 +59,12 @@ export async function handlePresaleRedeem(req, res) {
     credentials: true,
   })) {
     if (req.headers.origin) {
-      return res.status(403).json({ error: 'Invalid access' });
+      return publicApiError(res, 403, PUBLIC_ERROR_CODES.INVALID_ACCESS);
     }
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return publicApiError(res, 405, PUBLIC_ERROR_CODES.INVALID_REQUEST);
   }
 
   try {
@@ -78,19 +78,11 @@ export async function handlePresaleRedeem(req, res) {
     });
     if (rateErr) {
       console.error('presale_redeem_rate_try', rateErr);
-      return res.status(503).json({
-        success: false,
-        reason: 'server_error',
-        message: 'Could not apply rate limit. Ensure database migrations are applied.',
-      });
+      return presaleApiError(res, 503, 'server_error', rateErr);
     }
     const rateRow = Array.isArray(rateRows) ? rateRows[0] : rateRows;
     if (!rateRow?.allowed) {
-      return res.status(429).json({
-        success: false,
-        reason: 'rate_limited',
-        message: 'Too many attempts. Try again later.',
-      });
+      return presaleApiError(res, 429, 'rate_limited');
     }
 
     let body = {};
@@ -103,12 +95,12 @@ export async function handlePresaleRedeem(req, res) {
 
     const { eventId, code, recaptchaToken } = body;
     if (!eventId || !code) {
-      return res.status(400).json({ success: false, reason: 'missing_fields', message: 'eventId and code required' });
+      return presaleApiError(res, 400, 'missing_fields');
     }
 
     const okCaptcha = await verifyRecaptcha(recaptchaToken);
     if (!okCaptcha) {
-      return res.status(403).json({ success: false, reason: 'captcha_failed', message: 'Verification failed' });
+      return presaleApiError(res, 403, 'captcha_failed');
     }
 
     const { data: event, error: evErr } = await client
@@ -118,15 +110,10 @@ export async function handlePresaleRedeem(req, res) {
       .single();
 
     if (evErr || !event) {
-      return res.status(403).json({ success: false, reason: 'event_not_found', message: 'Event not found' });
+      return presaleApiError(res, 403, 'event_not_found', evErr);
     }
     if (!event.presale_enabled) {
-      return res.status(403).json({
-        success: false,
-        reason: 'presale_off',
-        message:
-          'Presale is not enabled for this event. In admin, open the event, enable presale (code gate), and save.',
-      });
+      return presaleApiError(res, 403, 'presale_off');
     }
 
     const now = new Date();
@@ -144,7 +131,7 @@ export async function handlePresaleRedeem(req, res) {
 
     if (codeErr) {
       console.error('presale redeem codes query', codeErr);
-      return res.status(500).json({ success: false, reason: 'server_error', message: 'Could not verify code' });
+      return presaleApiError(res, 500, 'server_error', codeErr);
     }
 
     const logAttempt = async (presaleCodeId, success, failureReason) => {
@@ -163,21 +150,21 @@ export async function handlePresaleRedeem(req, res) {
 
     if (!matched) {
       await logAttempt(null, false, 'no_match');
-      return res.status(403).json({ success: false, reason: 'code_not_found', message: 'Code not recognized' });
+      return presaleApiError(res, 403, 'code_not_found');
     }
 
     if (matched.active_from && new Date(matched.active_from) > now) {
       await logAttempt(matched.id, false, 'window');
-      return res.status(403).json({ success: false, reason: 'code_not_active_yet', message: 'This code is not active yet' });
+      return presaleApiError(res, 403, 'code_not_active_yet');
     }
     if (matched.active_until && new Date(matched.active_until) < now) {
       await logAttempt(matched.id, false, 'window');
-      return res.status(403).json({ success: false, reason: 'code_expired', message: 'This code has expired' });
+      return presaleApiError(res, 403, 'code_expired');
     }
 
     if (matched.usage_mode === 'single_use' && (matched.successful_order_count || 0) >= 1) {
       await logAttempt(matched.id, false, 'exhausted');
-      return res.status(403).json({ success: false, reason: 'code_exhausted', message: 'This code has already been used' });
+      return presaleApiError(res, 403, 'code_exhausted');
     }
 
     if (
@@ -185,11 +172,7 @@ export async function handlePresaleRedeem(req, res) {
       && (matched.successful_order_count || 0) >= matched.max_total_redemptions
     ) {
       await logAttempt(matched.id, false, 'exhausted');
-      return res.status(403).json({
-        success: false,
-        reason: 'code_exhausted',
-        message: 'This code has reached its maximum number of orders',
-      });
+      return presaleApiError(res, 403, 'code_exhausted');
     }
 
     const { data: claimedUnlockRaw, error: unlockErr } = await client.rpc('presale_claim_unlock_slot', {
@@ -198,11 +181,7 @@ export async function handlePresaleRedeem(req, res) {
     });
     if (unlockErr) {
       console.error('presale_claim_unlock_slot', unlockErr);
-      return res.status(503).json({
-        success: false,
-        reason: 'server_error',
-        message: 'Could not verify unlock capacity. Ensure database migrations are applied.',
-      });
+      return presaleApiError(res, 503, 'server_error', unlockErr);
     }
     const claimedUnlockRows = Array.isArray(claimedUnlockRaw)
       ? claimedUnlockRaw
@@ -211,11 +190,7 @@ export async function handlePresaleRedeem(req, res) {
         : [];
     if (!claimedUnlockRows.length) {
       await logAttempt(matched.id, false, 'exhausted');
-      return res.status(403).json({
-        success: false,
-        reason: 'code_exhausted',
-        message: 'This code has reached its maximum number of unlocks',
-      });
+      return presaleApiError(res, 403, 'code_exhausted');
     }
 
     const csrf = newCsrfToken();
@@ -239,11 +214,7 @@ export async function handlePresaleRedeem(req, res) {
       } catch (releaseErr) {
         console.error('presale_release_unlock_slot', releaseErr);
       }
-      return res.status(500).json({
-        success: false,
-        reason: 'session_create_failed',
-        message: 'Could not start presale session',
-      });
+      return presaleApiError(res, 500, 'session_create_failed', sessErr);
     }
 
     await logAttempt(matched.id, true, null);
@@ -281,6 +252,6 @@ export async function handlePresaleRedeem(req, res) {
     });
   } catch (e) {
     console.error('presale-redeem', e);
-    return res.status(500).json({ success: false, reason: 'server_error', message: 'Unexpected error' });
+    return presaleApiError(res, 500, 'server_error', e);
   }
 }

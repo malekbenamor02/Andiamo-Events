@@ -143,6 +143,8 @@ export interface CreateOrderData {
   metaEventSourceUrl?: string;
   /** Presale checkout: must match active session (server reads HttpOnly cookie). */
   presaleCsrfToken?: string;
+  /** Checkout promo code (uppercase A-Z0-9); server validates and applies discount. */
+  promoCode?: string;
 }
 
 /**

@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import Loader from '@/components/ui/Loader';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { getApiBaseUrl } from '@/lib/api-routes';
+import { mapPublicError, mapThrownError } from '@/lib/userErrors';
 import { trackMetaPurchase } from '@/lib/meta';
 import { createMetaEventId } from '@/lib/metaAttribution';
 
@@ -68,10 +69,13 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
     genericError: 'Une erreur s\'est produite. Veuillez réessayer ou nous contacter.'
   };
 
+  const mapPaymentError = (input: Parameters<typeof mapPublicError>[0]) =>
+    mapPublicError(input, language);
+
   useEffect(() => {
     if (!orderId) {
       setState('failed');
-      setError(t.noOrder);
+      setError(mapPaymentError({ error: 'invalid_request', message: t.noOrder }).description);
       return;
     }
 
@@ -92,10 +96,15 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
           return;
         }
         setState('failed');
-        setError(data.error || data.message || t.genericError);
-      } catch (err: any) {
+        setError(
+          mapPaymentError({
+            error: data.error,
+            message: data.message || data.error || t.genericError,
+          }).description
+        );
+      } catch (err: unknown) {
         setState('failed');
-        setError(err?.message || t.genericError);
+        setError(mapThrownError(err, language).description);
       }
     };
 
@@ -116,19 +125,34 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
           setState('success');
         } else if (data.status === 'UNKNOWN') {
           setState('unknown');
-          setError(data.message || t.genericError);
+          setError(
+            mapPaymentError({
+              error: 'payment_unknown',
+              message: data.message,
+            }).description
+          );
         } else if (data.status === 'failed' || !data.success) {
           setState('failed');
-          setError(data.message || t.failedMessage);
+          setError(
+            mapPaymentError({
+              error: data.error || 'payment_failed',
+              message: data.message || t.failedMessage,
+            }).description
+          );
         } else if (!res.ok) {
           setState('failed');
-          setError(data.error || data.details || t.genericError);
+          setError(
+            mapPaymentError({
+              error: data.error,
+              message: data.message || t.genericError,
+            }).description
+          );
         } else {
           setState('success');
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         setState('failed');
-        setError(err?.message || t.genericError);
+        setError(mapThrownError(err, language).description);
       }
     };
 
@@ -138,9 +162,9 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
       confirm();
     } else {
       setState('failed');
-      setError(t.genericError);
+      setError(mapPaymentError({ error: 'invalid_request', message: t.genericError }).description);
     }
-  }, [orderId, isReturn, isInit]);
+  }, [orderId, isReturn, isInit, language]);
 
   useEffect(() => {
     if (state !== 'success' || purchaseTracked) return;

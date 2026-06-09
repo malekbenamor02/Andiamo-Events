@@ -6,7 +6,6 @@ import Loader from '@/components/ui/Loader';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { PageMeta } from '@/components/PageMeta';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
-import { mapPublicError, mapThrownError } from '@/lib/userErrors';
 import type { AcademyLanguage } from '@/types/academy';
 
 interface AcademyPaymentProcessingProps {

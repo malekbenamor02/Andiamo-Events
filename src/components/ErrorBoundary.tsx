@@ -2,7 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { WifiOff } from 'lucide-react';
 import { logger } from '@/lib/logger';
-import { humanizeAppError } from '@/lib/network-error-message';
+import { mapPublicError } from '@/lib/userErrors';
 import { Button } from '@/components/ui/button';
 
 interface Props {
@@ -54,7 +54,9 @@ class ErrorBoundary extends Component<Props, State> {
       }
 
       const lang = this.props.language ?? 'en';
-      const { title, detail } = humanizeAppError(this.state.error?.message, lang);
+      const mapped = mapPublicError({ message: this.state.error?.message }, lang);
+      const title = mapped.title;
+      const detail = mapped.description;
       const reloadLabel = lang === 'en' ? 'Reload page' : 'Recharger la page';
       const homeLabel = lang === 'en' ? 'Back to home' : "Retour à l'accueil";
 

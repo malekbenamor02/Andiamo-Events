@@ -9,6 +9,7 @@ import { Mail, Phone, MapPin } from "lucide-react";
 import { PageMeta } from "@/components/PageMeta";
 import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 import { JsonLdBreadcrumb } from "@/components/JsonLd";
+import { mapPublicError } from "@/lib/userErrors";
 
 interface ContactProps {
   language: 'en' | 'fr';
@@ -184,11 +185,20 @@ const Contact = ({ language }: ContactProps) => {
         details: { formName: 'Contact Form', email: formData.email }
       });
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      const mapped = mapPublicError(
+        {
+          error: 'submission_failed',
+          message:
+            language === 'en'
+              ? "We couldn't send your message. Please try again or email us directly."
+              : "Nous n'avons pas pu envoyer votre message. Réessayez ou écrivez-nous directement par e-mail.",
+        },
+        language
+      );
       toast({
-        title: language === 'en' ? "Error" : "Erreur",
-        description: errorMessage,
-        variant: "destructive",
+        title: mapped.title,
+        description: mapped.description,
+        variant: 'destructive',
       });
     }
 

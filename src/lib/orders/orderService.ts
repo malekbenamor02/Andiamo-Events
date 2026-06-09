@@ -8,6 +8,7 @@ import { Order, CreateOrderData, UpdateOrderStatusData, CancelOrderData } from '
 import { OrderPass } from '@/types/orders';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
 import { getApiBaseUrl } from '@/lib/api-routes';
+import { PublicOrderError } from '@/lib/orders/PublicOrderError';
 
 /**
  * Create a new order
@@ -30,6 +31,7 @@ export async function createOrder(
     metaFbc,
     metaEventSourceUrl,
     presaleCsrfToken,
+    promoCode,
   } = data;
   
   // Validate required fields
@@ -53,6 +55,12 @@ export async function createOrder(
     headers['X-Presale-CSRF'] = presaleCsrfToken;
   }
 
+  // Server derives pass prices; client display fields (price, passName) are rejected by pricing guard.
+  const passesForApi = passes.map((p) => ({
+    passId: p.passId,
+    quantity: p.quantity,
+  }));
+
   const response = await fetch(`${apiBase}/api/orders/create`, {
     method: 'POST',
     headers,
@@ -60,7 +68,7 @@ export async function createOrder(
     signal: options?.signal,
     body: JSON.stringify({
       customerInfo,
-      passes,
+      passes: passesForApi,
       paymentMethod,
       ambassadorId,
       eventId,
@@ -69,18 +77,26 @@ export async function createOrder(
       metaEventId: metaEventId ?? undefined,
       metaFbp: metaFbp ?? undefined,
       metaFbc: metaFbc ?? undefined,
-      metaEventSourceUrl: metaEventSourceUrl ?? undefined
+      metaEventSourceUrl: metaEventSourceUrl ?? undefined,
+      ...(promoCode ? { promoCode } : {}),
     })
   });
 
   const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(result.error || result.details || 'Failed to create order');
+    const code = typeof result.error === 'string' ? result.error : 'service_unavailable';
+    const message =
+      typeof result.message === 'string' && result.message.trim()
+        ? result.message.trim()
+        : typeof result.error === 'string'
+          ? result.error
+          : 'Failed to create order';
+    throw new PublicOrderError(code, message);
   }
 
   if (!result.success || !result.order) {
-    throw new Error('Invalid response from server');
+    throw new PublicOrderError('service_unavailable', 'Invalid response from server');
   }
 
   // Return created order (server returns order with order_passes)

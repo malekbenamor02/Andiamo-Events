@@ -2,6 +2,7 @@
 
 const { formatEventTime } = require('./online-ticket-email-html.cjs');
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./email-branding.cjs');
+const { parseOrderNotesPromo, buildPromoEmailRowsHtml } = require('./email-promo-snippet.cjs');
 
 function buildOrderConfirmationEmailHtml(order, orderPasses, recipientType = 'client') {
   const orderNumber = order.order_number !== null && order.order_number !== undefined 
@@ -46,6 +47,9 @@ function buildOrderConfirmationEmailHtml(order, orderPasses, recipientType = 'cl
   const ambassadorInstagramUsername = getInstagramUsername(ambassadorInstagramUrl) || 'andiamo.events';
   
     // Build passes summary
+  const promoSnapshot = parseOrderNotesPromo(order);
+  const promoRowsHtml = buildPromoEmailRowsHtml(promoSnapshot);
+
   const passesSummaryHtml = orderPasses.map(p => `
     <tr>
       <td>${p.pass_type}</td>
@@ -130,6 +134,7 @@ ${transactionalEmailDarkStylesCss()}
               </thead>
               <tbody>
                 ${passesSummaryHtml}
+                ${promoRowsHtml}
                 <tr class="total-row">
                   <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>${recipientType === 'client' ? 'Total Amount Paid:' : 'Total Amount:'}</strong></td>
                   <td style="text-align: right;"><strong>${parseFloat(order.total_price).toFixed(2)} TND</strong></td>

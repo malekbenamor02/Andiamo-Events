@@ -25,6 +25,8 @@ import { CustomerInfoForm } from '@/components/orders/CustomerInfoForm';
 import { PaymentOptionSelector } from '@/components/orders/PaymentOptionSelector';
 import { AmbassadorSelector } from '@/components/orders/AmbassadorSelector';
 import { OrderSummary } from '@/components/orders/OrderSummary';
+import { PromoCodeField } from '@/components/orders/PromoCodeField';
+import { useEventPromoCheckout } from '@/hooks/useEventPromoCheckout';
 import { OrderSuccessScreen } from '@/components/orders/OrderSuccessScreen';
 import { PassPurchaseEventDetails } from '@/components/orders/PassPurchaseEventDetails';
 import { PassPurchaseSeatingChart } from '@/components/orders/PassPurchaseSeatingChart';
@@ -56,6 +58,8 @@ import {
   firstPassPurchaseErrorField,
   firstPassPurchaseErrorMessage,
 } from '@/lib/orders/passPurchaseValidation';
+import { mapPublicError, mapThrownError } from '@/lib/userErrors';
+import { isPublicOrderError } from '@/lib/orders/PublicOrderError';
 interface EventPass {
   id: string;
   name: string;
@@ -97,6 +101,7 @@ interface PassPurchaseProps {
 }
 
 const WIZARD_STEP_COUNT = 5;
+const RECAPTCHA_BADGE_HIDE_STYLE_ID = 'pass-purchase-recaptcha-badge-hide';
 
 /** DB / PostgREST may surface booleans inconsistently; server 403 on passes is authoritative for gating. */
 function isPresaleEnabledOnEvent(ev: { presale_enabled?: unknown } | null | undefined): boolean {
@@ -195,6 +200,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   /** Server session expiry (ms since epoch); used to re-lock at 3.5 minutes. */
   const [presaleSessionExpiresAt, setPresaleSessionExpiresAt] = useState<number | null>(null);
   const presaleExpiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [checkoutPromoDraft, setCheckoutPromoDraft] = useState('');
+  const [promoCheckoutAvailable, setPromoCheckoutAvailable] = useState(false);
   /** Cart lines at list price — used with presaleDiscountPolicy for totals (matches server order math). */
   const presaleLineList = useMemo((): { passId: string; unitList: number; qty: number }[] => {
     if (!event?.passes) return [];
@@ -206,6 +213,51 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     }
     return out;
   }, [event?.passes, selectedPasses]);
+
+  const promoCartLines = useMemo(
+    () =>
+      presaleLineList.map((l) => ({
+        passId: l.passId,
+        quantity: l.qty,
+      })),
+    [presaleLineList]
+  );
+
+  const { preview: promoPreview, promoSubmitCode } = useEventPromoCheckout({
+    eventId: event?.id,
+    promoAvailable: promoCheckoutAvailable,
+    promoCodeDraft: checkoutPromoDraft,
+    passes: promoCartLines,
+    paymentMethod,
+  });
+
+  useEffect(() => {
+    const evId = event?.id;
+    const presaleOn =
+      serverPresaleRequired === true ||
+      (serverPresaleRequired !== false && isPresaleEnabledOnEvent(event));
+    if (!evId || presaleOn) {
+      setPromoCheckoutAvailable(false);
+      setCheckoutPromoDraft('');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(
+          `${getApiBaseUrl()}${API_ROUTES.EVENT_PROMO_AVAILABILITY(evId)}`
+        );
+        const j = await r.json().catch(() => ({}));
+        if (!cancelled) setPromoCheckoutAvailable(!!j.available);
+      } catch {
+        if (!cancelled) setPromoCheckoutAvailable(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [event?.id, event?.presale_enabled, serverPresaleRequired]);
+
   /** Glass card that wraps the step fields — scroll this into view on Continue/Back so it stays visible (esp. mobile). */
   const wizardFieldsBoxRef = useRef<HTMLDivElement>(null);
   /** Step 5 footer (terms + Back / Submit) — scroll here on mobile after ambassador pick. */
@@ -348,6 +400,25 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     // Intentionally no cleanup: presale gate and payment step both need grecaptcha; removing the script
     // when leaving the gate would break step 5 if the user had not visited it yet.
   }, [RECAPTCHA_SITE_KEY, wizardStep, presaleLocked]);
+
+  // Hide the floating reCAPTCHA badge on presale and early wizard steps; show only on checkout (step 5).
+  useEffect(() => {
+    if (!RECAPTCHA_SITE_KEY || typeof window === 'undefined') return;
+    const showBadge = !presaleLocked && wizardStep === WIZARD_STEP_COUNT;
+    const existing = document.getElementById(RECAPTCHA_BADGE_HIDE_STYLE_ID);
+    if (showBadge) {
+      existing?.remove();
+      return;
+    }
+    if (existing) return;
+    const style = document.createElement('style');
+    style.id = RECAPTCHA_BADGE_HIDE_STYLE_ID;
+    style.textContent = '.grecaptcha-badge { visibility: hidden !important; }';
+    document.head.appendChild(style);
+    return () => {
+      document.getElementById(RECAPTCHA_BADGE_HIDE_STYLE_ID)?.remove();
+    };
+  }, [RECAPTCHA_SITE_KEY, presaleLocked, wizardStep]);
 
   const RECAPTCHA_TIMEOUT_MS = 15000;
 
@@ -546,22 +617,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       presalePlaceholder: "Presale code",
       presaleUnlock: "Prove It",
       presaleInvalid: "Invalid or expired code. Try again.",
-      presaleErrMissingServiceRole:
-        "Presale unlock is not configured on this server (missing database key). Ask the developer to set SUPABASE_SERVICE_ROLE_KEY for the API.",
-      presaleErrCaptcha: "Verification failed. Try again.",
-      presaleErrPresaleOff:
-        "Presale is not enabled for this event. In admin, open the event, turn on presale (code gate), and save.",
-      presaleErrEventNotFound: "Event not found.",
-      presaleErrDatesMissing: "Presale configuration is incomplete for this event.",
-      presaleErrNotStarted: "Presale is not available yet.",
-      presaleErrEnded: "Presale is no longer available.",
-      presaleErrCodeNotFound: "Code not recognized. Check spelling and try again.",
-      presaleErrCodeNotActiveYet: "This code is not active yet.",
-      presaleErrCodeExpired: "This code has expired.",
-      presaleErrCodeExhausted: "This code has already been used or reached its limit.",
-      presaleErrSession: "Could not start your session. Try again.",
-      presaleErrServer: "Something went wrong. Try again later.",
-      presaleErrRateLimited: "Too many attempts. Try again later.",
     },
     fr: {
       title: "Acheter un Pass",
@@ -599,22 +654,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       presalePlaceholder: "Code prévente",
       presaleUnlock: "Prouve-le",
       presaleInvalid: "Code invalide ou expiré. Réessayez.",
-      presaleErrMissingServiceRole:
-        "Le déblocage prévente n'est pas configuré sur ce serveur (clé base de données manquante). Demandez au développeur de définir SUPABASE_SERVICE_ROLE_KEY pour l'API.",
-      presaleErrCaptcha: "Échec de la vérification. Réessayez.",
-      presaleErrPresaleOff:
-        "La prévente n'est pas activée pour cet événement. Dans l'admin, ouvrez l'événement, activez la prévente (code), puis enregistrez.",
-      presaleErrEventNotFound: "Événement introuvable.",
-      presaleErrDatesMissing: "La configuration prévente est incomplète pour cet événement.",
-      presaleErrNotStarted: "La prévente n'est pas encore disponible.",
-      presaleErrEnded: "La prévente n'est plus disponible.",
-      presaleErrCodeNotFound: "Code non reconnu. Vérifiez l'orthographe et réessayez.",
-      presaleErrCodeNotActiveYet: "Ce code n'est pas encore actif.",
-      presaleErrCodeExpired: "Ce code a expiré.",
-      presaleErrCodeExhausted: "Ce code a déjà été utilisé ou a atteint sa limite.",
-      presaleErrSession: "Impossible de démarrer votre session. Réessayez.",
-      presaleErrServer: "Une erreur s'est produite. Réessayez plus tard.",
-      presaleErrRateLimited: "Trop de tentatives. Réessayez plus tard.",
     }
   };
 
@@ -623,26 +662,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     reason: string | undefined,
     serverMessage: string | undefined
   ): string {
-    const k = t[lang];
-    const map: Record<string, string> = {
-      missing_service_role: k.presaleErrMissingServiceRole,
-      captcha_failed: k.presaleErrCaptcha,
-      presale_off: k.presaleErrPresaleOff,
-      event_not_found: k.presaleErrEventNotFound,
-      presale_dates_missing: k.presaleErrDatesMissing,
-      presale_not_started: k.presaleErrNotStarted,
-      presale_ended: k.presaleErrEnded,
-      code_not_found: k.presaleErrCodeNotFound,
-      code_not_active_yet: k.presaleErrCodeNotActiveYet,
-      code_expired: k.presaleErrCodeExpired,
-      code_exhausted: k.presaleErrCodeExhausted,
-      session_create_failed: k.presaleErrSession,
-      server_error: k.presaleErrServer,
-      rate_limited: k.presaleErrRateLimited,
-    };
-    if (reason && map[reason]) return map[reason];
-    if (serverMessage && typeof serverMessage === 'string' && serverMessage.trim()) return serverMessage.trim();
-    return k.presaleInvalid;
+    return mapPublicError({ reason, message: serverMessage }, lang).description;
   }
 
   useEffect(() => {
@@ -876,11 +896,17 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
               status: 404,
               error: errorData,
             });
+            const passErr = mapPublicError(
+              {
+                error: typeof errorData?.error === 'string' ? errorData.error : 'passes_unavailable',
+                message: typeof errorData?.message === 'string' ? errorData.message : undefined,
+                status: 404,
+              },
+              language
+            );
             toast({
-              title: language === 'en' ? 'Warning' : 'Avertissement',
-              description: language === 'en'
-                ? 'Passes could not be loaded (event not found on server). Check that SUPABASE_URL / SUPABASE_ANON_KEY match VITE_SUPABASE_* in .env, then restart the API.'
-                : 'Impossible de charger les passes (événement introuvable côté serveur). Vérifiez que SUPABASE_URL / SUPABASE_ANON_KEY correspondent aux VITE_* dans .env, puis redémarrez l’API.',
+              title: passErr.title,
+              description: passErr.description,
               variant: 'destructive',
             });
           }
@@ -901,23 +927,28 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             setPresaleCsrfToken(null);
             setPassesForbiddenPresale(true);
           }
+          const passErr = mapPublicError(
+            {
+              error: typeof errorData?.error === 'string' ? errorData.error : 'passes_unavailable',
+              message: typeof errorData?.message === 'string' ? errorData.message : undefined,
+              status: privatePassesResponse.status,
+            },
+            language
+          );
           toast({
-            title: language === 'en' ? 'Warning' : 'Avertissement',
-            description: language === 'en' 
-              ? `Event loaded but passes could not be loaded (${privatePassesResponse.status}). Please try again later.` 
-              : `Événement chargé mais les passes n'ont pas pu être chargées (${privatePassesResponse.status}). Veuillez réessayer plus tard.`,
-            variant: "destructive",
+            title: passErr.title,
+            description: passErr.description,
+            variant: 'destructive',
           });
         }
       } catch (passError: any) {
         // Passes fetch error, but we still show the event
         console.error('❌ Error fetching passes for event:', resolvedEventId, passError);
+        const passErr = mapThrownError(passError, language);
         toast({
-          title: language === 'en' ? 'Warning' : 'Avertissement',
-          description: language === 'en' 
-            ? `Event loaded but passes could not be loaded: ${passError.message || 'Network error'}. Please try again later.` 
-            : `Événement chargé mais les passes n'ont pas pu être chargées: ${passError.message || 'Erreur réseau'}. Veuillez réessayer plus tard.`,
-          variant: "destructive",
+          title: passErr.title,
+          description: passErr.description,
+          variant: 'destructive',
         });
       }
 
@@ -1306,7 +1337,28 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       return;
     }
 
-    const totalPrice = calculateTotal();
+    if (
+      promoCheckoutAvailable &&
+      checkoutPromoDraft.trim() &&
+      promoPreview.status !== 'valid'
+    ) {
+      toast({
+        title: t[language].error,
+        description:
+          language === 'en'
+            ? 'Enter a valid promo code or remove it to continue.'
+            : 'Entrez un code promo valide ou retirez-le pour continuer.',
+        variant: 'destructive',
+      });
+      setProcessing(false);
+      endCheckoutAttempt();
+      return;
+    }
+
+    const totalPrice =
+      promoPreview.status === 'valid'
+        ? promoPreview.discountedSubtotal
+        : calculateTotal();
     const totalQuantity = selectedPassesArray.reduce((sum, p) => sum + p.quantity, 0);
     if (totalPrice <= 0) {
       toast({
@@ -1389,6 +1441,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             presaleCsrfToken
               ? presaleCsrfToken
               : undefined,
+          promoCode: promoSubmitCode || undefined,
         },
         { signal: abortCtl.signal }
       );
@@ -1475,16 +1528,13 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         return;
       }
       console.error('Order submission error:', error);
-      const errorMessage =
-        error instanceof Error && error.message
-          ? error.message
-          : language === 'en'
-            ? 'Failed to submit order'
-            : 'Échec de la soumission de la commande';
+      const orderErr = isPublicOrderError(error)
+        ? mapPublicError({ error: error.code, message: error.message }, language)
+        : mapThrownError(error, language);
       toast({
-        title: t[language].error,
-        description: errorMessage,
-        variant: "destructive",
+        title: orderErr.title,
+        description: orderErr.description,
+        variant: 'destructive',
       });
       setProcessing(false);
       endCheckoutAttempt();
@@ -1619,20 +1669,32 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   }
 
   // Calculate values that might be needed in early returns
-  const totalPrice = calculateTotal();
+  const baseSubtotal = calculateTotal();
   const isOnlinePayment = paymentMethod === PaymentMethod.ONLINE;
   const onlineFees =
-    isOnlinePayment && totalPrice > 0
-      ? computeOnlinePaymentFeesDisplay(totalPrice)
+    isOnlinePayment && baseSubtotal > 0 && promoPreview.status !== 'valid'
+      ? computeOnlinePaymentFeesDisplay(baseSubtotal)
       : null;
-  const onlineFeeAmount = onlineFees?.feeAmount ?? 0;
-  const totalWithFees = onlineFees?.totalWithFees ?? totalPrice;
+  const promoPreviewActive = promoPreview.status === 'valid';
+  const totalPrice = promoPreviewActive ? promoPreview.discountedSubtotal : baseSubtotal;
+  const onlineFeeAmount = promoPreviewActive
+    ? promoPreview.feeAmount
+    : onlineFees?.feeAmount ?? 0;
+  const totalWithFees = promoPreviewActive
+    ? promoPreview.totalWithFees
+    : onlineFees?.totalWithFees ?? baseSubtotal;
   const hasSelectedPasses = Object.values(selectedPasses).some(qty => qty > 0);
   const selectedPassesArray = getSelectedPassesArray();
+  const promoBlocksSubmit =
+    promoCheckoutAvailable &&
+    checkoutPromoDraft.trim().length > 0 &&
+    promoPreview.status !== 'valid';
   const step5ReadyToSubmit =
     hasSelectedPasses &&
     !!paymentMethod &&
-    (paymentMethod !== PaymentMethod.AMBASSADOR_CASH || !!selectedAmbassadorId);
+    (paymentMethod !== PaymentMethod.AMBASSADOR_CASH || !!selectedAmbassadorId) &&
+    !promoBlocksSubmit &&
+    !(checkoutPromoDraft.trim() && promoPreview.status === 'loading');
 
   // Success screen - show OrderSuccessScreen for ambassador cash, simple message for others
   if (submitted) {
@@ -2056,7 +2118,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                             const result = await response.json();
 
                             if (!response.ok) {
-                              throw new Error(result.error || result.details || 'Failed to save submission');
+                              throw new Error(result.error || result.message || 'submission_failed');
                             }
 
                             // After saving, redirect to external payment link
@@ -2071,12 +2133,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                               });
                               setProcessing(false);
                             }
-                          } catch (error: any) {
+                          } catch (error: unknown) {
                             console.error('AIO Events submission error:', error);
-                            const errorMessage = error.message || (language === 'en' ? 'Failed to save submission' : 'Échec de l\'enregistrement');
+                            const mapped = mapThrownError(error, language);
                             toast({
-                              title: t[language].error,
-                              description: errorMessage,
+                              title: mapped.title,
+                              description: mapped.description,
                               variant: "destructive",
                             });
                             setProcessing(false);
@@ -2114,6 +2176,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                   )}
 
                   <div className="space-y-4 border-t border-border/40 pt-6 mt-2">
+                    {promoCheckoutAvailable && wizardStep === WIZARD_STEP_COUNT && (
+                      <PromoCodeField
+                        language={language}
+                        value={checkoutPromoDraft}
+                        onChange={setCheckoutPromoDraft}
+                        preview={promoPreview}
+                        disabled={processing}
+                      />
+                    )}
                     <OrderSummary
                       selectedPasses={selectedPassesArray}
                       totalPrice={totalPrice}
@@ -2123,6 +2194,13 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       language={language}
                       feeAmount={onlineFeeAmount}
                       totalWithFees={totalWithFees}
+                      promoCode={promoPreviewActive ? promoPreview.code : undefined}
+                      promoDiscountAmount={
+                        promoPreviewActive ? promoPreview.discountAmount : undefined
+                      }
+                      subtotalBeforePromo={
+                        promoPreviewActive ? promoPreview.subtotalBeforePromo : undefined
+                      }
                     />
 
                     <div className="pt-2 border-t">

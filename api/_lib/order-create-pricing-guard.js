@@ -3,7 +3,11 @@
  * and build pass line items without spreading arbitrary client fields.
  */
 
-/** Top-level keys clients must not send (pricing / presale is server-derived). */
+import { parseAllowedPromoCodeFromOrderBody } from './event-promo-code.js';
+
+export { parseAllowedPromoCodeFromOrderBody };
+
+/** Top-level keys clients must not send (pricing / presale is server-derived). promoCode is allowlisted separately. */
 const FORBIDDEN_ORDER_CREATE_BODY_KEYS = new Set([
   'presale_code_id',
   'presaleCodeId',
@@ -20,10 +24,29 @@ const FORBIDDEN_ORDER_CREATE_BODY_KEYS = new Set([
   'couponCode',
   'promo',
   'promo_code',
-  'promoCode',
   'subtotal_override',
   'total_override',
   'price_override',
+  'discountAmount',
+  'discountedSubtotal',
+  'feeAmount',
+  'totalWithFees',
+]);
+
+const FORBIDDEN_PASS_LINE_KEYS = new Set([
+  'price',
+  'unitPrice',
+  'unit_price',
+  'discount',
+  'discount_type',
+  'discount_value',
+  'discountType',
+  'discountValue',
+  'promo',
+  'promoCode',
+  'promo_code',
+  'subtotal',
+  'total',
 ]);
 
 /**
@@ -41,6 +64,19 @@ export function rejectForbiddenOrderCreateKeys(body) {
       found.push(key);
     }
   }
+
+  const passes = body.passes;
+  if (Array.isArray(passes)) {
+    passes.forEach((line, index) => {
+      if (line == null || typeof line !== 'object' || Array.isArray(line)) return;
+      for (const pk of Object.keys(line)) {
+        if (FORBIDDEN_PASS_LINE_KEYS.has(pk)) {
+          found.push(`passes[${index}].${pk}`);
+        }
+      }
+    });
+  }
+
   if (found.length) {
     return { ok: false, keys: found };
   }

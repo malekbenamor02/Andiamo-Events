@@ -1,97 +1,41 @@
-# Vercel API Count & Career Solution
+# Vercel API count (serverless functions)
 
-## Current API count (serverless functions)
+Vercel Hobby counts **one serverless function per `api/**` file that exports a default HTTP handler**. Helpers under `api/_lib/` are not separate functions.
 
-Vercel counts **one serverless function per file** in the `api/` folder. You have:
+## Current count: **11** (at limit)
 
-| # | File | Notes |
-|---|------|--------|
-| 1 | `api/admin-login.js` | Admin auth |
-| 2 | `api/admin-approve-order.js` | Order approval |
-| 3 | `api/verify-admin.js` | Session verify |
-| 4 | `api/orders-create.js` | Create order |
-| 5 | `api/aio-events-save-submission.js` | AIO form |
-| 6 | `api/passes-[eventId].js` | Dynamic pass by event |
-| 7 | `api/misc.js` | **Unified** – many routes (logout, send-email, ambassador, POS, SMS, etc.) |
-| 8 | `api/admin/logs.js` | Admin logs |
-| 9 | `api/pos.js` | POS API |
-| 10 | `api/admin-pos.js` | Admin POS |
-| 11 | `api/scan.js` | Scanner + scan admin |
-| 12 | `api/clictopay-generate-payment.js` | ClicToPay payment |
+| File | Role |
+|------|------|
+| `api/admin-login.js` | Admin auth |
+| `api/admin-approve-order.js` | Order approval + PDF |
+| `api/orders-create.js` | Create order |
+| `api/passes-[eventId].js` | Public passes |
+| `api/presale.js` | Presale + **event promo** (availability, validate, admin CRUD) |
+| `api/clictopay-generate-payment.js` | ClicToPay (do not merge) |
+| `api/misc.js` | Unified routes (career, admin logs, ambassador, academy, …) |
+| `api/media.js` | Media upload |
+| `api/pos.js` | POS |
+| `api/admin-pos.js` | Admin POS |
+| `api/scan.js` | Scanner |
 
-**Total: 12 serverless functions.**  
-Vercel (Hobby) limit: **11** → you are **1 over** even before adding career.
+**Merged into `misc.js`:** `api/admin/logs.js` → `api/_lib/admin-logs-route.js` (rewrite `/api/admin/logs` → `misc.js`).
 
----
+**Do not add** `api/event-promo.js` — all promo routes go through `presale.js`.
 
-## Career routes (from `careerRoutes.cjs`)
+## Promo + presale rewrites (vercel.json)
 
-If career were deployed as a separate serverless function, it would add **1 more** (13 total).  
-Career uses **31 route handlers** (many paths with params), but they can all be served by **one** backend:
+- `/api/event-promo/:path*` → `presale.js`
+- `/api/admin/event-promo/:path*` → `presale.js`
+- Presale routes unchanged (separate rewrites for clarity)
 
-- Public: `/api/careers/page-content`, `/api/careers/domains`, `/api/careers/domains/:slug`, `/api/careers/city-options`, `/api/careers/gender-options`, `/api/career-application`, `/api/career-application/check-duplicate`
-- Admin: `/api/admin/careers/*` (settings, domains, templates, fields, applications, city/gender options, etc.)
+## Event promo Supabase
 
----
+Migration `event_promo_security_hardening` on production includes:
 
-## Constraint: do not touch any payment APIs
+- `code_hash`, `label` columns
+- `event_promo_order_create_rate_try` (12 / 15 min per IP)
+- `event_promo_claim_uses(event_id, promo_id, count)`
+- RPC execute locked to `service_role`
+- `CANCELLED_BY_ADMIN` releases promo slots
 
-**Leave all payment-related APIs unchanged.** Do not merge, move, or refactor:
-
-- `api/clictopay-generate-payment.js` (ClicToPay)
-- Any rewrites/routes for `/api/clictopay-*`, `/api/orders/create`, payment options, or other payment flows.
-
----
-
-## Solution (stay at 11, add career, no breaking changes)
-
-### 1. Reduce from 12 → 11 by merging a non-payment function into `misc.js`
-
-Pick **one** non-payment function to merge into `misc.js` so you free one slot. Good candidates:
-
-- **`api/verify-admin.js`** – session verify (small, auth-only), or  
-- **`api/aio-events-save-submission.js`** – AIO form submit
-
-Example (verify-admin):
-
-- In **`vercel.json`**: add a rewrite so `/api/verify-admin` → **`/api/misc.js`** (and remove or stop using the standalone `api/verify-admin.js` entry in rewrites if it points to its own file).
-- In **`api/misc.js`**: in the path dispatch, add a branch for `path === '/api/verify-admin'` (GET) and run the same logic currently in `api/verify-admin.js` (move the code into `misc.js` or call a shared helper).
-
-Result: **11 serverless functions** (one less file counted), **no payment APIs changed**.
-
-### 2. Serve all career routes through `misc.js` (no new function)
-
-- **Do not** add a new `api/careers.js` (or any new api file) for career.
-- In **`vercel.json`**:
-  - Add **rewrites** for every career path to **`/api/misc.js`**, for example:
-    - `/api/careers/page-content` → `/api/misc.js`
-    - `/api/careers/domains` → `/api/misc.js`
-    - `/api/careers/domains/:slug` → `/api/misc.js`
-    - `/api/careers/city-options` → `/api/misc.js`
-    - `/api/careers/gender-options` → `/api/misc.js`
-    - `/api/career-application` → `/api/misc.js`
-    - `/api/career-application/check-duplicate` → `/api/misc.js`
-    - `/api/admin/careers/settings` → `/api/misc.js`
-    - `/api/admin/careers/domains` → `/api/misc.js`
-    - … (and all other `/api/admin/careers/*` patterns you use)
-- In **`api/misc.js`**:
-  - In the existing path-based dispatch (where you already branch on `path`), add branches for:
-    - `path.startsWith('/api/careers')` or `path === '/api/career-application'` or `path.startsWith('/api/admin/careers')`
-  - For those requests, call the **same** career logic that `careerRoutes.cjs` uses. Two ways to avoid duplication:
-    - **Option A (recommended):** Extract the core career logic (DB, Supabase, validation) into a shared module (e.g. `lib/career-handlers.js` or `careerHandlers.cjs`). `careerRoutes.cjs` keeps registering Express routes that call these handlers (unchanged for local `server.cjs`). `misc.js` imports the same handlers and calls them when the path matches (with a thin adapter from `(req, res)` to your handler signature if needed).
-    - **Option B:** From `misc.js`, call your existing Node server (e.g. internal HTTP request to the same app). That adds latency and complexity; Option A is cleaner.
-
-Result: **Still 11 functions**, with career public page and admin tab working the same as today.
-
----
-
-## Summary
-
-| Action | Effect |
-|--------|--------|
-| **Do not touch** any payment APIs (ClicToPay, orders/create, payment flows) | Payment stays unchanged |
-| Merge one **non-payment** function into `misc.js` (e.g. `verify-admin` or `aio-events-save-submission`) + adjust rewrites | 12 → **11** functions |
-| Route all career paths to `misc.js` + add career dispatch in `misc.js` | Career works, **no new** function |
-| Keep `careerRoutes.cjs` + `server.cjs` as-is for local dev | No breaking changes |
-
-Final count: **11 serverless functions**, career and admin tab supported, **payment APIs untouched**.
+**Promo hashing:** set `EVENT_PROMO_CODE_PEPPER` (or `PRESALE_CODE_PEPPER`) on Vercel. Table uses `label` (admin display) + `code_hash` (lookup only); plaintext `code` column removed.

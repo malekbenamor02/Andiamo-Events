@@ -12,6 +12,7 @@ import {
   loadPresaleCodeWithDiscountPolicy,
 } from './presale-server.js';
 import { presaleDiscountPolicyToApi } from './presale-discount.js';
+import { presaleApiError, publicApiError, PUBLIC_ERROR_CODES } from './public-api-error.js';
 
 let corsUtils = null;
 async function getCorsUtils() {
@@ -21,11 +22,7 @@ async function getCorsUtils() {
 
 function requireServiceDb(res) {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    res.status(503).json({
-      valid: false,
-      error: 'missing_service_role',
-      message: 'Presale session API requires SUPABASE_SERVICE_ROLE_KEY (presale_sessions is not readable with anon).',
-    });
+    presaleApiError(res, 503, 'missing_service_role', 'Presale session: SUPABASE_SERVICE_ROLE_KEY missing');
     return null;
   }
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -56,7 +53,7 @@ export async function handlePresaleSession(req, res) {
     credentials: true,
   })) {
     if (req.headers.origin) {
-      return res.status(403).json({ error: 'Invalid access' });
+      return publicApiError(res, 403, PUBLIC_ERROR_CODES.INVALID_ACCESS);
     }
   }
 
@@ -123,7 +120,7 @@ export async function handlePresaleSession(req, res) {
       const body = await readJsonBody(req);
       const eventId = body?.eventId ? String(body.eventId).trim() : '';
       if (!eventId) {
-        return res.status(400).json({ error: 'Invalid access' });
+        return publicApiError(res, 400, PUBLIC_ERROR_CODES.VALIDATION_FAILED);
       }
       const sessionId = parseCookie(req, PRESALE_COOKIE_NAME);
       if (!sessionId) {
@@ -143,13 +140,13 @@ export async function handlePresaleSession(req, res) {
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return publicApiError(res, 405, PUBLIC_ERROR_CODES.INVALID_REQUEST);
   }
 
   try {
     const eventId = req.query?.eventId || new URL(req.url || '', 'http://localhost').searchParams.get('eventId');
     if (!eventId) {
-      return res.status(400).json({ error: 'Invalid access' });
+      return publicApiError(res, 400, PUBLIC_ERROR_CODES.VALIDATION_FAILED);
     }
 
     const sessionId = parseCookie(req, PRESALE_COOKIE_NAME);

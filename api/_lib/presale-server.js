@@ -10,6 +10,7 @@ import {
   buildPresalePassBreakdown,
   roundPresaleMoney,
 } from './presale-discount.js';
+import { presaleApiError } from './public-api-error.js';
 
 export { applyPresaleDiscountToPasses } from './presale-discount.js';
 
@@ -62,21 +63,11 @@ function allowDefaultDevPresalePepper() {
 export function requirePresalePepperOr503(res) {
   if (!presalePepperConfigured()) {
     if (process.env.VERCEL === '1') {
-      res.status(503).json({
-        success: false,
-        reason: 'server_misconfigured',
-        message:
-          'Set PRESALE_CODE_PEPPER in the API environment (Vercel project env). Presale hashing is disabled until it is set.',
-      });
+      presaleApiError(res, 503, 'server_misconfigured', 'PRESALE_CODE_PEPPER missing on Vercel');
       return false;
     }
     if (process.env.NODE_ENV === 'production' && !allowDefaultDevPresalePepper()) {
-      res.status(503).json({
-        success: false,
-        reason: 'server_misconfigured',
-        message:
-          'Set PRESALE_CODE_PEPPER on the API server, or for a non-Vercel local API with NODE_ENV=production in .env, set PRESALE_ALLOW_DEFAULT_DEV_PEPPER=true (dev pepper only; never use that on public production).',
-      });
+      presaleApiError(res, 503, 'server_misconfigured', 'PRESALE_CODE_PEPPER missing in production');
       return false;
     }
   }

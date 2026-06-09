@@ -38,8 +38,10 @@ function lazyWithChunkRecovery<T extends React.ComponentType<unknown>>(
   });
 }
 
-// Route-level code splitting for main pages
-const Index = lazyWithChunkRecovery(() => import("./pages/Index"));
+// Homepage is eager-loaded (most common entry) to avoid Suspense loader before hero loader.
+import Index from "./pages/Index";
+
+// Route-level code splitting for other main pages
 const Events = lazyWithChunkRecovery(() => import("./pages/Events"));
 const About = lazyWithChunkRecovery(() => import("./pages/About"));
 const Contact = lazyWithChunkRecovery(() => import("./pages/Contact"));

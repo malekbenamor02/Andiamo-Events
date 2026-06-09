@@ -65,3 +65,5 @@ export function orderHasPresaleAttribution(order: {
     return false;
   }
 }
+
+export { orderHasPromoAttribution } from '@/lib/eventPromo/promoOrder';

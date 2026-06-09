@@ -23,6 +23,7 @@ import {
 } from "@/lib/career/api";
 import type { CareerDomain, CareerApplicationField } from "@/lib/career/types";
 import { uploadCareerDocument } from "@/lib/upload";
+import { mapPublicError } from "@/lib/userErrors";
 import { Briefcase, ArrowLeft, ArrowRight, CheckCircle, Sparkles, Upload, X, Search, Loader2, Share2 } from "lucide-react";
 
 interface CareersProps {
@@ -447,7 +448,7 @@ export default function Careers({ language }: CareersProps) {
           if (file) {
             const result = await uploadCareerDocument(file);
             if (result.error) {
-              toast({ title: "Error", description: result.error, variant: "destructive" });
+              toast({ title: "Error", description: mapPublicError({ error: result.error, message: result.error }, language).description, variant: "destructive" });
               setSubmitting(false);
               return;
             }
@@ -478,17 +479,21 @@ export default function Careers({ language }: CareersProps) {
           setSubmitting(false);
           return;
         }
-        const details = err?.data?.details;
-        let description = err?.message || "Submission failed.";
-        if (Array.isArray(details) && details.length > 0) {
-          const parts = details.map((d: { field?: string; message?: string }) =>
-            d.field && d.message ? `${d.field}: ${d.message}` : d.message || ""
-          ).filter(Boolean);
+        const errObj = err as { data?: { details?: Array<{ field?: string; message?: string }> }; message?: string };
+        let description: string | undefined;
+        if (Array.isArray(errObj.data?.details) && errObj.data.details.length > 0) {
+          const parts = errObj.data.details
+            .map((d) => (d.field && d.message ? `${d.field}: ${d.message}` : d.message || ""))
+            .filter(Boolean);
           if (parts.length) description = parts.join(". ");
         }
+        const mapped = mapPublicError(
+          { error: 'submission_failed', message: description || errObj.message },
+          language
+        );
         toast({
           title: language === "fr" ? "Erreur" : "Error",
-          description,
+          description: mapped.description,
           variant: "destructive",
         });
       } finally {

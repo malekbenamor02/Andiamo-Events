@@ -4,6 +4,7 @@
  */
 import '../../lib/sentry-server.js';
 import { createClient } from '@supabase/supabase-js';
+import { publicApiError, PUBLIC_ERROR_CODES } from './public-api-error.js';
 
 let corsUtils = null;
 async function getCorsUtils() {
@@ -30,22 +31,24 @@ export async function handlePresaleRequired(req, res) {
   const { setCORSHeaders, handlePreflight } = await getCorsUtils();
   if (handlePreflight(req, res, { methods: 'GET, OPTIONS', headers: 'Content-Type', credentials: true })) return;
   if (!setCORSHeaders(res, req, { methods: 'GET, OPTIONS', headers: 'Content-Type', credentials: true })) {
-    if (req.headers.origin) return res.status(403).json({ error: 'Invalid access' });
+    if (req.headers.origin) return publicApiError(res, 403, PUBLIC_ERROR_CODES.INVALID_ACCESS);
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return publicApiError(res, 405, PUBLIC_ERROR_CODES.INVALID_REQUEST);
   }
 
   const client = dbClient();
   if (!client) {
-    return res.status(503).json({ error: 'Supabase not configured' });
+    return publicApiError(res, 503, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
+      logDetails: 'presale-required: Supabase not configured',
+    });
   }
 
   const eventId =
     req.query?.eventId || new URL(req.url || '', 'http://localhost').searchParams.get('eventId');
   if (!eventId || !String(eventId).trim()) {
-    return res.status(400).json({ error: 'eventId required' });
+    return publicApiError(res, 400, PUBLIC_ERROR_CODES.VALIDATION_FAILED);
   }
 
   const { data, error } = await client
@@ -58,10 +61,13 @@ export async function handlePresaleRequired(req, res) {
     console.error('presale-required', error);
     const msg = error.message || String(error);
     const network = /fetch failed|ECONNREFUSED|ENOTFOUND|getaddrinfo|certificate/i.test(msg);
-    return res.status(network ? 503 : 500).json({
-      error: network ? 'supabase_unreachable' : 'query failed',
-      details: msg,
-    });
+    return publicApiError(
+      res,
+      network ? 503 : 500,
+      PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE,
+      undefined,
+      { logDetails: msg, details: msg },
+    );
   }
   if (!data) {
     return res.status(404).json({ required: false, found: false });

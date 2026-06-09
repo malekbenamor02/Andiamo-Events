@@ -6,6 +6,19 @@ const ExcelJS = require('exceljs');
 const { getBaseEmailHtml } = require('./api/_lib/career-email-base-html.cjs');
 const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
 
+let publicApiErrorModPromise = null;
+function getPublicApiErrorMod() {
+  if (!publicApiErrorModPromise) {
+    publicApiErrorModPromise = import('./api/_lib/public-api-error.js');
+  }
+  return publicApiErrorModPromise;
+}
+
+async function careerServiceError(res, status, logDetails) {
+  const { publicApiError, PUBLIC_ERROR_CODES } = await getPublicApiErrorMod();
+  return publicApiError(res, status, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, { logDetails });
+}
+
 const CAREER_SETTINGS_KEY = 'career_applications_settings';
 
 function isLocalHostRequest(req) {
@@ -401,21 +414,21 @@ function registerCareerRoutes(app, deps) {
   // —— Public: career page content (Why join us / benefits) ———————————————
   app.get('/api/careers/page-content', async (req, res) => {
     try {
-      if (!supabase) return res.status(500).json({ error: 'Not configured' });
+      if (!supabase) return careerServiceError(res, 500, 'Not configured');
       const { data, error } = await supabase.from('site_content').select('content').eq('key', 'career_why_join_us').maybeSingle();
       if (error) throw error;
       const content = data?.content || { en: { title: 'Why join us', items: [] }, fr: { title: 'Pourquoi nous rejoindre', items: [] } };
       res.json({ whyJoinUs: content });
     } catch (e) {
       console.error('GET /api/careers/page-content', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Public: list open domains —————————————————————————————————————————
   app.get('/api/careers/domains', async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const enabled = await getCareerSettingsEnabled(supabase);
       if (!enabled && !isLocalHostRequest(req)) return res.json({ domains: [] });
       const { data: domains, error } = await db
@@ -427,14 +440,14 @@ function registerCareerRoutes(app, deps) {
       res.json({ domains: domains || [] });
     } catch (e) {
       console.error('GET /api/careers/domains', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Public: get domain by slug with fields —————————————————————————————
   app.get('/api/careers/domains/:slug', async (req, res) => {
     try {
-      if (!db || !supabase) return res.status(500).json({ error: 'Not configured' });
+      if (!db || !supabase) return careerServiceError(res, 500, 'Not configured');
       const enabled = await getCareerSettingsEnabled(supabase);
       if (!enabled && !isLocalHostRequest(req)) return res.status(404).json({ error: 'Not found' });
       const { data: domain, error: domainError } = await db
@@ -456,7 +469,7 @@ function registerCareerRoutes(app, deps) {
       res.json({ domain, fields: out });
     } catch (e) {
       console.error('GET /api/careers/domains/:slug', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
@@ -469,7 +482,7 @@ function registerCareerRoutes(app, deps) {
 
   app.post('/api/career-application', careerApplicationLimiterMaybe, async (req, res) => {
     try {
-      if (!db || !supabase) return res.status(500).json({ error: 'Not configured' });
+      if (!db || !supabase) return careerServiceError(res, 500, 'Not configured');
       const { domainId, domainSlug, recaptchaToken, ...rawFormData } = req.body || {};
 
       if (!recaptchaToken) {
@@ -477,7 +490,7 @@ function registerCareerRoutes(app, deps) {
       }
       if (recaptchaToken !== 'localhost-bypass-token') {
         const secret = process.env.RECAPTCHA_SECRET_KEY;
-        if (!secret) return res.status(500).json({ error: 'Server configuration error' });
+        if (!secret) return careerServiceError(res, 500, 'RECAPTCHA secret missing');
         const verifyRes = await fetch('https://www.google.com/recaptcha/api/siteverify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -640,14 +653,14 @@ function registerCareerRoutes(app, deps) {
       res.status(201).json({ id: inserted.id, success: true });
     } catch (e) {
       console.error('POST /api/career-application', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Public: check duplicate email/phone for a job (one per job) ——————————
   app.post('/api/career-application/check-duplicate', careerApplicationLimiter, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { domainSlug, email, phone } = req.body || {};
       if (!domainSlug) return res.status(400).json({ error: 'domainSlug is required' });
       const { data: domain } = await db.from('career_domains').select('id').eq('slug', domainSlug).eq('applications_open', true).maybeSingle();
@@ -686,25 +699,25 @@ function registerCareerRoutes(app, deps) {
       res.json({ emailTaken, phoneTaken });
     } catch (e) {
       console.error('POST /api/career-application/check-duplicate', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Admin: settings ————————————————————————————————————————————————————
   app.get('/api/admin/careers/settings', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const settings = await getCareerSettings(db);
       res.json({ settings });
     } catch (e) {
       console.error('GET /api/admin/careers/settings', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.put('/api/admin/careers/settings', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { enabled, admin_notification_emails } = req.body || {};
       if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
       const normalizedEmails = Array.isArray(admin_notification_emails)
@@ -731,14 +744,14 @@ function registerCareerRoutes(app, deps) {
       });
     } catch (e) {
       console.error('PUT /api/admin/careers/settings', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Admin: domains list with counts ——————————————————————————————————————
   app.get('/api/admin/careers/domains', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: domains, error } = await db.from('career_domains').select('*').order('sort_order', { ascending: true });
       if (error) throw error;
       const ids = (domains || []).map((d) => d.id);
@@ -748,13 +761,13 @@ function registerCareerRoutes(app, deps) {
       res.json({ domains: withCount });
     } catch (e) {
       console.error('GET /api/admin/careers/domains', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.post('/api/admin/careers/domains', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { name, description, benefits, job_type, salary, job_details, applications_open, document_upload_enabled, sort_order } = req.body || {};
       if (!name || typeof name !== 'string') return res.status(400).json({ error: 'name is required' });
       const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'domain';
@@ -774,13 +787,13 @@ function registerCareerRoutes(app, deps) {
       res.status(201).json({ domain });
     } catch (e) {
       console.error('POST /api/admin/careers/domains', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.get('/api/admin/careers/domains/:id', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: domain, error: de } = await db.from('career_domains').select('*').eq('id', req.params.id).maybeSingle();
       if (de || !domain) return res.status(404).json({ error: 'Not found' });
       const { data: fields, error: fe } = await db
@@ -796,13 +809,13 @@ function registerCareerRoutes(app, deps) {
       res.json({ domain, fields: out });
     } catch (e) {
       console.error('GET /api/admin/careers/domains/:id', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.put('/api/admin/careers/domains/:id', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { name, slug, description, benefits, job_type, salary, job_details, applications_open, document_upload_enabled, sort_order } = req.body || {};
       const updates = { updated_at: new Date().toISOString() };
       if (name !== undefined) updates.name = name;
@@ -820,13 +833,13 @@ function registerCareerRoutes(app, deps) {
       res.json({ domain });
     } catch (e) {
       console.error('PUT /api/admin/careers/domains/:id', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.delete('/api/admin/careers/domains/:id', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       // career_applications.career_domain_id has ON DELETE SET NULL: applications are kept, domain_id set to null
       // career_application_fields has ON DELETE CASCADE: domain's form fields are removed
       const { error } = await db.from('career_domains').delete().eq('id', req.params.id);
@@ -834,14 +847,14 @@ function registerCareerRoutes(app, deps) {
       res.status(204).send();
     } catch (e) {
       console.error('DELETE /api/admin/careers/domains/:id', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Admin: form templates ————————————————————————————————————————————————
   app.get('/api/admin/careers/templates', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: templates, error } = await db
         .from('career_form_templates')
         .select('id, name, description, created_at');
@@ -865,14 +878,14 @@ function registerCareerRoutes(app, deps) {
       res.json({ templates: withCount });
     } catch (e) {
       console.error('GET /api/admin/careers/templates', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // Create template from an existing domain's fields
   app.post('/api/admin/careers/templates/from-domain', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { domainId, name, description } = req.body || {};
       if (!domainId || !name) return res.status(400).json({ error: 'domainId and name are required' });
       const { data: domain, error: de } = await db.from('career_domains').select('id, name').eq('id', domainId).maybeSingle();
@@ -912,14 +925,14 @@ function registerCareerRoutes(app, deps) {
       res.status(201).json({ template: { ...template, fields_count: rows.length } });
     } catch (e) {
       console.error('POST /api/admin/careers/templates/from-domain', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // Apply template to a domain (replace existing fields with template fields)
   app.post('/api/admin/careers/domains/:id/apply-template', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { templateId } = req.body || {};
       if (!templateId) return res.status(400).json({ error: 'templateId is required' });
 
@@ -966,38 +979,38 @@ function registerCareerRoutes(app, deps) {
       res.json({ fields: inserted || [] });
     } catch (e) {
       console.error('POST /api/admin/careers/domains/:id/apply-template', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Public: city options (for career form dropdown) ——————————————————————
   app.get('/api/careers/city-options', async (req, res) => {
     try {
-      if (!supabase) return res.status(500).json({ error: 'Not configured' });
+      if (!supabase) return careerServiceError(res, 500, 'Not configured');
       const { options, disabledOptions } = await getCareerCityOptions(supabase);
       const enabled = (options || []).filter((o) => !(disabledOptions || []).includes(o));
       res.json({ options: enabled });
     } catch (e) {
       console.error('GET /api/careers/city-options', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Admin: global city options (shared across all jobs) ———————————————————
   app.get('/api/admin/careers/city-options', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const data = await getCareerCityOptions(db);
       res.json(data);
     } catch (e) {
       console.error('GET /api/admin/careers/city-options', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.put('/api/admin/careers/city-options', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { options, disabledOptions } = req.body || {};
       const payload = {};
       if (Array.isArray(options)) payload.options = options;
@@ -1016,38 +1029,38 @@ function registerCareerRoutes(app, deps) {
       res.json(next);
     } catch (e) {
       console.error('PUT /api/admin/careers/city-options', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Public: gender options (for career form dropdown) ————————————————————
   app.get('/api/careers/gender-options', async (req, res) => {
     try {
-      if (!supabase) return res.status(500).json({ error: 'Not configured' });
+      if (!supabase) return careerServiceError(res, 500, 'Not configured');
       const { options, disabledOptions } = await getCareerGenderOptions(supabase);
       const enabled = (options || []).filter((o) => !(disabledOptions || []).includes(o));
       res.json({ options: enabled });
     } catch (e) {
       console.error('GET /api/careers/gender-options', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Admin: global gender options (shared across all jobs) ——————————————
   app.get('/api/admin/careers/gender-options', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const data = await getCareerGenderOptions(db);
       res.json(data);
     } catch (e) {
       console.error('GET /api/admin/careers/gender-options', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.put('/api/admin/careers/gender-options', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { options, disabledOptions } = req.body || {};
       const payload = {};
       if (Array.isArray(options)) payload.options = options;
@@ -1066,14 +1079,14 @@ function registerCareerRoutes(app, deps) {
       res.json(next);
     } catch (e) {
       console.error('PUT /api/admin/careers/gender-options', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Admin: fields ———————————————————————————————————————————————————————
   app.get('/api/admin/careers/domains/:id/fields', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: fields, error } = await db
         .from('career_application_fields')
         .select('*')
@@ -1087,7 +1100,7 @@ function registerCareerRoutes(app, deps) {
       res.json({ fields: out });
     } catch (e) {
       console.error('GET /api/admin/careers/domains/:id/fields', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
@@ -1097,7 +1110,7 @@ function registerCareerRoutes(app, deps) {
 
   app.post('/api/admin/careers/domains/:id/fields', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { field_key, label, field_type, required, sort_order, options, validation } = req.body || {};
       const key = (field_key && String(field_key).trim()) || slugFromLabel(label);
       if (!key || !label || !field_type) return res.status(400).json({ error: 'label and field_type required' });
@@ -1120,13 +1133,13 @@ function registerCareerRoutes(app, deps) {
       res.status(201).json({ field: out[0] });
     } catch (e) {
       console.error('POST /api/admin/careers/domains/:id/fields', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.post('/api/admin/careers/domains/:id/fields/bulk', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { fields: fieldsPayload } = req.body || {};
       if (!Array.isArray(fieldsPayload) || fieldsPayload.length === 0) return res.status(400).json({ error: 'fields array required' });
       const domainId = req.params.id;
@@ -1174,13 +1187,13 @@ function registerCareerRoutes(app, deps) {
       res.status(201).json({ fields: out });
     } catch (e) {
       console.error('POST /api/admin/careers/domains/:id/fields/bulk', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.put('/api/admin/careers/domains/:id/fields/reorder', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { order } = req.body || {};
       if (!Array.isArray(order) || order.length === 0) return res.status(400).json({ error: 'order array required (e.g. [{ id, sort_order }])' });
       for (const item of order) {
@@ -1200,13 +1213,13 @@ function registerCareerRoutes(app, deps) {
       res.json({ fields: out });
     } catch (e) {
       console.error('PUT /api/admin/careers/domains/:id/fields/reorder', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.put('/api/admin/careers/domains/:domainId/fields/:fieldId', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: existing } = await db.from('career_application_fields').select('field_key, label, field_type').eq('id', req.params.fieldId).eq('career_domain_id', req.params.domainId).single();
       if (!existing) return res.status(404).json({ error: 'Not found' });
       const { field_key, label, field_type, required, sort_order, options, validation } = req.body || {};
@@ -1232,13 +1245,13 @@ function registerCareerRoutes(app, deps) {
       res.json({ field: out[0] });
     } catch (e) {
       console.error('PUT /api/admin/careers/domains/:domainId/fields/:fieldId', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.delete('/api/admin/careers/domains/:domainId/fields/:fieldId', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
 
       // Soft-delete (archive) the field so existing applications keep showing their data.
       const { data: field, error: fetchErr } = await db
@@ -1271,14 +1284,14 @@ function registerCareerRoutes(app, deps) {
       res.status(204).send();
     } catch (e) {
       console.error('DELETE career field', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Admin: applications list —————————————————————————————————────────————
   app.get('/api/admin/careers/applications', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { domainId, status, from, to, genderKey, gender, ageKey, ageMin, ageMax, cityKey, city, nameKey, name, phoneKey, phone, page = 1, limit = 50 } = req.query;
       const safeKey = (k) => String(k).replace(/[^a-zA-Z0-9_]/g, '');
       const ageMinNum = ageMin != null ? parseInt(ageMin, 10) : null;
@@ -1351,7 +1364,7 @@ function registerCareerRoutes(app, deps) {
       res.json({ applications, total: count ?? applications.length });
     } catch (e) {
       console.error('GET /api/admin/careers/applications', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
@@ -1364,7 +1377,7 @@ function registerCareerRoutes(app, deps) {
       if (RESERVED_CAREER_APPLICATION_SEGMENTS.has(String(req.params.id || '').toLowerCase())) {
         return next();
       }
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const adminId = req.admin?.id ? String(req.admin.id) : null;
       const { data: application, error: ae } = await db.from('career_applications').select('*').eq('id', req.params.id).maybeSingle();
       if (ae || !application) return res.status(404).json({ error: 'Not found' });
@@ -1386,13 +1399,13 @@ function registerCareerRoutes(app, deps) {
       res.json({ application, domain: domain || null, fields: fields || [], logs: logsWithNames });
     } catch (e) {
       console.error('GET /api/admin/careers/applications/:id', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.patch('/api/admin/careers/applications/:id', requireAdminAuth, async (req, res) => {
     try {
-      if (!db || !getEmailTransporter) return res.status(500).json({ error: 'Not configured' });
+      if (!db || !getEmailTransporter) return careerServiceError(res, 500, 'Not configured');
       const { status } = req.body || {};
       if (!['new', 'approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
       const adminId = req.admin?.id ? String(req.admin.id) : null;
@@ -1430,13 +1443,13 @@ function registerCareerRoutes(app, deps) {
       res.json({ application: updated });
     } catch (e) {
       console.error('PATCH /api/admin/careers/applications/:id', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   app.get('/api/admin/careers/applications/:id/logs', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: logs, error } = await db.from('career_application_logs').select('*').eq('career_application_id', req.params.id).order('created_at', { ascending: false });
       if (error) throw error;
       const adminIds = [...new Set((logs || []).map((l) => l.admin_id).filter(Boolean))];
@@ -1449,14 +1462,14 @@ function registerCareerRoutes(app, deps) {
       res.json({ logs: logsWithNames });
     } catch (e) {
       console.error('GET career application logs', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Admin: compare ———————————————————————————————————————————————————————
   app.get('/api/admin/careers/applications/compare', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const ids = (req.query.ids || '').split(',').filter(Boolean).slice(0, 3);
       if (ids.length < 2) return res.status(400).json({ error: 'ids query must have 2 or 3 application ids' });
       const { data: applications, error } = await db.from('career_applications').select('*').in('id', ids);
@@ -1468,14 +1481,14 @@ function registerCareerRoutes(app, deps) {
       res.json({ applications: withDomain });
     } catch (e) {
       console.error('GET /api/admin/careers/applications/compare', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 
   // —— Admin: export Excel/CSV —————————————————————————————————────────————
   app.get('/api/admin/careers/applications/export', requireAdminAuth, async (req, res) => {
     try {
-      if (!db) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return careerServiceError(res, 500, 'Not configured');
       const { domainId, status, from, to, genderKey, gender, ageKey, ageMin, ageMax, cityKey, city, nameKey, name, phoneKey, phone, format = 'xlsx' } = req.query;
       const safeKey = (k) => String(k).replace(/[^a-zA-Z0-9_]/g, '');
       const ageMinNum = ageMin != null ? parseInt(ageMin, 10) : null;
@@ -1717,7 +1730,7 @@ function registerCareerRoutes(app, deps) {
       res.end();
     } catch (e) {
       console.error('GET /api/admin/careers/applications/export', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return careerServiceError(res, 500, e);
     }
   });
 }

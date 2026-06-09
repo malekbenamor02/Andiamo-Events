@@ -275,13 +275,31 @@ function academySoldOutResponse(res, settings, lang = 'en') {
   return res.status(409).json({ error: 'academy_sold_out', message });
 }
 
+let publicApiErrorModPromise = null;
+function getPublicApiErrorMod() {
+  if (!publicApiErrorModPromise) {
+    publicApiErrorModPromise = import('./api/_lib/public-api-error.js');
+  }
+  return publicApiErrorModPromise;
+}
+
+async function academyServiceError(res, status, logDetails) {
+  const { publicApiError, PUBLIC_ERROR_CODES } = await getPublicApiErrorMod();
+  return publicApiError(res, status, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, { logDetails });
+}
+
+async function academyPublicError(res, status, code, message, logDetails) {
+  const { publicApiError } = await getPublicApiErrorMod();
+  return publicApiError(res, status, code, message, { logDetails });
+}
+
 function registerAcademyRoutes(app, { requireAdminAuth }) {
   const registerLimiter = multerSingle('paymentProof');
 
   async function handleAutoCancelExpiredAcademyRegistrations(req, res) {
     try {
       const db = getServiceDb();
-      if (!db) return res.status(503).json({ error: 'Database not configured' });
+      if (!db) return academyServiceError(res, 503, 'Database not configured');
 
       const result = await cancelExpiredAcademyPendingRegistrations(db);
       res.json({
@@ -296,7 +314,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       });
     } catch (e) {
       console.error('auto-cancel-expired-academy-registrations', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return academyServiceError(res, 500, e);
     }
   }
 
@@ -314,19 +332,19 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
   app.get('/api/academy/status', async (req, res) => {
     try {
       const db = getServiceDb();
-      if (!db) return res.status(503).json({ error: 'Database not configured' });
+      if (!db) return academyServiceError(res, 503, 'Database not configured');
       const status = await buildAcademyPublicStatus(db);
       res.json(status);
     } catch (e) {
       console.error('GET /api/academy/status', e);
-      res.status(500).json({ error: 'Server error' });
+      return academyServiceError(res, 500, e);
     }
   });
 
   app.post('/api/academy/validate-promo', async (req, res) => {
     try {
       const db = getServiceDb();
-      if (!db) return res.status(503).json({ error: 'Database not configured' });
+      if (!db) return academyServiceError(res, 503, 'Database not configured');
 
       const code = normalizeAcademyPromoCode(req.body?.promoCode ?? req.body?.code);
       const formule = typeof req.body?.formule === 'string' ? req.body.formule.trim() : '';
@@ -368,14 +386,14 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       });
     } catch (e) {
       console.error('POST /api/academy/validate-promo', e);
-      res.status(500).json({ error: 'Server error' });
+      return academyServiceError(res, 500, e);
     }
   });
 
   app.post('/api/academy/register', registerLimiter, async (req, res) => {
     try {
       const db = getServiceDb();
-      if (!db) return res.status(503).json({ error: 'Database not configured' });
+      if (!db) return academyServiceError(res, 503, 'Database not configured');
 
       const ip = getClientIp(req);
       if (!checkIpRate(ip)) {
@@ -508,7 +526,9 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         if (upErr) {
           console.error('proof upload', upErr);
           await db.from('academy_registrations').delete().eq('id', inserted.id);
-          return res.status(500).json({ error: 'Failed to store payment proof' });
+          return academyPublicError(res, 500, 'submission_failed', undefined, {
+            logDetails: 'Failed to store payment proof',
+          });
         }
         await db
           .from('academy_registrations')
@@ -538,14 +558,14 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       res.status(201).json(academyRegistrationResponse(inserted));
     } catch (e) {
       console.error('POST /api/academy/register', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return academyServiceError(res, 500, e);
     }
   });
 
   app.get('/api/academy/registration/:id/status', async (req, res) => {
     try {
       const db = getServiceDb();
-      if (!db) return res.status(503).json({ error: 'Database not configured' });
+      if (!db) return academyServiceError(res, 503, 'Database not configured');
       await cancelExpiredAcademyPendingRegistrations(db);
       const { id } = req.params;
       const { data, error } = await db
@@ -564,14 +584,14 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       });
     } catch (e) {
       console.error('GET registration status', e);
-      res.status(500).json({ error: 'Server error' });
+      return academyServiceError(res, 500, e);
     }
   });
 
   app.post('/api/academy/clictopay-generate-payment', async (req, res) => {
     try {
       const db = getServiceDb();
-      if (!db) return res.status(503).json({ error: 'Database not configured' });
+      if (!db) return academyServiceError(res, 503, 'Database not configured');
       const registrationId = req.body?.registrationId || req.body?.registration_id;
       if (!registrationId) return res.status(400).json({ error: 'registrationId is required' });
 
@@ -580,7 +600,12 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         .select('*')
         .eq('id', registrationId)
         .single();
-      if (error || !reg) return res.status(404).json({ error: 'Registration not found' });
+      if (error || !reg) {
+        const { PUBLIC_ERROR_CODES } = await getPublicApiErrorMod();
+        return academyPublicError(res, 404, PUBLIC_ERROR_CODES.REGISTRATION_NOT_FOUND, undefined, {
+          logDetails: error,
+        });
+      }
       if (reg.payment_method !== 'card') {
         return res.status(400).json({ error: 'Not a card payment registration' });
       }
@@ -623,7 +648,9 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       });
 
       if (!result.ok) {
-        return res.status(500).json({ error: result.error, details: result.data });
+        return academyPublicError(res, 500, 'payment_unavailable', undefined, {
+          logDetails: { error: result.error, data: result.data },
+        });
       }
 
       if (result.gatewayOrderId) {
@@ -641,14 +668,14 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       res.json({ success: true, formUrl: result.formUrl, registrationId });
     } catch (e) {
       console.error('academy clictopay generate', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return academyServiceError(res, 500, e);
     }
   });
 
   app.post('/api/academy/clictopay-confirm-payment', async (req, res) => {
     try {
       const db = getServiceDb();
-      if (!db) return res.status(503).json({ error: 'Database not configured' });
+      if (!db) return academyServiceError(res, 503, 'Database not configured');
       const registrationId = req.body?.registrationId || req.body?.registration_id;
       if (!registrationId) return res.status(400).json({ error: 'registrationId is required' });
 
@@ -657,7 +684,12 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         .select('*')
         .eq('id', registrationId)
         .single();
-      if (error || !reg) return res.status(404).json({ error: 'Registration not found' });
+      if (error || !reg) {
+        const { PUBLIC_ERROR_CODES } = await getPublicApiErrorMod();
+        return academyPublicError(res, 404, PUBLIC_ERROR_CODES.REGISTRATION_NOT_FOUND, undefined, {
+          logDetails: error,
+        });
+      }
 
       await cancelExpiredAcademyPendingRegistrations(db);
       const { data: regFresh } = await db
@@ -760,7 +792,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       });
     } catch (e) {
       console.error('academy clictopay confirm', e);
-      res.status(500).json({ error: e.message || 'Server error' });
+      return academyServiceError(res, 500, e);
     }
   });
 
@@ -769,7 +801,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
   app.get('/api/admin/academy/settings', requireAdminAuth, requireSuperAdmin, async (req, res) => {
     try {
       const db = getServiceDb();
-      if (!db) return res.status(503).json({ error: 'Database not configured' });
+      if (!db) return academyServiceError(res, 503, 'Database not configured');
       const settings = await getAcademySettings(db);
       const approvedCount = await countApprovedRegistrations(db);
       res.json({
@@ -785,7 +817,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
   app.patch('/api/admin/academy/settings', requireAdminAuth, requireSuperAdmin, async (req, res) => {
     try {
       const db = getServiceDb();
-      if (!db) return res.status(503).json({ error: 'Database not configured' });
+      if (!db) return academyServiceError(res, 503, 'Database not configured');
       const settings = await getAcademySettings(db);
       const patch = { updated_at: new Date().toISOString(), updated_by: req.admin.id };
       if (req.body.max_approved_total != null) {
@@ -825,7 +857,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
   app.get('/api/admin/academy/registrations', requireAdminAuth, requireSuperAdmin, async (req, res) => {
     try {
       const db = getServiceDb();
-      if (!db) return res.status(503).json({ error: 'Database not configured' });
+      if (!db) return academyServiceError(res, 503, 'Database not configured');
       runAcademyExpirePendingInBackground(db);
       let q = db
         .from('academy_registrations')

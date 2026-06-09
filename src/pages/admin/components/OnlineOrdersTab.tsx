@@ -35,7 +35,22 @@ import { TabsContent } from "@/components/ui/tabs";
 import { RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { OrderPromoCornerRibbon } from "@/components/admin/OrderPromoCornerRibbon";
+import { orderHasPromoAttribution, parsePromoFromOrder, resolvePromoBadgeColor } from "@/lib/eventPromo/promoOrder";
 import type { OnlineOrder, OnlineOrderFilters } from "../types";
+
+function promoColorForOrder(order: OnlineOrder): string {
+  return resolvePromoBadgeColor(parsePromoFromOrder(order), order);
+}
+
+function promoCodeLabelForOrder(order: OnlineOrder): string | null {
+  const promo = parsePromoFromOrder(order);
+  return promo?.code?.trim() || null;
+}
+
+function orderHasAttributionRibbon(order: OnlineOrder): boolean {
+  return !!(order.presale_code_id || orderHasPromoAttribution(order));
+}
 
 export interface OnlineOrdersTabProps {
   language: "en" | "fr";
@@ -402,6 +417,17 @@ export function OnlineOrdersTab({
                                       {language === "en" ? "Presale" : "Presale"}
                                     </span>
                                   </div>
+                                ) : promoCodeLabelForOrder(order) ? (
+                                  <OrderPromoCornerRibbon
+                                    variant="table"
+                                    code={promoCodeLabelForOrder(order)!}
+                                    color={promoColorForOrder(order)}
+                                    title={
+                                      language === "en"
+                                        ? `Promo code: ${promoCodeLabelForOrder(order)}`
+                                        : `Code promo : ${promoCodeLabelForOrder(order)}`
+                                    }
+                                  />
                                 ) : null}
                                 <div className="flex flex-col items-center gap-1">
                                   {passItems.length > 0 ? (
@@ -650,7 +676,7 @@ export function OnlineOrdersTab({
                           </TooltipProvider>
                         )}
                         <span
-                          className={cn("text-xs", order.presale_code_id ? "text-left" : "text-right")}
+                          className={cn("text-xs", orderHasAttributionRibbon(order) ? "text-left" : "text-right")}
                           style={{ color: "#B0B0B0" }}
                         >
                           {statusMap[status] ?? status}
@@ -685,17 +711,28 @@ export function OnlineOrdersTab({
                               {language === "en" ? "Presale" : "Presale"}
                             </span>
                           </div>
+                        ) : promoCodeLabelForOrder(order) ? (
+                          <OrderPromoCornerRibbon
+                            variant="card"
+                            code={promoCodeLabelForOrder(order)!}
+                            color={promoColorForOrder(order)}
+                            title={
+                              language === "en"
+                                ? `Promo code: ${promoCodeLabelForOrder(order)}`
+                                : `Code promo : ${promoCodeLabelForOrder(order)}`
+                            }
+                          />
                         ) : null}
                         <CardContent className="p-4">
                           <div
                             className={cn(
-                              order.presale_code_id
+                              orderHasAttributionRibbon(order)
                                 ? "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2"
                                 : "flex items-start justify-between gap-3",
-                              order.presale_code_id && "pr-[5.25rem]",
+                              orderHasAttributionRibbon(order) && "pr-[5.25rem]",
                             )}
                           >
-                            {order.presale_code_id ? (
+                            {orderHasAttributionRibbon(order) ? (
                               <p
                                 className="min-w-0 break-words text-sm font-heading font-semibold"
                                 style={{ color: "#FFFFFF" }}

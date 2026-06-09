@@ -149,6 +149,14 @@
       "destination": "/api/presale.js"
     },
     {
+      "source": "/api/event-promo/:path*",
+      "destination": "/api/presale.js"
+    },
+    {
+      "source": "/api/admin/event-promo/:path*",
+      "destination": "/api/presale.js"
+    },
+    {
       "source": "/api/aio-events/save-submission",
       "destination": "/api/misc.js"
     },
@@ -314,7 +322,7 @@
     },
     {
       "source": "/api/admin/logs",
-      "destination": "/api/admin/logs.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/admin/csp-reports",
@@ -626,9 +634,6 @@
       "maxDuration": 60,
       "memory": 1024,
       "includeFiles": "api/_lib/**"
-    },
-    "api/admin/logs.js": {
-      "maxDuration": 60
     },
     "api/pos.js": {
       "maxDuration": 30,

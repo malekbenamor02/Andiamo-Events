@@ -297,6 +297,10 @@ export interface OnlineOrder {
   order_passes?: OnlineOrderPass[];
   /** Presale code attribution. Set when the order was placed through a presale-gated event. */
   presale_code_id?: string | null;
+  /** Checkout promo code attribution (mutually exclusive with presale on the same order). */
+  event_promo_code_id?: string | null;
+  event_promo_codes?: { badge_color?: string | null } | null;
+  event_promo_uses_claimed?: number;
   [key: string]: unknown;
 }
 

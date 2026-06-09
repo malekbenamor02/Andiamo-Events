@@ -24,6 +24,15 @@ import {
   parsePresaleOrderSnapshot,
   type PresaleOrderSnapshot,
 } from "@/lib/presale/presaleDiscount";
+import {
+  formatPromoOrderDiscountLabel,
+  orderHasPromoAttribution,
+  parsePromoFromOrder,
+  resolvePromoBadgeColor,
+  type PromoOrderSnapshot,
+} from "@/lib/eventPromo/promoOrder";
+import { PromoCodeColorBadge } from "@/components/admin/PromoCodeColorBadge";
+import { formatPromoPassBreakdownRule } from "@/lib/eventPromo/discountPolicy";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AdminOrderQrTicketsSection } from "./AdminOrderQrTicketsSection";
 import {
@@ -139,7 +148,12 @@ export function OrderDetailsDialog({
   const presaleCodeIdOnOrder = (order as { presale_code_id?: string | null } | null)?.presale_code_id;
   const isPresaleOrder = !!presaleCodeIdOnOrder || !!presaleInfo;
 
+  const promoInfo: PromoOrderSnapshot | null = order ? parsePromoFromOrder(order as { notes?: unknown }) : null;
+  const isPromoOrder = order ? orderHasPromoAttribution(order as { event_promo_code_id?: string | null; notes?: unknown }) : false;
+  const promoBadgeColor = resolvePromoBadgeColor(promoInfo, order as { event_promo_codes?: { badge_color?: string } | null });
+
   const formatPresaleDiscount = () => formatPresaleOrderDiscountLabel(presaleInfo, language);
+  const formatPromoDiscount = () => formatPromoOrderDiscountLabel(promoInfo, language);
 
   const formatOrderSummaryDateTime = (iso: string | Date | undefined | null) => {
     if (iso == null) return "";
@@ -331,6 +345,17 @@ export function OrderDetailsDialog({
                             {presaleInfo?.code_label ? ` · ${presaleInfo.code_label}` : ''}
                           </Badge>
                         )}
+                        {isPromoOrder && promoInfo?.code && (
+                          <PromoCodeColorBadge
+                            color={promoBadgeColor}
+                            className="inline-flex items-center gap-1"
+                            title={`${language === 'en' ? 'Promo code' : 'Code promo'}: ${promoInfo.code}`}
+                          >
+                            <Tag className="w-3 h-3" />
+                            {language === 'en' ? 'Promo' : 'Promo'}
+                            {` · ${promoInfo.code}`}
+                          </PromoCodeColorBadge>
+                        )}
                       </div>
                     </div>
                     <div className="space-y-1">
@@ -433,6 +458,16 @@ export function OrderDetailsDialog({
                                         </TableCell>
                                       </TableRow>
                                     )}
+                                    {!presaleInfo && promoInfo && typeof promoInfo.original_subtotal === 'number' && (
+                                      <TableRow>
+                                        <TableCell colSpan={3} className="text-right text-sm text-muted-foreground">
+                                          {language === 'en' ? 'Original Subtotal' : 'Sous-total Initial'}
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground line-through">
+                                          {promoInfo.original_subtotal.toFixed(2)} TND
+                                        </TableCell>
+                                      </TableRow>
+                                    )}
                                     {presaleInfo && (
                                       <TableRow>
                                         <TableCell colSpan={3} className="text-right text-sm">
@@ -469,9 +504,48 @@ export function OrderDetailsDialog({
                                         </TableCell>
                                       </TableRow>
                                     )}
+                                    {promoInfo?.code && (
+                                      <TableRow>
+                                        <TableCell colSpan={3} className="text-right text-sm">
+                                          <span className="inline-flex items-center gap-1.5 justify-end flex-wrap">
+                                            <Tag className="w-3.5 h-3.5" style={{ color: promoBadgeColor }} />
+                                            <span className="text-muted-foreground">
+                                              {language === 'en' ? 'Promo Code' : 'Code Promo'}:
+                                            </span>
+                                            <span className="font-mono font-semibold">{promoInfo.code}</span>
+                                            {formatPromoDiscount() && (
+                                              <PromoCodeColorBadge
+                                                color={promoBadgeColor}
+                                                className="text-[10px] px-1.5 py-0 h-5"
+                                              >
+                                                -{formatPromoDiscount()}
+                                              </PromoCodeColorBadge>
+                                            )}
+                                          </span>
+                                          {promoInfo.discount_mode === 'per_pass' &&
+                                            (promoInfo.pass_breakdown?.length ?? 0) > 0 && (
+                                              <ul className="mt-1 space-y-0.5 text-[10px] text-muted-foreground text-right list-none">
+                                                {promoInfo.pass_breakdown!.map((row, idx) => (
+                                                  <li key={row.pass_id ?? idx}>
+                                                    {formatPromoPassBreakdownRule(row, language)}
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                          {typeof promoInfo.discount_amount === 'number'
+                                            ? `-${promoInfo.discount_amount.toFixed(2)} TND`
+                                            : typeof promoInfo.original_subtotal === 'number' &&
+                                                typeof promoInfo.discounted_subtotal === 'number'
+                                              ? `-${Math.max(0, promoInfo.original_subtotal - promoInfo.discounted_subtotal).toFixed(2)} TND`
+                                              : '—'}
+                                        </TableCell>
+                                      </TableRow>
+                                    )}
                                     <TableRow className="font-bold border-t-2">
                                       <TableCell colSpan={3} className="text-right">
-                                        {presaleInfo
+                                        {presaleInfo || promoInfo
                                           ? (language === 'en' ? 'Total (after discount)' : 'Total (après remise)')
                                           : (language === 'en' ? 'Total' : 'Total')}
                                       </TableCell>
@@ -572,9 +646,57 @@ export function OrderDetailsDialog({
                                   </div>
                                 )}
 
+                                {!presaleInfo && promoInfo && typeof promoInfo.original_subtotal === 'number' && (
+                                  <div className="space-y-0.5">
+                                    <div className="text-xs sm:text-sm text-muted-foreground">
+                                      {language === 'en' ? 'Original Subtotal' : 'Sous-total Initial'}
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-muted-foreground line-through">
+                                      {promoInfo.original_subtotal.toFixed(2)} TND
+                                    </div>
+                                  </div>
+                                )}
+
+                                {promoInfo?.code && (
+                                  <div className="space-y-0.5">
+                                    <div className="text-xs sm:text-sm text-muted-foreground inline-flex items-center gap-1.5 flex-wrap">
+                                      <Tag className="w-3.5 h-3.5" style={{ color: promoBadgeColor }} />
+                                      <span>{language === 'en' ? 'Promo Code' : 'Code Promo'}:</span>
+                                      <span className="font-mono font-semibold text-foreground">{promoInfo.code}</span>
+                                      {formatPromoDiscount() && (
+                                        <PromoCodeColorBadge
+                                          color={promoBadgeColor}
+                                          className="text-[10px] px-1.5 py-0 h-5"
+                                        >
+                                          -{formatPromoDiscount()}
+                                        </PromoCodeColorBadge>
+                                      )}
+                                    </div>
+                                    {promoInfo.discount_mode === 'per_pass' &&
+                                      (promoInfo.pass_breakdown?.length ?? 0) > 0 && (
+                                        <ul className="mt-1 space-y-0.5 text-[10px] text-muted-foreground list-none">
+                                          {promoInfo.pass_breakdown!.map((row, idx) => (
+                                            <li key={row.pass_id ?? idx}>
+                                              {formatPromoPassBreakdownRule(row, language)}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    {(typeof promoInfo.discount_amount === 'number' ||
+                                      (typeof promoInfo.original_subtotal === 'number' &&
+                                        typeof promoInfo.discounted_subtotal === 'number')) && (
+                                      <div className="text-xs sm:text-sm font-semibold text-green-600 dark:text-green-400">
+                                        {typeof promoInfo.discount_amount === 'number'
+                                          ? `-${promoInfo.discount_amount.toFixed(2)} TND`
+                                          : `-${Math.max(0, promoInfo.original_subtotal! - promoInfo.discounted_subtotal!).toFixed(2)} TND`}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
                                 <div className="pt-2 border-t border-border">
                                   <div className="text-xs sm:text-sm font-semibold text-muted-foreground">
-                                    {presaleInfo
+                                    {presaleInfo || promoInfo
                                       ? (language === 'en' ? 'Total (after discount)' : 'Total (après remise)')
                                       : (language === 'en' ? 'Total' : 'Total')}
                                   </div>

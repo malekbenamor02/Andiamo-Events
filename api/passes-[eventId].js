@@ -2,6 +2,10 @@
 // Vercel serverless function - dynamic route
 
 import { createClient } from '@supabase/supabase-js';
+import {
+  publicApiError,
+  PUBLIC_ERROR_CODES,
+} from './_lib/public-api-error.js';
 
 // Import shared CORS utility (using dynamic import for ES modules)
 let corsUtils = null;
@@ -22,19 +26,25 @@ export default async (req, res) => {
   
   if (!setCORSHeaders(res, req, { methods: 'GET, OPTIONS', headers: 'Content-Type', credentials: true })) {
     if (req.headers.origin) {
-      return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
+      return publicApiError(res, 403, PUBLIC_ERROR_CODES.INVALID_ACCESS, undefined, {
+        logDetails: 'CORS origin not allowed',
+      });
     }
   }
   
   // Only allow GET
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return publicApiError(res, 405, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, {
+      logDetails: 'Method not allowed',
+    });
   }
 
   try {
     // Check environment variables
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-      return res.status(500).json({ error: 'Supabase not configured' });
+      return publicApiError(res, 500, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
+        logDetails: 'Supabase not configured',
+      });
     }
 
     // Get eventId from Vercel dynamic route parameter
@@ -56,7 +66,9 @@ export default async (req, res) => {
         url: req.url,
         method: req.method 
       });
-      return res.status(400).json({ error: 'Event ID is required' });
+      return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, {
+        logDetails: 'Event ID is required',
+      });
     }
     
     // Clean eventId (remove any trailing colons or source map references)
@@ -83,7 +95,9 @@ export default async (req, res) => {
       .eq('id', eventId)
       .single();
     if (eventError || !eventData) {
-      return res.status(404).json({ error: 'Event not found' });
+      return publicApiError(res, 404, PUBLIC_ERROR_CODES.EVENT_NOT_FOUND, undefined, {
+        logDetails: { eventId, eventError },
+      });
     }
 
     const presaleRequired = !!eventData.presale_enabled;
@@ -92,7 +106,10 @@ export default async (req, res) => {
       const sessionId = parseCookie(req, PRESALE_COOKIE_NAME);
       const sessionRow = await fetchValidPresaleSessionRow(dbClient, sessionId, eventId);
       if (!sessionRow) {
-        return res.status(403).json({ error: 'Invalid access', presale_required: true });
+        return publicApiError(res, 403, PUBLIC_ERROR_CODES.PRESALE_ACCESS_REQUIRED, undefined, {
+          extra: { presale_required: true },
+          logDetails: 'Presale session required',
+        });
       }
     }
 
@@ -108,10 +125,8 @@ export default async (req, res) => {
 
     if (passesError) {
       console.error('❌ Error fetching passes for event:', eventId, passesError);
-      return res.status(500).json({
-        error: 'Failed to fetch passes',
-        details: passesError.message,
-        code: passesError.code
+      return publicApiError(res, 500, PUBLIC_ERROR_CODES.PASSES_UNAVAILABLE, undefined, {
+        logDetails: passesError,
       });
     }
 
@@ -148,9 +163,8 @@ export default async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error in /api/passes/:eventId:', error);
-    res.status(500).json({
-      error: 'Internal server error',
-      details: error.message
+    return publicApiError(res, 500, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
+      logDetails: error,
     });
   }
 };

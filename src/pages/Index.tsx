@@ -6,7 +6,6 @@ import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 import CounterSection from "@/components/home/CounterSection";
 import FeaturedEventsSection from "@/components/home/FeaturedEventsSection";
 import SponsorsSection from "@/components/home/SponsorsSection";
-import LoadingScreen from "@/components/ui/LoadingScreen";
 import { HomeCountdownBannerSection } from "@/components/countdown/HomeCountdownBannerSection";
 
 interface IndexProps {
@@ -16,14 +15,7 @@ interface IndexProps {
 const Index = ({ language }: IndexProps) => {
   const [counters, setCounters] = useState({ events: 0, members: 0, followers: 0});
   const [animatedSections, setAnimatedSections] = useState<Set<string>>(new Set(['hero']));
-  const [heroMediaLoaded, setHeroMediaLoaded] = useState(false);
-  
-  // Show loader instantly - prevent blank screen
-  useEffect(() => {
-    // Force immediate render of loader by ensuring state is set
-    // This prevents any flash of unstyled content
-  }, []);
-  
+
   // Refs for each section
   const heroRef = useRef<HTMLDivElement>(null);
   const counterRef = useRef<HTMLDivElement>(null);
@@ -50,7 +42,7 @@ const Index = ({ language }: IndexProps) => {
             const sectionId = entry.target.getAttribute('data-section');
             if (sectionId) {
               setAnimatedSections(prev => new Set([...prev, sectionId]));
-              
+
               // Trigger counter animation when counter section is visible
               if (sectionId === 'counter') {
                 animateCounters();
@@ -59,31 +51,30 @@ const Index = ({ language }: IndexProps) => {
           }
         });
       },
-      { 
-        threshold: 0.3, // Trigger when 30% of section is visible
-        rootMargin: '0px 0px -50px 0px' // Trigger slightly before section comes into view
+      {
+        threshold: 0.3,
+        rootMargin: '0px 0px -50px 0px',
       }
     );
 
-    // Observe all sections
     const sections = [
       { ref: heroRef, id: 'hero' },
       { ref: counterRef, id: 'counter' },
-      { ref: sponsorsRef, id: 'sponsors' }
+      { ref: sponsorsRef, id: 'sponsors' },
     ];
 
     sections.forEach(({ ref, id }) => {
       if (ref.current) {
         ref.current.setAttribute('data-section', id);
         observer.observe(ref.current);
-    }
+      }
     });
 
     return () => observer.disconnect();
   }, []);
 
   const animateCounters = () => {
-    const duration = 2000; // 2 seconds
+    const duration = 2000;
     const steps = 60;
     const stepDuration = duration / steps;
 
@@ -95,7 +86,7 @@ const Index = ({ language }: IndexProps) => {
       setCounters({
         events: Math.floor(targetCounts.events * progress),
         members: Math.floor(targetCounts.members * progress),
-        followers: Math.floor(targetCounts.followers * progress)
+        followers: Math.floor(targetCounts.followers * progress),
       });
 
       if (step >= steps) {
@@ -114,59 +105,38 @@ const Index = ({ language }: IndexProps) => {
         path="/"
       />
       <HomeCountdownBannerSection language={language} />
-      {/* Loading Screen - Appears instantly to prevent blank screen */}
-      {/* Only waits for critical hero assets: images (decoded) + videos (first frame) */}
-      {!heroMediaLoaded && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center min-h-screen bg-background">
-          <LoadingScreen 
-            text="Loading Experience..." 
-            size="fullscreen"
-          />
-        </div>
-      )}
 
-      {/* Main Content - Smooth fade transition when critical hero assets are ready */}
-      {/* Layout is pre-calculated, media is decoded/ready - no reflow or jumping */}
-      <div 
-        className={`transition-opacity duration-500 ease-out ${
-          heroMediaLoaded ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
+      {/* Clears fixed nav (4rem) + optional home countdown strip (`--site-countdown-offset`) */}
+      <div
+        ref={heroRef}
+        className="transform transition-all duration-1000 ease-out opacity-100 translate-y-0 scale-100 pt-[calc(4rem+var(--site-countdown-offset,0px))]"
+        style={{ position: 'relative', zIndex: 0 }}
       >
-        {/* Clears fixed nav (4rem) + optional home countdown strip (`--site-countdown-offset`) */}
-        <div 
-          ref={heroRef}
-          className="transform transition-all duration-1000 ease-out opacity-100 translate-y-0 scale-100 pt-[calc(4rem+var(--site-countdown-offset,0px))]"
-          style={{ position: 'relative', zIndex: 0 }}
-        >
-        <HeroSection language={language} onMediaLoaded={() => setHeroMediaLoaded(true)} />
-        </div>
+        <HeroSection language={language} />
+      </div>
 
-      {/* Featured Events Section (upcoming) — no scroll-in wrapper animation */}
       <FeaturedEventsSection language={language} />
 
-      {/* Counter Section — Our Impact */}
-      <div 
+      <div
         ref={counterRef}
         className={`transform transition-all duration-1000 ease-out ${
-          animatedSections.has('counter') 
-            ? 'opacity-100 translate-y-0 scale-100' 
+          animatedSections.has('counter')
+            ? 'opacity-100 translate-y-0 scale-100'
             : 'opacity-0 translate-y-8 scale-95'
         }`}
       >
-      <CounterSection language={language} />
+        <CounterSection language={language} />
       </div>
 
-      {/* Sponsors Section with Scroll Animation */}
-      <div 
+      <div
         ref={sponsorsRef}
         className={`transform transition-all duration-1000 ease-out ${
-          animatedSections.has('sponsors') 
-            ? 'opacity-100 translate-y-0 scale-100' 
+          animatedSections.has('sponsors')
+            ? 'opacity-100 translate-y-0 scale-100'
             : 'opacity-0 translate-y-8 scale-95'
         }`}
       >
-      <SponsorsSection language={language} />
-      </div>
+        <SponsorsSection language={language} />
       </div>
     </main>
   );

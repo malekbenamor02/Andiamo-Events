@@ -22,6 +22,12 @@ interface OrderSummaryProps {
   feeAmount?: number;
   /** Optional grand total including fees (frontend display only). */
   totalWithFees?: number;
+  /** Server validate preview — promo code label */
+  promoCode?: string | null;
+  /** Server preview: discount amount (TND) */
+  promoDiscountAmount?: number;
+  /** Server preview: subtotal before promo */
+  subtotalBeforePromo?: number;
 }
 
 export function OrderSummary({
@@ -33,6 +39,9 @@ export function OrderSummary({
   language = 'en',
   feeAmount,
   totalWithFees,
+  promoCode,
+  promoDiscountAmount,
+  subtotalBeforePromo,
 }: OrderSummaryProps) {
   const t = language === 'en'
     ? {
@@ -43,6 +52,8 @@ export function OrderSummary({
         total: 'Total',
         noPasses: 'No passes selected',
         subtotal: 'Subtotal',
+        promo: 'Promo',
+        promoDiscount: 'Promo discount',
         fees: 'Fees',
         feesTitle: 'Fee details',
         feesLine1: 'This amount is split between:',
@@ -59,6 +70,8 @@ export function OrderSummary({
         total: 'Total',
         noPasses: 'Aucun pass sélectionné',
         subtotal: 'Sous-total',
+        promo: 'Promo',
+        promoDiscount: 'Remise promo',
         fees: 'Frais',
         feesTitle: 'Détail des frais',
         feesLine1: 'Ce montant est réparti entre :',
@@ -73,6 +86,12 @@ export function OrderSummary({
   const grandTotal = isOnline && typeof totalWithFees === 'number' && !Number.isNaN(totalWithFees)
     ? totalWithFees
     : totalPrice;
+
+  const showPromoBreakdown =
+    promoCode &&
+    typeof promoDiscountAmount === 'number' &&
+    promoDiscountAmount > 0 &&
+    typeof subtotalBeforePromo === 'number';
 
   const hasPasses = selectedPasses.length > 0 && selectedPasses.some(p => p.quantity > 0);
 
@@ -135,12 +154,29 @@ export function OrderSummary({
 
           {/* Subtotal, fees (if online), and total */}
           <div className="space-y-1 pt-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">{t.subtotal}</span>
-              <span className="font-semibold">
-                {totalPrice.toFixed(2)} TND
-              </span>
-            </div>
+            {showPromoBreakdown ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">{t.subtotal}</span>
+                  <span className="font-semibold">{subtotalBeforePromo!.toFixed(2)} TND</span>
+                </div>
+                <div className="flex items-center justify-between text-green-600 dark:text-green-400">
+                  <span className="text-sm">
+                    {t.promoDiscount} ({promoCode})
+                  </span>
+                  <span className="font-semibold">−{promoDiscountAmount!.toFixed(2)} TND</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">{t.subtotal}</span>
+                  <span className="font-semibold">{totalPrice.toFixed(2)} TND</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">{t.subtotal}</span>
+                <span className="font-semibold">{totalPrice.toFixed(2)} TND</span>
+              </div>
+            )}
 
             {isOnline && effectiveFee > 0 && (
               <div className="flex items-center justify-between">

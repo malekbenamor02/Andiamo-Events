@@ -37,6 +37,16 @@ export const API_ROUTES = {
   ADMIN_PRESALE_CODE_DISCOUNTS: (id: string) =>
     `/api/admin/presale/codes/${encodeURIComponent(id)}/discounts`,
 
+  EVENT_PROMO_AVAILABILITY: (eventId: string) =>
+    `/api/event-promo/availability?eventId=${encodeURIComponent(eventId)}`,
+  EVENT_PROMO_VALIDATE: '/api/event-promo/validate',
+  ADMIN_EVENT_PROMO_CODES: (eventId: string) =>
+    `/api/admin/event-promo/codes?eventId=${encodeURIComponent(eventId)}`,
+  ADMIN_EVENT_PROMO_CODE: (id: string) =>
+    `/api/admin/event-promo/codes/${encodeURIComponent(id)}`,
+  ADMIN_EVENT_PROMO_CODE_DISCOUNTS: (id: string) =>
+    `/api/admin/event-promo/codes/${encodeURIComponent(id)}/discounts`,
+
   /** Create pass for an event (service role; required when event has presale — anon cannot SELECT inserted row). */
   ADMIN_PASS_CREATE: '/api/admin/passes/create',
   /** Admin auth + service role; required when event.presale_enabled hides passes from anon client. */

@@ -12,7 +12,26 @@ import { getClientIp, resolvePresaleForOrderCreate } from './_lib/presale-server
 import {
   rejectForbiddenOrderCreateKeys,
   buildValidatedPassLineItem,
+  parseAllowedPromoCodeFromOrderBody,
 } from './_lib/order-create-pricing-guard.js';
+import {
+  resolveEventPromoForOrderCreate,
+  resolvePromoUsesClaimedCount,
+  claimEventPromoUseRpc,
+  releaseEventPromoUseRpc,
+  tryEventPromoOrderCreateRate,
+} from './_lib/event-promo-server.js';
+import { requireEventPromoPepperOr503 } from './_lib/event-promo-hash.js';
+import {
+  publicApiError,
+  publicApiErrorFromLegacy,
+  PUBLIC_ERROR_CODES,
+} from './_lib/public-api-error.js';
+
+/** User-safe order API error (logs internal details server-side). */
+function orderErr(res, status, errorKey, details, logDetails) {
+  return publicApiErrorFromLegacy(res, status, errorKey, details, logDetails ?? details);
+}
 
 const requireCjs = createRequire(import.meta.url);
 const { buildOrderConfirmationEmailHtml } = requireCjs('./_lib/order-confirmation-email-html.cjs');
@@ -23,8 +42,8 @@ const { sendTransactionalEmail } = requireCjs('./_lib/transactional-email.cjs');
 // --- Basic helpers (shared within this module) ---
 
 // Rollback presale_claim_slot when order creation fails before (or right after) the row exists.
-// Lifecycle releases (expire / cancel / payment FAILED) are handled by DB trigger
-// orders_presale_release_on_terminal_failure on public.orders — do not duplicate here.
+// Promo slot release on reject/expire/cancel: DB trigger tr_orders_event_promo_release_on_failure + orderStatusCatalog.js
+// (statuses in src/lib/constants/orderStatusCatalog.js) — do not duplicate here.
 async function releasePresaleSlotRpc(dbClient, presaleCodeId) {
   if (!presaleCodeId) return;
   try {
@@ -151,29 +170,25 @@ export default async (req, res) => {
   // Set CORS headers for actual requests
   if (!setCORSHeaders(res, req, { methods: 'POST, OPTIONS', headers: 'Content-Type, X-Presale-CSRF, X-Device-Id', credentials: true })) {
     if (req.headers.origin) {
-      return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
+      return publicApiError(res, 403, PUBLIC_ERROR_CODES.INVALID_ACCESS, undefined, { logDetails: 'CORS' });
     }
   }
   
   // Only allow POST
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return publicApiError(res, 405, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, { logDetails: 'Method not allowed' });
   }
 
   try {
     // --- Rate limiting: IP + device/browser (soft limit) ---
     const ip = getClientIp(req);
     if (!checkOrderIpRateLimit(ip)) {
-      return res.status(429).json({
-        error: 'Too many orders. Please try again later.'
-      });
+      return publicApiError(res, 429, PUBLIC_ERROR_CODES.TOO_MANY_ORDERS);
     }
 
     const deviceId = getDeviceId(req);
     if (!checkOrderDeviceRateLimit(deviceId)) {
-      return res.status(429).json({
-        error: 'Too many orders. Please try again later.'
-      });
+      return publicApiError(res, 429, PUBLIC_ERROR_CODES.TOO_MANY_ORDERS);
     }
 
     // Check environment variables
@@ -182,7 +197,9 @@ export default async (req, res) => {
         hasSupabaseUrl: !!process.env.SUPABASE_URL,
         hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY
       });
-      return res.status(500).json({ error: 'Supabase not configured' });
+      return publicApiError(res, 500, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
+        logDetails: 'Supabase not configured',
+      });
     }
 
     // Initialize Supabase client early (for audit logging)
@@ -220,10 +237,25 @@ export default async (req, res) => {
         error: 'forbidden_request_fields',
         keys: forbiddenBody.keys,
       });
-      return res.status(400).json({
-        error: 'Invalid request',
-        details: 'Request contains unsupported fields.',
-      });
+      return orderErr(res, 400, 'Invalid request', 'Request contains unsupported fields.', forbiddenBody.keys);
+    }
+
+    const promoBodyParse = parseAllowedPromoCodeFromOrderBody(bodyData);
+    if (!promoBodyParse.ok) {
+      await logOrderCreateFailure(dbClient, req, 400, { error: promoBodyParse.error });
+      return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_PROMO_CODE);
+    }
+    const promoCodeForOrder = promoBodyParse.code;
+
+    if (promoCodeForOrder) {
+      if (!requireEventPromoPepperOr503(res)) return;
+      const promoRateOk = await tryEventPromoOrderCreateRate(dbClient, ip);
+      if (!promoRateOk) {
+        await logOrderCreateFailure(dbClient, req, 429, { error: 'promo_order_rate_limited' });
+        return publicApiError(res, 429, PUBLIC_ERROR_CODES.INVALID_PROMO_CODE, undefined, {
+          logDetails: 'promo_order_rate_limited',
+        });
+      }
     }
 
     const {
@@ -242,7 +274,7 @@ export default async (req, res) => {
     if (!shouldBypassRecaptcha) {
       if (!recaptchaToken) {
         await logOrderCreateFailure(dbClient, req, 400, { error: 'reCAPTCHA verification required' });
-        return res.status(400).json({ error: 'reCAPTCHA verification required' });
+        return publicApiError(res, 400, PUBLIC_ERROR_CODES.RECAPTCHA_FAILED);
       }
       try {
         const verifyResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
@@ -253,17 +285,15 @@ export default async (req, res) => {
         const verifyData = await verifyResponse.json();
         if (!verifyData.success) {
           await logOrderCreateFailure(dbClient, req, 400, { error: 'reCAPTCHA verification failed' });
-          return res.status(400).json({
-            error: 'reCAPTCHA verification failed',
-            details: verifyData['error-codes']?.join(', ') || 'Please complete the reCAPTCHA verification and try again.'
+          return publicApiError(res, 400, PUBLIC_ERROR_CODES.RECAPTCHA_FAILED, undefined, {
+            logDetails: verifyData['error-codes'],
           });
         }
       } catch (recaptchaError) {
         console.error('reCAPTCHA verification error:', recaptchaError);
         await logOrderCreateFailure(dbClient, req, 500, { error: 'reCAPTCHA service unavailable' });
-        return res.status(500).json({
-          error: 'reCAPTCHA verification service unavailable',
-          details: 'Unable to verify reCAPTCHA. Please try again later.'
+        return publicApiError(res, 500, PUBLIC_ERROR_CODES.RECAPTCHA_FAILED, undefined, {
+          logDetails: recaptchaError,
         });
       }
     }
@@ -271,63 +301,42 @@ export default async (req, res) => {
     // Validate required fields
     if (!customerInfo || !passes || !paymentMethod) {
       await logOrderCreateFailure(dbClient, req, 400, { error: 'Missing required fields' });
-      return res.status(400).json({
-        error: 'Missing required fields',
-        details: 'customerInfo, passes, and paymentMethod are required'
-      });
+      return orderErr(res, 400, 'Missing required fields', 'customerInfo, passes, and paymentMethod are required');
     }
 
     if (!Array.isArray(passes) || passes.length === 0) {
       await logOrderCreateFailure(dbClient, req, 400, { error: 'Invalid passes' });
-      return res.status(400).json({
-        error: 'Invalid passes',
-        details: 'passes must be a non-empty array'
-      });
+      return orderErr(res, 400, 'Invalid passes', 'passes must be a non-empty array');
     }
 
     // Validate customer info (required fields)
     if (!customerInfo.full_name || !customerInfo.phone || !customerInfo.email || !customerInfo.city) {
       await logOrderCreateFailure(dbClient, req, 400, { error: 'Missing customer information' });
-      return res.status(400).json({
-        error: 'Missing customer information',
-        details: 'full_name, phone, email, and city are required'
-      });
+      return orderErr(res, 400, 'Missing customer information', 'full_name, phone, email, and city are required');
     }
 
     // Phone: 8 digits, first digit 2, 4, 5, or 9
     if (!validateOrderPhone(customerInfo.phone)) {
       await logOrderCreateFailure(dbClient, req, 400, { error: 'Invalid phone number' });
-      return res.status(400).json({
-        error: 'Invalid phone number',
-        details: 'Phone must be 8 digits starting with 2, 4, 5, or 9.'
-      });
+      return orderErr(res, 400, 'Invalid phone number', 'Phone must be 8 digits starting with 2, 4, 5, or 9.');
     }
     // Email: format and length
     if (!validateOrderEmail(customerInfo.email)) {
       await logOrderCreateFailure(dbClient, req, 400, { error: 'Invalid email' });
-      return res.status(400).json({
-        error: 'Invalid email',
-        details: 'Please provide a valid email address.'
-      });
+      return orderErr(res, 400, 'Invalid email', 'Please provide a valid email address.');
     }
 
     // Validate payment method
     const validPaymentMethods = ['online', 'external_app', 'ambassador_cash'];
     if (!validPaymentMethods.includes(paymentMethod)) {
       await logOrderCreateFailure(dbClient, req, 400, { error: 'Invalid payment method' });
-      return res.status(400).json({
-        error: 'Invalid payment method',
-        details: `Payment method must be one of: ${validPaymentMethods.join(', ')}`
-      });
+      return orderErr(res, 400, 'Invalid payment method', `Payment method must be one of: ${validPaymentMethods.join(', ')}`);
     }
 
     // Validate ambassador for ambassador_cash (required)
     if (paymentMethod === 'ambassador_cash' && !ambassadorId) {
       await logOrderCreateFailure(dbClient, req, 400, { error: 'Ambassador ID required' });
-      return res.status(400).json({
-        error: 'Ambassador ID required',
-        details: 'ambassadorId is required for ambassador_cash payment method'
-      });
+      return orderErr(res, 400, 'Ambassador ID required', 'ambassadorId is required for ambassador_cash payment method');
     }
 
     // Ambassador must exist and be active (not paused) for ambassador_cash
@@ -339,15 +348,12 @@ export default async (req, res) => {
         .single();
       if (ambassadorError || !ambassador) {
         await logOrderCreateFailure(dbClient, req, 400, { error: 'Ambassador not found' });
-        return res.status(400).json({ error: 'Ambassador not found', details: 'The selected ambassador was not found.' });
+        return orderErr(res, 400, 'Ambassador not found', 'The selected ambassador was not found.');
       }
       const activeStatuses = ['approved', 'ACTIVE'];
       if (!activeStatuses.includes(ambassador.status)) {
         await logOrderCreateFailure(dbClient, req, 400, { error: 'Ambassador cannot receive orders' });
-        return res.status(400).json({
-          error: 'This ambassador cannot receive new orders',
-          details: 'The selected ambassador is paused or not active.'
-        });
+        return orderErr(res, 400, 'This ambassador cannot receive new orders', 'The selected ambassador is paused or not active.');
       }
     }
 
@@ -384,35 +390,23 @@ export default async (req, res) => {
     if (passesError) {
       console.error('Error fetching passes:', passesError);
       await logOrderCreateFailure(dbClient, req, 500, { error: 'Failed to validate passes', details: passesError.message });
-      return res.status(500).json({
-        error: 'Failed to validate passes',
-        details: passesError.message
-      });
+      return orderErr(res, 500, 'Failed to validate passes', passesError.message, passesError);
     }
 
     if (!eventPasses || eventPasses.length !== passIds.length) {
       await logOrderCreateFailure(dbClient, req, 400, { error: 'One or more passes not found' });
-      return res.status(400).json({
-        error: 'Invalid passes',
-        details: 'One or more passes not found'
-      });
+      return orderErr(res, 400, 'Invalid passes', 'One or more passes not found');
     }
 
     const orderEventIds = [...new Set((eventPasses || []).map((p) => p.event_id).filter(Boolean))];
     if (orderEventIds.length > 1) {
       await logOrderCreateFailure(dbClient, req, 400, { error: 'Multiple events in one order' });
-      return res.status(400).json({
-        error: 'Invalid order',
-        details: 'All passes must be for the same event.'
-      });
+      return orderErr(res, 400, 'Invalid order', 'All passes must be for the same event.');
     }
     const primaryEventId = orderEventIds[0] || eventId || null;
     if (eventId && primaryEventId && String(eventId) !== String(primaryEventId)) {
       await logOrderCreateFailure(dbClient, req, 400, { error: 'Event mismatch' });
-      return res.status(400).json({
-        error: 'Invalid order',
-        details: 'Event does not match selected passes.'
-      });
+      return orderErr(res, 400, 'Invalid order', 'Event does not match selected passes.');
     }
 
     if (orderEventIds.length > 0) {
@@ -430,13 +424,15 @@ export default async (req, res) => {
             eventId: blocked.id,
             event_status: blocked.event_status
           });
-          return res.status(400).json({
-            error: 'Event not available for purchase',
-            details:
-              blocked.event_status === 'cancelled'
-                ? 'This event has been cancelled.'
-                : 'Pass sales are closed for this event.'
-          });
+          return orderErr(
+            res,
+            400,
+            'Event not available for purchase',
+            blocked.event_status === 'cancelled'
+              ? 'This event has been cancelled.'
+              : 'Pass sales are closed for this event.',
+            { eventId: blocked.id, event_status: blocked.event_status }
+          );
         }
       }
     }
@@ -452,19 +448,19 @@ export default async (req, res) => {
       
       if (!eventPass) {
         await logOrderCreateFailure(dbClient, req, 400, { error: 'Invalid pass', passId: pass.passId });
-        return res.status(400).json({
-          error: 'Invalid pass',
-          details: `Pass ${pass.passId} not found`
-        });
+        return orderErr(res, 400, 'Invalid pass', `Pass ${pass.passId} not found`, { passId: pass.passId });
       }
 
       // Check if pass is active
       if (!eventPass.is_active) {
         await logOrderCreateFailure(dbClient, req, 400, { error: 'Pass not available', passName: eventPass.name });
-        return res.status(400).json({
-          error: 'Pass not available',
-          details: `Pass "${eventPass.name}" is no longer available for purchase`
-        });
+        return orderErr(
+          res,
+          400,
+          'Pass not available',
+          `Pass "${eventPass.name}" is no longer available for purchase`,
+          { passName: eventPass.name }
+        );
       }
 
       // Validate payment method compatibility (BACKEND ENFORCEMENT - MANDATORY)
@@ -472,20 +468,19 @@ export default async (req, res) => {
       if (eventPass.allowed_payment_methods && eventPass.allowed_payment_methods.length > 0) {
         if (!eventPass.allowed_payment_methods.includes(paymentMethod)) {
           await logOrderCreateFailure(dbClient, req, 400, { error: 'Payment method not allowed' });
-          return res.status(400).json({
-            error: 'Payment method not allowed',
-            details: `Pass "${eventPass.name}" is only available with the following payment methods: ${eventPass.allowed_payment_methods.join(', ')}. Selected method: ${paymentMethod}`
-          });
+          return orderErr(
+            res,
+            400,
+            'Payment method not allowed',
+            `Pass "${eventPass.name}" is only available with the following payment methods: ${eventPass.allowed_payment_methods.join(', ')}. Selected method: ${paymentMethod}`
+          );
         }
       }
 
       const line = buildValidatedPassLineItem(pass, eventPass);
       if (!line.passId || line.quantity < 1) {
         await logOrderCreateFailure(dbClient, req, 400, { error: 'Invalid pass line', passId: line.passId });
-        return res.status(400).json({
-          error: 'Invalid pass',
-          details: 'Each pass must have a valid passId and quantity of at least 1.',
-        });
+        return orderErr(res, 400, 'Invalid pass', 'Each pass must have a valid passId and quantity of at least 1.');
       }
 
       // Check stock availability
@@ -493,10 +488,13 @@ export default async (req, res) => {
         const remaining = eventPass.max_quantity - eventPass.sold_quantity;
         if (remaining < line.quantity) {
           await logOrderCreateFailure(dbClient, req, 400, { error: 'Insufficient stock', remaining, requested: line.quantity });
-          return res.status(400).json({
-            error: 'Insufficient stock',
-            details: `Only ${remaining} ${eventPass.name} pass(es) available, requested ${line.quantity}`
-          });
+          return orderErr(
+            res,
+            400,
+            'Insufficient stock',
+            `Only ${remaining} ${eventPass.name} pass(es) available, requested ${line.quantity}`,
+            { remaining, requested: line.quantity }
+          );
         }
       }
 
@@ -509,19 +507,37 @@ export default async (req, res) => {
     });
     if (!presaleResult.ok) {
       await logOrderCreateFailure(dbClient, req, 403, { error: presaleResult.error });
-      return res.status(403).json({ error: 'Invalid access' });
+      return publicApiError(res, 403, PUBLIC_ERROR_CODES.INVALID_ACCESS, undefined, {
+        logDetails: presaleResult.error,
+      });
     }
     const presaleCodeIdForOrder = presaleResult.presaleCodeId;
     const presaleSnapshotForNotes = presaleResult.presaleSnapshot || null;
 
+    const promoResult = await resolveEventPromoForOrderCreate(dbClient, {
+      primaryEventId,
+      promoCodeRaw: promoCodeForOrder,
+      validatedPasses,
+      paymentMethod,
+    });
+    if (!promoResult.ok) {
+      await logOrderCreateFailure(dbClient, req, 400, { error: promoResult.error });
+      return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_PROMO_CODE);
+    }
+    const eventPromoCodeIdForOrder = promoResult.promoCodeId;
+    const promoSnapshotForNotes = promoResult.promoSnapshot || null;
+
     // Max 10 passes per order
     const totalQuantityForCap = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
+    const eventPromoUsesClaimed = eventPromoCodeIdForOrder
+      ? resolvePromoUsesClaimedCount(
+          promoSnapshotForNotes,
+          promoResult.promoUsesClaimed
+        )
+      : 0;
     if (totalQuantityForCap > 10) {
       await logOrderCreateFailure(dbClient, req, 400, { error: 'Maximum 10 passes per order' });
-      return res.status(400).json({
-        error: 'Maximum 10 passes per order',
-        details: 'You can order at most 10 passes per order.'
-      });
+      return orderErr(res, 400, 'Maximum 10 passes per order', 'You can order at most 10 passes per order.');
     }
 
     // STEP 3: Atomically reserve stock for ALL passes (all-or-nothing)
@@ -564,10 +580,7 @@ export default async (req, res) => {
           }
         }
         await logOrderCreateFailure(dbClient, req, 400, { error: 'Pass not found', passId: id });
-        return res.status(400).json({
-          error: 'Pass not found',
-          details: `Pass with ID ${id} not found`
-        });
+        return orderErr(res, 400, 'Pass not found', `Pass with ID ${id} not found`, { passId: id });
       }
 
       // Check stock availability with current values
@@ -592,10 +605,13 @@ export default async (req, res) => {
           }
         }
         await logOrderCreateFailure(dbClient, req, 400, { error: 'Pass no longer active', passName: validatedPass.eventPass.name });
-        return res.status(400).json({
-          error: 'Pass not available',
-          details: `Pass "${validatedPass.eventPass.name}" is no longer active`
-        });
+        return orderErr(
+          res,
+          400,
+          'Pass not available',
+          `Pass "${validatedPass.eventPass.name}" is no longer active`,
+          { passName: validatedPass.eventPass.name }
+        );
       }
 
       if (currentPass.max_quantity !== null) {
@@ -622,10 +638,13 @@ export default async (req, res) => {
           }
           const remaining = currentPass.max_quantity - currentPass.sold_quantity;
           await logOrderCreateFailure(dbClient, req, 400, { error: 'Insufficient stock', remaining, requested: validatedPass.quantity });
-          return res.status(400).json({
-            error: 'Insufficient stock',
-            details: `Only ${remaining} ${validatedPass.eventPass.name} pass(es) available, requested ${validatedPass.quantity}`
-          });
+          return orderErr(
+            res,
+            400,
+            'Insufficient stock',
+            `Only ${remaining} ${validatedPass.eventPass.name} pass(es) available, requested ${validatedPass.quantity}`,
+            { remaining, requested: validatedPass.quantity }
+          );
         }
       }
 
@@ -666,10 +685,13 @@ export default async (req, res) => {
         }
 
         await logOrderCreateFailure(dbClient, req, 400, { error: 'Stock reservation failed', passName: validatedPass.eventPass.name });
-        return res.status(400).json({
-          error: 'Stock reservation failed',
-          details: `Insufficient stock for "${validatedPass.eventPass.name}" or pass is no longer active`
-        });
+        return orderErr(
+          res,
+          400,
+          'Insufficient stock',
+          `Insufficient stock for "${validatedPass.eventPass.name}" or pass is no longer active`,
+          { passName: validatedPass.eventPass.name }
+        );
       }
 
       stockReservations.push({ passId: id, reserved: true, unlimited: false });
@@ -706,18 +728,38 @@ export default async (req, res) => {
         console.error('presale_claim_slot', claimErr);
         await rollbackStockReservations();
         await logOrderCreateFailure(dbClient, req, 500, { error: 'Presale claim failed', details: claimErr.message });
-        return res.status(500).json({
-          error: 'Failed to place order',
-          details: claimErr.message,
+        return publicApiError(res, 500, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
+          logDetails: claimErr,
         });
       }
       const claimedRows = Array.isArray(claimedRaw) ? claimedRaw : claimedRaw ? [claimedRaw] : [];
       if (!claimedRows.length) {
         await rollbackStockReservations();
         await logOrderCreateFailure(dbClient, req, 403, { error: 'Presale code exhausted' });
-        return res.status(403).json({ error: 'Invalid access' });
+        return publicApiError(res, 403, PUBLIC_ERROR_CODES.INVALID_ACCESS, undefined, {
+        logDetails: presaleResult.error,
+      });
       }
       presaleSlotClaimed = true;
+    }
+
+    let promoUsesClaimedCount = 0;
+    if (eventPromoCodeIdForOrder && eventPromoUsesClaimed > 0) {
+      promoUsesClaimedCount = eventPromoUsesClaimed;
+      const promoClaimOk = await claimEventPromoUseRpc(
+        dbClient,
+        primaryEventId,
+        eventPromoCodeIdForOrder,
+        promoUsesClaimedCount
+      );
+      if (!promoClaimOk) {
+        if (presaleSlotClaimed && presaleCodeIdForOrder) {
+          await releasePresaleSlotRpc(dbClient, presaleCodeIdForOrder);
+        }
+        await rollbackStockReservations();
+        await logOrderCreateFailure(dbClient, req, 400, { error: 'Promo code exhausted' });
+        return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_PROMO_CODE);
+      }
     }
 
     // STEP 4: Calculate totals (server-side authority)
@@ -745,6 +787,9 @@ export default async (req, res) => {
         initialStatus = 'PENDING_CASH';
         break;
       default:
+        if (promoUsesClaimedCount > 0 && eventPromoCodeIdForOrder) {
+          await releaseEventPromoUseRpc(dbClient, eventPromoCodeIdForOrder, promoUsesClaimedCount);
+        }
         if (presaleSlotClaimed && presaleCodeIdForOrder) {
           await releasePresaleSlotRpc(dbClient, presaleCodeIdForOrder);
         }
@@ -768,10 +813,7 @@ export default async (req, res) => {
           }
         }
         await logOrderCreateFailure(dbClient, req, 400, { error: 'Invalid payment method', paymentMethod });
-        return res.status(400).json({
-          error: 'Invalid payment method',
-          details: `Unknown payment method: ${paymentMethod}`
-        });
+        return orderErr(res, 400, 'Invalid payment method', `Unknown payment method: ${paymentMethod}`);
     }
 
     // STEP 6: Create order
@@ -797,6 +839,8 @@ export default async (req, res) => {
       assigned_at: ambassadorId ? new Date().toISOString() : null,
       idempotency_key: safeIdempotencyKey || null,
       presale_code_id: presaleCodeIdForOrder || null,
+      event_promo_code_id: eventPromoCodeIdForOrder || null,
+      event_promo_uses_claimed: eventPromoUsesClaimed,
       notes: JSON.stringify({
         all_passes: validatedPasses.map(p => ({
           passId: p.passId,
@@ -821,6 +865,9 @@ export default async (req, res) => {
         // RLS hides presale_codes from the anon admin client, so we keep the data here.
         ...(presaleSnapshotForNotes
           ? { presale: presaleSnapshotForNotes }
+          : {}),
+        ...(promoSnapshotForNotes
+          ? { promo: promoSnapshotForNotes }
           : {})
       })
     };
@@ -834,6 +881,9 @@ export default async (req, res) => {
     if (orderError) {
       // Rollback stock reservations
       console.error('Order creation failed, rolling back stock:', orderError);
+      if (promoUsesClaimedCount > 0 && eventPromoCodeIdForOrder) {
+        await releaseEventPromoUseRpc(dbClient, eventPromoCodeIdForOrder, promoUsesClaimedCount);
+      }
       if (presaleSlotClaimed && presaleCodeIdForOrder) {
         await releasePresaleSlotRpc(dbClient, presaleCodeIdForOrder);
       }
@@ -856,9 +906,8 @@ export default async (req, res) => {
         }
       }
       await logOrderCreateFailure(dbClient, req, 500, { error: 'Failed to create order', details: orderError.message });
-      return res.status(500).json({
-        error: 'Failed to create order',
-        details: orderError.message
+      return publicApiError(res, 500, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
+        logDetails: orderError,
       });
     }
 
@@ -878,6 +927,9 @@ export default async (req, res) => {
     if (passesInsertError) {
         // Rollback: delete order and release stock
         console.error('Order passes creation failed, rolling back:', passesInsertError);
+        if (promoUsesClaimedCount > 0 && eventPromoCodeIdForOrder) {
+          await releaseEventPromoUseRpc(dbClient, eventPromoCodeIdForOrder, promoUsesClaimedCount);
+        }
         if (presaleSlotClaimed && presaleCodeIdForOrder) {
           await releasePresaleSlotRpc(dbClient, presaleCodeIdForOrder);
         }
@@ -901,9 +953,8 @@ export default async (req, res) => {
           }
         }
       await logOrderCreateFailure(dbClient, req, 500, { error: 'Failed to create order passes', details: passesInsertError.message });
-      return res.status(500).json({
-        error: 'Failed to create order passes',
-        details: passesInsertError.message
+      return publicApiError(res, 500, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
+        logDetails: passesInsertError,
       });
     }
 
@@ -988,9 +1039,8 @@ export default async (req, res) => {
     } catch (logErr) {
       console.error('Failed to log order_create_failed:', logErr);
     }
-    res.status(500).json({
-      error: 'Internal server error',
-      details: error.message
+    return publicApiError(res, 500, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
+      logDetails: error,
     });
   }
 };

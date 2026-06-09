@@ -27,6 +27,7 @@ import { formatDateDMY, toDatetimeLocalValue } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { EventPromoCodesPanel, clearEventPromoCodesPanelCache } from "./EventPromoCodesPanel";
 
 /** Add/Edit Event dialog — subtab triggers: comfortable gaps + ~44px tap height on mobile */
 const EDIT_EVENT_SUBTAB_TRIGGER =
@@ -274,6 +275,8 @@ export function EventsTab(p: EventsTabProps) {
   passesForManagementRef.current = p.passesForManagement;
   /** Plaintext label for a row we just created, until GET returns it from the DB. */
   const presaleLabelHintByIdRef = React.useRef<Record<string, string>>({});
+  /** Event id for which full pass stock is already in `passesForManagement` (skip refetch on tab re-entry). */
+  const passStockLoadedEventIdRef = React.useRef<string | null>(null);
   const newPassFormScrollRef = React.useRef<HTMLDivElement | null>(null);
   const [newPresale, setNewPresale] = React.useState({
     code: "",
@@ -540,10 +543,21 @@ export function EventsTab(p: EventsTabProps) {
 
   React.useEffect(() => {
     if (p.isEventDialogOpen) setOpeningEditEventId(null);
+    if (!p.isEventDialogOpen) {
+      passStockLoadedEventIdRef.current = null;
+      clearEventPromoCodesPanelCache();
+    }
   }, [p.isEventDialogOpen]);
 
   const loadPassStockForEvent = React.useCallback(
-    async (eventId: string) => {
+    async (eventId: string, options?: { force?: boolean }) => {
+      if (
+        !options?.force &&
+        passStockLoadedEventIdRef.current === eventId &&
+        passesForManagementRef.current.length > 0
+      ) {
+        return;
+      }
       p.setIsPassManagementLoading(true);
       try {
         const apiBase = getApiBaseUrl();
@@ -568,6 +582,7 @@ export function EventsTab(p: EventsTabProps) {
             sold_by_payment_method: pp.sold_by_payment_method || null,
           }));
           p.setPassesForManagement(passesWithStock);
+          passStockLoadedEventIdRef.current = eventId;
         } else {
           toast({
             title: p.t.error,
@@ -651,6 +666,8 @@ export function EventsTab(p: EventsTabProps) {
                           setCodeUnlockMaxDrafts({});
                           setExpandedPresaleCodeId(null);
                           presaleLabelHintByIdRef.current = {};
+                          passStockLoadedEventIdRef.current = null;
+                          clearEventPromoCodesPanelCache();
                           p.setPassesForManagement([]);
                           p.setEditingEvent({
                             passes: [],
@@ -1293,15 +1310,16 @@ export function EventsTab(p: EventsTabProps) {
                                                     </button>
                                                   </CollapsibleTrigger>
                                                   <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                                                    {!c.revoked_at && !c.paused_at && (
-                                                      <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        className="h-7 px-2 text-[10px]"
-                                                        onClick={async () => {
+                                                    {!c.revoked_at ? (
+                                                      <Switch
+                                                        id={`presale-active-${c.id}`}
+                                                        checked={!c.paused_at}
+                                                        onCheckedChange={async (active) => {
                                                           const apiBase = getApiBaseUrl();
-                                                          const r = await fetch(`${apiBase}${API_ROUTES.ADMIN_PRESALE_CODE_PAUSE(c.id)}`, {
+                                                          const route = active
+                                                            ? API_ROUTES.ADMIN_PRESALE_CODE_UNPAUSE(c.id)
+                                                            : API_ROUTES.ADMIN_PRESALE_CODE_PAUSE(c.id);
+                                                          const r = await fetch(`${apiBase}${route}`, {
                                                             method: "POST",
                                                             credentials: "include",
                                                           });
@@ -1311,32 +1329,8 @@ export function EventsTab(p: EventsTabProps) {
                                                           }
                                                           void loadPresaleCodes(p.editingEvent!.id);
                                                         }}
-                                                      >
-                                                        Pause
-                                                      </Button>
-                                                    )}
-                                                    {!c.revoked_at && c.paused_at && (
-                                                      <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        className="h-7 px-2 text-[10px]"
-                                                        onClick={async () => {
-                                                          const apiBase = getApiBaseUrl();
-                                                          const r = await fetch(`${apiBase}${API_ROUTES.ADMIN_PRESALE_CODE_UNPAUSE(c.id)}`, {
-                                                            method: "POST",
-                                                            credentials: "include",
-                                                          });
-                                                          if (!r.ok) {
-                                                            toast({ title: p.t.error, variant: "destructive" });
-                                                            return;
-                                                          }
-                                                          void loadPresaleCodes(p.editingEvent!.id);
-                                                        }}
-                                                      >
-                                                        Unpause
-                                                      </Button>
-                                                    )}
+                                                      />
+                                                    ) : null}
                                                   </div>
                                                 </div>
                                                 <CollapsibleContent className="border-t border-border/50 bg-muted/20 px-3 py-3">
@@ -2185,7 +2179,7 @@ export function EventsTab(p: EventsTabProps) {
                                     size="sm"
                                     variant="outline"
                                     disabled={p.isPassManagementLoading}
-                                    onClick={() => void loadPassStockForEvent(p.editingEvent!.id)}
+                                    onClick={() => void loadPassStockForEvent(p.editingEvent!.id, { force: true })}
                                   >
                                     {p.isPassManagementLoading ? (
                                       <span className="inline-flex items-center gap-2">
@@ -2456,7 +2450,7 @@ export function EventsTab(p: EventsTabProps) {
                                                 );
                                               }
 
-                                              await loadPassStockForEvent(p.eventForPassManagement.id);
+                                              await loadPassStockForEvent(p.eventForPassManagement.id, { force: true });
                                               p.setNewPassForm(null);
                                               toast({
                                                 title:
@@ -3080,14 +3074,17 @@ export function EventsTab(p: EventsTabProps) {
                             </div>
                           )}
                         </TabsContent>
-                        <TabsContent value="promo-codes" className="space-y-4 mt-6">
-                          <Card className="border-primary/30 bg-muted/20">
-                            <CardContent className="p-4">
-                              <p className="text-sm text-muted-foreground">
-                                {p.language === "en" ? "Coming soon." : "Bientôt disponible."}
-                              </p>
-                            </CardContent>
-                          </Card>
+                        <TabsContent value="promo-codes" className="space-y-6 mt-6">
+                          <EventPromoCodesPanel
+                            eventId={p.editingEvent?.id ?? ""}
+                            language={p.language}
+                            presaleEnabled={!!p.editingEvent?.presale_enabled}
+                            eventPasses={
+                              p.editingEvent?.id && p.passesForManagement.length > 0
+                                ? p.passesForManagement
+                                : undefined
+                            }
+                          />
                         </TabsContent>
                       </Tabs>
                       </div>
@@ -3391,6 +3388,7 @@ export function EventsTab(p: EventsTabProps) {
                                           sold_by_payment_method: p.sold_by_payment_method || null
                                         }));
                                         p.setPassesForManagement(passesWithStock);
+                                        passStockLoadedEventIdRef.current = p.eventForPassManagement.id;
                                       }
 
                                       p.setNewPassForm(null);
@@ -4006,6 +4004,8 @@ export function EventsTab(p: EventsTabProps) {
                                 setCodeUnlockMaxDrafts({});
                                 setExpandedPresaleCodeId(null);
                                 presaleLabelHintByIdRef.current = {};
+                                passStockLoadedEventIdRef.current = null;
+                                clearEventPromoCodesPanelCache();
                                 p.setPassesForManagement(finalPasses);
                                 p.setPendingGalleryImages([]);
                                 p.setPendingGalleryVideos([]);

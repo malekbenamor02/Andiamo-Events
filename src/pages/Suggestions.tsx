@@ -11,6 +11,7 @@ import { Music, MapPin, Calendar } from "lucide-react";
 import { PageMeta } from "@/components/PageMeta";
 import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 import { JsonLdBreadcrumb } from "@/components/JsonLd";
+import { mapPublicError } from "@/lib/userErrors";
 
 const TITLE_MAX = 200;
 const DETAILS_MAX = 2000;
@@ -197,16 +198,21 @@ const Suggestions = ({ language }: SuggestionsProps) => {
           ? "Your suggestion has been received. We read every one and use them to plan future events."
           : "Votre suggestion a bien été reçue. Nous lisons chacune et les utilisons pour nos prochains événements.",
       });
-    } catch (err: any) {
-      logFormSubmission("Suggestions Form", false, { error: err?.message }, "guest");
+    } catch (err: unknown) {
+      logFormSubmission("Suggestions Form", false, { error: err instanceof Error ? err.message : String(err) }, "guest");
       logger.error("Suggestions form submission failed", err, { category: "form_submission", details: { formName: "Suggestions" } });
-      const message = err?.data?.details || err?.message || (language === "en" ? "Something went wrong. Please try again." : "Une erreur s'est produite. Veuillez réessayer.");
-      const isRateLimit = err?.status === 429;
+      const errObj = err as { status?: number; data?: { error?: string; message?: string; details?: string }; message?: string };
+      const mapped = mapPublicError(
+        {
+          error: errObj.status === 429 ? 'rate_limited' : errObj.data?.error,
+          message: errObj.data?.message || errObj.message,
+          status: errObj.status,
+        },
+        language
+      );
       toast({
-        title: language === "en" ? "Error" : "Erreur",
-        description: isRateLimit
-          ? (language === "en" ? "Too many submissions. Please try again later." : "Trop de soumissions. Veuillez réessayer plus tard.")
-          : message,
+        title: mapped.title,
+        description: mapped.description,
         variant: "destructive",
       });
     } finally {

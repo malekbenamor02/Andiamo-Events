@@ -4,6 +4,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { createRequire } from 'module';
+import { publicApiError, PUBLIC_ERROR_CODES } from './_lib/public-api-error.js';
 
 const requireFee = createRequire(import.meta.url);
 const { computeOnlinePaymentFees } = requireFee('./_lib/online-payment-fee.cjs');
@@ -20,9 +21,13 @@ export default async function handler(req, res) {
   const { setCORSHeaders, handlePreflight } = await getCorsUtils();
   if (handlePreflight(req, res, { methods: 'POST, OPTIONS', headers: 'Content-Type' })) return;
   if (!setCORSHeaders(res, req, { methods: 'POST', headers: 'Content-Type' })) {
-    if (req.headers.origin) return res.status(403).json({ error: 'CORS not allowed' });
+    if (req.headers.origin) {
+      return publicApiError(res, 403, PUBLIC_ERROR_CODES.INVALID_ACCESS, undefined, { logDetails: 'CORS' });
+    }
   }
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST') {
+    return publicApiError(res, 405, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, { logDetails: 'Method not allowed' });
+  }
 
   const apiUser = process.env.CLICTOPAY_API_USER;
   const apiPassword = process.env.CLICTOPAY_API_PASSWORD;
@@ -32,16 +37,14 @@ export default async function handler(req, res) {
 
   if (!apiUser || !apiPassword) {
     console.error('ClicToPay: Missing CLICTOPAY_API_USER or CLICTOPAY_API_PASSWORD');
-    return res.status(500).json({
-      error: 'Payment gateway not configured',
-      message: 'Please configure CLICTOPAY_API_USER and CLICTOPAY_API_PASSWORD'
+    return publicApiError(res, 500, PUBLIC_ERROR_CODES.PAYMENT_UNAVAILABLE, undefined, {
+      logDetails: 'Missing CLICTOPAY_API_USER or CLICTOPAY_API_PASSWORD',
     });
   }
   if (!baseUrl) {
     console.error('ClicToPay: CLICTOPAY_BASE_URL is required in production');
-    return res.status(500).json({
-      error: 'Payment gateway not configured',
-      message: 'Please set CLICTOPAY_BASE_URL (e.g. https://ipay.clictopay.com/payment/rest for production)'
+    return publicApiError(res, 500, PUBLIC_ERROR_CODES.PAYMENT_UNAVAILABLE, undefined, {
+      logDetails: 'CLICTOPAY_BASE_URL missing in production',
     });
   }
 
@@ -52,12 +55,16 @@ export default async function handler(req, res) {
     body = {};
   }
   const { orderId } = body;
-  if (!orderId) return res.status(400).json({ error: 'orderId is required' });
+  if (!orderId) {
+    return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, { logDetails: 'orderId required' });
+  }
 
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseKey) {
-    return res.status(500).json({ error: 'Database not configured' });
+    return publicApiError(res, 500, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
+      logDetails: 'Database not configured',
+    });
   }
 
   const dbClient = createClient(supabaseUrl, supabaseKey);
@@ -83,18 +90,18 @@ export default async function handler(req, res) {
     .single();
 
   if (orderError || !order) {
-    return res.status(404).json({ error: 'Order not found' });
+    return publicApiError(res, 404, PUBLIC_ERROR_CODES.ORDER_NOT_FOUND, undefined, { logDetails: orderError });
   }
   if (order.status === 'PAID') {
     return res.status(400).json({
-      error: 'Order already paid',
-      alreadyPaid: true
+      error: PUBLIC_ERROR_CODES.PAYMENT_FAILED,
+      message: 'Order already paid',
+      alreadyPaid: true,
     });
   }
   if (order.status !== 'PENDING_ONLINE') {
-    return res.status(400).json({
-      error: 'Order is not ready for payment',
-      details: `Order status: ${order.status}`
+    return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, {
+      logDetails: `Order status: ${order.status}`,
     });
   }
 
@@ -116,7 +123,9 @@ export default async function handler(req, res) {
   }
 
   if (!amount || amount <= 0) {
-    return res.status(400).json({ error: 'Invalid order amount' });
+    return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, {
+      logDetails: 'Invalid order amount',
+    });
   }
 
   // Prefer request Origin so user returns to same host (e.g. 172.20.10.4:3000 on phone, not localhost)
@@ -181,15 +190,13 @@ export default async function handler(req, res) {
     }
 
     console.error('ClicToPay register.do response:', { status: resp.status, text: text.slice(0, 500), data });
-    return res.status(500).json({
-      error: data.errorMessage || data.error || 'Failed to generate payment',
-      details: data
+    return publicApiError(res, 500, PUBLIC_ERROR_CODES.PAYMENT_UNAVAILABLE, undefined, {
+      logDetails: { status: resp.status, data },
     });
   } catch (err) {
     console.error('ClicToPay generate error:', err);
-    return res.status(500).json({
-      error: 'Payment gateway error',
-      message: err.message || 'Unknown error'
+    return publicApiError(res, 500, PUBLIC_ERROR_CODES.PAYMENT_UNAVAILABLE, undefined, {
+      logDetails: err,
     });
   }
 }

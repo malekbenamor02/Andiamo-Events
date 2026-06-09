@@ -5,6 +5,7 @@
  */
 
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./email-branding.cjs');
+const { buildPromoEmailRowsHtml } = require('./email-promo-snippet.cjs');
 
 function formatEventTime(dateString) {
   if (!dateString) return 'TBA';
@@ -38,6 +39,7 @@ function formatEventTime(dateString) {
  * @param {number} [opts.feeAmount]
  * @param {number} [opts.subtotalAmount]
  * @param {Map<string, { qr_code_url: string, secure_token: string }[]>} opts.ticketsByPassType - passType -> tickets
+ * @param {{ code?: string, discount_amount?: number } | null} [opts.promoSnapshot]
  */
 function buildOnlineTicketEmailHtml(opts) {
   const {
@@ -52,6 +54,7 @@ function buildOnlineTicketEmailHtml(opts) {
     feeAmount,
     subtotalAmount,
     ticketsByPassType,
+    promoSnapshot,
   } = opts;
 
   const orderDisplay = orderNumber !== null && orderNumber !== undefined ? `#${orderNumber}` : orderId.substring(0, 8).toUpperCase();
@@ -69,17 +72,27 @@ function buildOnlineTicketEmailHtml(opts) {
     </tr>`
   ).join('');
 
+  const promoRowsHtml = buildPromoEmailRowsHtml(promoSnapshot);
+
   const feeRowsHtml = hasFees
     ? `
     <tr class="total-row">
       <td colspan="2" style="text-align: right; padding-right: 20px; background-color: transparent !important;"><strong>Subtotal:</strong></td>
       <td style="text-align: right; background-color: transparent !important;"><strong>${Number(subtotal).toFixed(2)} TND</strong></td>
     </tr>
+    ${promoRowsHtml}
     <tr class="total-row">
       <td colspan="2" style="text-align: right; padding-right: 20px; background-color: transparent !important;"><strong>Payment Fees:</strong></td>
       <td style="text-align: right; background-color: transparent !important;"><strong>${Number(feeAmount).toFixed(2)} TND</strong></td>
     </tr>`
-    : '';
+    : promoRowsHtml
+      ? `
+    <tr class="total-row">
+      <td colspan="2" style="text-align: right; padding-right: 20px; background-color: transparent !important;"><strong>Subtotal:</strong></td>
+      <td style="text-align: right; background-color: transparent !important;"><strong>${Number(subtotal).toFixed(2)} TND</strong></td>
+    </tr>
+    ${promoRowsHtml}`
+      : '';
 
   const ticketsHtml =
     ticketsByPassType && (ticketsByPassType instanceof Map ? ticketsByPassType.size > 0 : Array.isArray(ticketsByPassType) && ticketsByPassType.length > 0)

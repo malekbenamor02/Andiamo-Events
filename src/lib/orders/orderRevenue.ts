@@ -1,6 +1,35 @@
 import type { OrderPass } from '@/types/orders';
 import { PaymentMethod } from '@/lib/constants/orderStatuses';
 import { computeOnlinePaymentFeesDisplay } from '@/lib/onlinePaymentFee';
+import { parsePromoFromOrder } from '@/lib/eventPromo/promoOrder';
+import { parsePresaleOrderSnapshot } from '@/lib/presale/presaleDiscount';
+
+/** Post-discount subtotal from server snapshot in order notes (promo / presale). */
+export function getOrderDiscountedSubtotalFromNotes(order: {
+  notes?: string | Record<string, unknown> | null;
+}): number | null {
+  if (order.notes == null || order.notes === '') return null;
+  try {
+    const notesData =
+      typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+    if (!notesData || typeof notesData !== 'object') return null;
+
+    const promo = parsePromoFromOrder({ notes: notesData as Record<string, unknown> });
+    if (promo?.discounted_subtotal != null && Number.isFinite(promo.discounted_subtotal)) {
+      return promo.discounted_subtotal;
+    }
+
+    const presale = parsePresaleOrderSnapshot(
+      (notesData as Record<string, unknown>).presale
+    );
+    if (presale?.discounted_subtotal != null && Number.isFinite(presale.discounted_subtotal)) {
+      return presale.discounted_subtotal;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 /**
  * Revenue and ticket count from line items when present; otherwise total_price / total.
@@ -13,7 +42,9 @@ export function getOrderTicketsAndRevenue(order: {
   total_price?: number | string | null;
   total?: number | string | null;
   pass_type?: string | null;
+  notes?: string | Record<string, unknown> | null;
 }): { tickets: number; revenue: number } {
+  const subtotalFromNotes = getOrderDiscountedSubtotalFromNotes(order);
   const passes = order.order_passes;
   if (passes && Array.isArray(passes) && passes.length > 0) {
     let revenue = 0;
@@ -23,6 +54,9 @@ export function getOrderTicketsAndRevenue(order: {
       tickets += q;
       revenue += (op.price || 0) * q;
     });
+    if (subtotalFromNotes != null) {
+      return { tickets, revenue: subtotalFromNotes };
+    }
     return { tickets, revenue };
   }
 
@@ -35,10 +69,16 @@ export function getOrderTicketsAndRevenue(order: {
       tickets += q;
       revenue += (Number(op.price) || 0) * q;
     });
+    if (subtotalFromNotes != null) {
+      return { tickets, revenue: subtotalFromNotes };
+    }
     return { tickets, revenue };
   }
 
   const tickets = order.quantity || 0;
+  if (subtotalFromNotes != null) {
+    return { tickets, revenue: subtotalFromNotes };
+  }
   const fromPrice = Number(order.total_price);
   const fromTotal = Number(order.total);
   const revenue = Number.isFinite(fromPrice)
@@ -117,8 +157,10 @@ export function getOrderReportRevenue(order: {
     return fromNotes.total_with_fees;
   }
 
-  if (line > 0) {
-    return Number(computeOnlinePaymentFeesDisplay(line).totalWithFees.toFixed(2));
+  const discountedSubtotal = getOrderDiscountedSubtotalFromNotes(order);
+  const feeBase = discountedSubtotal != null ? discountedSubtotal : line;
+  if (feeBase > 0) {
+    return Number(computeOnlinePaymentFeesDisplay(feeBase).totalWithFees.toFixed(2));
   }
 
   const tp = Number(order.total_price);

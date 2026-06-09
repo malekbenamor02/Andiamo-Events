@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { ThemeProvider } from 'next-themes'
 import App from './App.tsx'
 import { humanizeAppError } from './lib/network-error-message'
+import { mapPublicError } from './lib/userErrors'
 import { initSentry, Sentry } from './lib/sentry'
 import { initClarity } from './lib/clarity'
 import { initGA } from './lib/ga'
@@ -383,10 +384,12 @@ const root = document.getElementById("root")!;
 createRoot(root).render(
   <Sentry.ErrorBoundary
     fallback={({ error, resetError }) => {
-      const { title, detail } = humanizeAppError(
-        error instanceof Error ? error.message : String(error ?? ''),
+      const mapped = mapPublicError(
+        { message: error instanceof Error ? error.message : String(error ?? '') },
         'en'
       );
+      const title = mapped.title;
+      const detail = mapped.description;
       return (
         <div
           className="min-h-screen bg-background text-foreground flex flex-col font-sans antialiased"

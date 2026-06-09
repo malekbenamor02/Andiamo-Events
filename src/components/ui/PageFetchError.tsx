@@ -2,7 +2,8 @@ import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { humanizeAppError, errorToUserMessage } from "@/lib/network-error-message";
+import { errorToUserMessage } from "@/lib/network-error-message";
+import { mapPublicError } from "@/lib/userErrors";
 import { cn } from "@/lib/utils";
 
 export interface PageFetchErrorProps {
@@ -19,7 +20,9 @@ export interface PageFetchErrorProps {
  */
 export function PageFetchError({ language, error, queryKey, className }: PageFetchErrorProps) {
   const queryClient = useQueryClient();
-  const { title, detail } = humanizeAppError(errorToUserMessage(error), language);
+  const mapped = mapPublicError({ message: errorToUserMessage(error) }, language);
+  const title = mapped.title;
+  const detail = mapped.description;
   const retryLabel = language === "en" ? "Try again" : "Réessayer";
   const homeLabel = language === "en" ? "Back to home" : "Retour à l'accueil";
 

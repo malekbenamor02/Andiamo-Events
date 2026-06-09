@@ -219,7 +219,7 @@ async function hashPasswordBcrypt(plain: string, rounds = 10) {
 /** Cap payload size; overview KPIs may omit very old orders if an event exceeds this many online rows. */
 const ONLINE_ORDERS_PAGE_LIMIT = 4000;
 const ONLINE_ORDERS_SELECT =
-  "id, created_at, updated_at, event_id, source, user_name, user_phone, user_email, city, ville, ambassador_id, quantity, total_price, total_with_fees, status, payment_status, payment_method, payment_gateway_reference, payment_confirm_response, order_number, notes, admin_notes, cancelled_at, cancellation_reason, accepted_at, completed_at, assigned_at, presale_code_id, payment_status_set_by, payment_status_set_at, payment_status_set_by_name, order_passes(id, order_id, pass_type, quantity, price, created_at, updated_at)";
+  "id, created_at, updated_at, event_id, source, user_name, user_phone, user_email, city, ville, ambassador_id, quantity, total_price, total_with_fees, status, payment_status, payment_method, payment_gateway_reference, payment_confirm_response, order_number, notes, admin_notes, cancelled_at, cancellation_reason, accepted_at, completed_at, assigned_at, presale_code_id, event_promo_code_id, event_promo_codes(badge_color), payment_status_set_by, payment_status_set_at, payment_status_set_by_name, order_passes(id, order_id, pass_type, quantity, price, created_at, updated_at)";
 
 const EVENTS_ADMIN_LIST_COLUMNS =
   "id, name, date, venue, city, description, poster_url, seating_chart_url, is_test, event_type, event_status, gallery_images, gallery_videos, presale_enabled, presale_active_from, presale_active_until, presale_hide_from_public_list, presale_pass_video_url, presale_pass_mux_playback_id, created_at, updated_at";

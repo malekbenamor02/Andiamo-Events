@@ -36,6 +36,7 @@ const scanSupervisor = require('./lib/scanner-supervisor-handlers.cjs');
 
 // Official online ticket email template — run `node email-templates/generate-previews.cjs` to refresh browser previews
 const { buildOnlineTicketEmailHtml, formatEventTime } = require('./api/_lib/online-ticket-email-html.cjs');
+const { parseOrderNotesPromo } = require('./api/_lib/email-promo-snippet.cjs');
 const { createOfficialInvitationEmailHTML } = require('./api/_lib/official-invitation-email-html.cjs');
 const { buildOrderConfirmationEmailHtml } = require('./api/_lib/order-confirmation-email-html.cjs');
 const { fetchAmbassadorSocialLinkFromApplications } = require('./api/_lib/ambassador-social-link.cjs');
@@ -3817,6 +3818,68 @@ function formatPhoneNumber(phone) {
   return null;
 }
 
+function formatSmsRequestError(err) {
+  if (!err) return 'unknown network error';
+  const parts = [];
+  if (err.code) parts.push(String(err.code));
+  if (err.message && String(err.message).trim()) parts.push(String(err.message).trim());
+  if (parts.length) return parts.join(': ');
+  return String(err);
+}
+
+function isTransientSmsNetworkError(err) {
+  const code = err && err.code;
+  return (
+    code === 'ECONNRESET' ||
+    code === 'ETIMEDOUT' ||
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'EAI_AGAIN' ||
+    code === 'EPROTO' ||
+    code === 'ERR_SSL_SSLV3_ALERT_BAD_RECORD_MAC'
+  );
+}
+
+function httpsGetWinSms(url, timeoutMs = 25000) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve({
+            status: res.statusCode,
+            data: parsed,
+            raw: data,
+          });
+        } catch (e) {
+          console.error('❌ WinSMS API response parse error:', e.message);
+          console.error('❌ Raw response:', data);
+          resolve({
+            status: res.statusCode,
+            data: data,
+            raw: data,
+            parseError: e.message,
+          });
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      reject(e);
+    });
+
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(Object.assign(new Error('SMS API request timed out'), { code: 'ETIMEDOUT' }));
+    });
+  });
+}
+
 // ============================================
 // Helper: Send SMS via WinSMS API (WAIT for response)
 // ============================================
@@ -3863,42 +3926,28 @@ async function sendSms(phoneNumbers, message, senderId = WINSMS_SENDER) {
   console.log('Sending SMS:', {
     from: senderId,
     messageLength: message.trim().length,
-    url: url.replace(WINSMS_API_KEY, '***') // Hide API key in logs
+    url: url.replace(WINSMS_API_KEY, '***'), // Hide API key in logs
   });
 
-  // Make HTTPS GET request (as per WinSMS documentation)
-  return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
-      let data = '';
+  const maxAttempts = 2;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await httpsGetWinSms(url);
+    } catch (e) {
+      lastErr = e;
+      const detail = formatSmsRequestError(e);
+      console.error(`❌ WinSMS API request error (attempt ${attempt}/${maxAttempts}):`, detail);
+      if (attempt < maxAttempts && isTransientSmsNetworkError(e)) {
+        console.warn('⚠️ Retrying WinSMS request after transient failure…');
+        await new Promise((r) => setTimeout(r, 800));
+        continue;
+      }
+      break;
+    }
+  }
 
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          resolve({
-            status: res.statusCode,
-            data: parsed,
-            raw: data
-          });
-        } catch (e) {
-          console.error('❌ WinSMS API response parse error:', e.message);
-          console.error('❌ Raw response:', data);
-          resolve({
-            status: res.statusCode,
-            data: data,
-            raw: data,
-            parseError: e.message
-          });
-        }
-      });
-    }).on('error', (e) => {
-      console.error('❌ WinSMS API request error:', e.message);
-      reject(new Error(`SMS API request failed: ${e.message}`));
-    });
-  });
+  throw new Error(`SMS API request failed: ${formatSmsRequestError(lastErr)}`);
 }
 
 // ============================================
@@ -9403,6 +9452,7 @@ function buildTicketEmailHtml(order, tickets, passes, orderId) {
     feeAmount,
     subtotalAmount,
     ticketsByPassType,
+    promoSnapshot: parseOrderNotesPromo(order),
   });
 }
 
@@ -11665,6 +11715,7 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     const {
       rejectForbiddenOrderCreateKeys,
       buildValidatedPassLineItem,
+      parseAllowedPromoCodeFromOrderBody,
     } = await import('./api/_lib/order-create-pricing-guard.js');
     const forbiddenBody = rejectForbiddenOrderCreateKeys(req.body);
     if (!forbiddenBody.ok) {
@@ -11677,6 +11728,28 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
         error: 'Invalid request',
         details: 'Request contains unsupported fields.',
       });
+    }
+
+    const promoBodyParse = parseAllowedPromoCodeFromOrderBody(req.body);
+    if (!promoBodyParse.ok) {
+      await logOrderCreateFailure(req, 400, { error: promoBodyParse.error });
+      return res.status(400).json({ error: 'Invalid promo code' });
+    }
+    const promoCodeForOrder = promoBodyParse.code;
+
+    const dbClient = supabaseService || supabase;
+
+    if (promoCodeForOrder) {
+      const { requireEventPromoPepperOr503 } = await import('./api/_lib/event-promo-hash.js');
+      const { tryEventPromoOrderCreateRate } = await import('./api/_lib/event-promo-server.js');
+      const { getClientIp } = await import('./api/_lib/presale-server.js');
+      const promoIp = getClientIp(req);
+      if (!requireEventPromoPepperOr503(res)) return;
+      const promoRateOk = await tryEventPromoOrderCreateRate(dbClient, promoIp);
+      if (!promoRateOk) {
+        await logOrderCreateFailure(req, 429, { error: 'promo_order_rate_limited' });
+        return res.status(429).json({ error: 'Invalid promo code' });
+      }
     }
 
     const {
@@ -11782,8 +11855,6 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
         details: 'ambassadorId is required for ambassador_cash payment method'
       });
     }
-
-    const dbClient = supabaseService || supabase;
 
     // Ambassador must exist and be active (not paused) for ambassador_cash
     if (paymentMethod === 'ambassador_cash' && ambassadorId) {
@@ -11969,8 +12040,30 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     const presaleCodeIdForOrder = presaleResult.presaleCodeId;
     const presaleSnapshotForNotes = presaleResult.presaleSnapshot || null;
 
+    const {
+      resolveEventPromoForOrderCreate,
+      resolvePromoUsesClaimedCount,
+      claimEventPromoUseRpc,
+      releaseEventPromoUseRpc,
+    } = await import('./api/_lib/event-promo-server.js');
+    const promoResult = await resolveEventPromoForOrderCreate(dbClient, {
+      primaryEventId,
+      promoCodeRaw: promoCodeForOrder,
+      validatedPasses,
+      paymentMethod,
+    });
+    if (!promoResult.ok) {
+      await logOrderCreateFailure(req, 400, { error: promoResult.error });
+      return res.status(400).json({ error: 'Invalid promo code' });
+    }
+    const eventPromoCodeIdForOrder = promoResult.promoCodeId;
+    const promoSnapshotForNotes = promoResult.promoSnapshot || null;
+
     // Max 10 passes per order
     const totalQuantityForCap = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
+    const eventPromoUsesClaimed = eventPromoCodeIdForOrder
+      ? resolvePromoUsesClaimedCount(promoSnapshotForNotes, promoResult.promoUsesClaimed)
+      : 0;
     if (totalQuantityForCap > 10) {
       await logOrderCreateFailure(req, 400, { error: 'Maximum 10 passes per order' });
       return res.status(400).json({
@@ -12187,6 +12280,25 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
       presaleSlotClaimed = true;
     }
 
+    let promoUsesClaimedCount = 0;
+    if (eventPromoCodeIdForOrder && eventPromoUsesClaimed > 0) {
+      promoUsesClaimedCount = eventPromoUsesClaimed;
+      const promoClaimOk = await claimEventPromoUseRpc(
+        dbClient,
+        primaryEventId,
+        eventPromoCodeIdForOrder,
+        promoUsesClaimedCount
+      );
+      if (!promoClaimOk) {
+        if (presaleSlotClaimed && presaleCodeIdForOrder) {
+          await releasePresaleSlotRpc(presaleCodeIdForOrder);
+        }
+        await rollbackStockReservations();
+        await logOrderCreateFailure(req, 400, { error: 'Promo code exhausted' });
+        return res.status(400).json({ error: 'Invalid promo code' });
+      }
+    }
+
     // STEP 4: Calculate totals (server-side authority)
     const totalQuantity = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
     const subtotal = validatedPasses.reduce((sum, p) => sum + (parseFloat(p.price) * p.quantity), 0);
@@ -12211,6 +12323,9 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
         initialStatus = 'PENDING_CASH';
         break;
       default:
+        if (promoUsesClaimedCount > 0 && eventPromoCodeIdForOrder) {
+          await releaseEventPromoUseRpc(dbClient, eventPromoCodeIdForOrder, promoUsesClaimedCount);
+        }
         if (presaleSlotClaimed && presaleCodeIdForOrder) {
           await releasePresaleSlotRpc(presaleCodeIdForOrder);
         }
@@ -12263,6 +12378,8 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
       assigned_at: ambassadorId ? new Date().toISOString() : null,
       idempotency_key: safeIdempotencyKey || null,
       presale_code_id: presaleCodeIdForOrder || null,
+      event_promo_code_id: eventPromoCodeIdForOrder || null,
+      event_promo_uses_claimed: eventPromoUsesClaimed,
       notes: JSON.stringify({
         all_passes: validatedPasses.map(p => ({
           passId: p.passId,
@@ -12286,6 +12403,9 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
         // RLS hides presale_codes from the anon admin client, so we keep the data here.
         ...(presaleSnapshotForNotes
           ? { presale: presaleSnapshotForNotes }
+          : {}),
+        ...(promoSnapshotForNotes
+          ? { promo: promoSnapshotForNotes }
           : {})
       })
     };
@@ -12299,6 +12419,9 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     if (orderError) {
       // Rollback stock reservations
       console.error('Order creation failed, rolling back stock:', orderError);
+      if (promoUsesClaimedCount > 0 && eventPromoCodeIdForOrder) {
+        await releaseEventPromoUseRpc(dbClient, eventPromoCodeIdForOrder, promoUsesClaimedCount);
+      }
       if (presaleSlotClaimed && presaleCodeIdForOrder) {
         await releasePresaleSlotRpc(presaleCodeIdForOrder);
       }
@@ -12343,6 +12466,9 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     if (passesInsertError) {
         // Rollback: delete order and release stock
         console.error('Order passes creation failed, rolling back:', passesInsertError);
+        if (promoUsesClaimedCount > 0 && eventPromoCodeIdForOrder) {
+          await releaseEventPromoUseRpc(dbClient, eventPromoCodeIdForOrder, promoUsesClaimedCount);
+        }
         if (presaleSlotClaimed && presaleCodeIdForOrder) {
           await releasePresaleSlotRpc(presaleCodeIdForOrder);
         }
@@ -12659,6 +12785,11 @@ app.all('/api/presale/required', (req, res, next) => handlePresaleApi(req, res, 
 app.all('/api/presale/session/clear', (req, res, next) => handlePresaleApi(req, res, next));
 app.all('/api/presale/session', (req, res, next) => handlePresaleApi(req, res, next));
 app.all(/^\/api\/admin\/presale\/codes.*$/, (req, res, next) => handlePresaleApi(req, res, next));
+
+// Checkout promo codes (local dev — routed via presale.js on Vercel to stay within 12 functions)
+app.all('/api/event-promo/availability', (req, res, next) => handlePresaleApi(req, res, next));
+app.all('/api/event-promo/validate', (req, res, next) => handlePresaleApi(req, res, next));
+app.all(/^\/api\/admin\/event-promo\/codes.*$/, (req, res, next) => handlePresaleApi(req, res, next));
 
 // Catch-all 404 handler for undefined API routes
 app.use('/api', (req, res) => {

@@ -10,6 +10,7 @@ import {
 } from '@/lib/academy/validation';
 import { normalizeAcademyPromoCodeInput } from '@/lib/academy/promoCode';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
+import { mapPublicError, mapThrownError } from '@/lib/userErrors';
 import { useAcademyPublicStatus } from '@/hooks/useAcademyPublicStatus';
 import type { AcademyFormulaId, AcademyLanguage, AcademyRegistrationFormData } from '@/types/academy';
 import { EMPTY_ACADEMY_FORM } from '@/types/academy';
@@ -294,11 +295,23 @@ export function useAcademyRegistration(
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          const msg =
-            data.message ||
-            data.error ||
-            (language === 'en' ? 'Registration failed' : 'Échec de l\'inscription');
-          toast({ variant: 'destructive', title: msg, description: data.details?.join?.(' ') });
+          const mapped = mapPublicError(
+            {
+              error: typeof data.error === 'string' ? data.error : undefined,
+              message:
+                typeof data.message === 'string'
+                  ? data.message
+                  : language === 'en'
+                    ? 'Registration failed'
+                    : "Échec de l'inscription",
+            },
+            language
+          );
+          toast({
+            variant: 'destructive',
+            title: mapped.title,
+            description: mapped.description,
+          });
           setIsSubmitting(false);
           return;
         }
@@ -317,10 +330,11 @@ export function useAcademyRegistration(
           navigate(`/academy/register/confirmation?registrationId=${registrationId}`);
         }
       } catch (err: unknown) {
+        const mapped = mapThrownError(err, language);
         toast({
           variant: 'destructive',
-          title: language === 'en' ? 'Network error' : 'Erreur réseau',
-          description: err instanceof Error ? err.message : undefined,
+          title: mapped.title,
+          description: mapped.description,
         });
       } finally {
         setIsSubmitting(false);
