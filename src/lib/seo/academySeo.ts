@@ -1,5 +1,5 @@
 /**
- * Academy SEO — titles, descriptions, structured data, and prerender snippets.
+ * Academy SEO — titles, descriptions, structured data, and prerender route config.
  *
  * Nav CMS (Supabase `site_content`, key `navigation`): add
  * `{ "name": "Academy", "href": "/academy" }` (en) / `{ "name": "Académie", "href": "/academy" }` (fr)
@@ -166,38 +166,6 @@ export function buildAcademyWebPageSchema(
   };
 }
 
-/** Minimal semantic HTML for build-time prerender shells (visible until React hydrates) */
-export function getAcademyPrerenderSnippet(language: AcademyLanguage): string {
-  const h1 =
-    language === 'en'
-      ? 'Event Management Training — Certified & In-Person'
-      : 'Formation Event Management — Certifiée & Présentielle';
-  const intro = ACADEMY_PAGE_DESCRIPTIONS.main[language];
-  const cta =
-    language === 'en' ? 'Register for Andiamo Academy' : "S'inscrire à Andiamo Academy";
-  return `<main id="main-content"><h1>${escapeHtml(h1)}</h1><p>${escapeHtml(intro)}</p><p><a href="${ACADEMY_REGISTER_PATH}">${escapeHtml(cta)}</a></p></main>`;
-}
-
-export function getAcademyRegisterPrerenderSnippet(language: AcademyLanguage): string {
-  const h1 = language === 'en' ? 'Academy Registration' : 'Inscription Académie';
-  const intro = ACADEMY_PAGE_DESCRIPTIONS.register[language];
-  return `<main id="main-content"><h1>${escapeHtml(h1)}</h1><p>${escapeHtml(intro)}</p></main>`;
-}
-
-export function getAcademyTermsPrerenderSnippet(language: AcademyLanguage): string {
-  const h1 = language === 'en' ? 'Training Terms & Conditions' : 'Règlement de la formation';
-  const intro = ACADEMY_PAGE_DESCRIPTIONS.terms[language];
-  return `<main id="main-content"><h1>${escapeHtml(h1)}</h1><p>${escapeHtml(intro)}</p></main>`;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 /** Routes config for build-time prerender (English shell — primary crawl default) */
 export const ACADEMY_PRERENDER_ROUTES = [
   {
@@ -205,7 +173,6 @@ export const ACADEMY_PRERENDER_ROUTES = [
     outFile: 'academy/index.html',
     title: ACADEMY_PAGE_TITLES.main.en,
     description: ACADEMY_PAGE_DESCRIPTIONS.main.en,
-    snippet: () => getAcademyPrerenderSnippet('en'),
     jsonLd: () => [
       buildAcademyWebPageSchema('en', 'main'),
       buildAcademyCourseSchema('en'),
@@ -217,7 +184,6 @@ export const ACADEMY_PRERENDER_ROUTES = [
     outFile: 'academy/register/index.html',
     title: ACADEMY_PAGE_TITLES.register.en,
     description: ACADEMY_PAGE_DESCRIPTIONS.register.en,
-    snippet: () => getAcademyRegisterPrerenderSnippet('en'),
     jsonLd: () => [buildAcademyWebPageSchema('en', 'register')],
   },
   {
@@ -225,7 +191,6 @@ export const ACADEMY_PRERENDER_ROUTES = [
     outFile: 'academy/terms/index.html',
     title: ACADEMY_PAGE_TITLES.terms.en,
     description: ACADEMY_PAGE_DESCRIPTIONS.terms.en,
-    snippet: () => getAcademyTermsPrerenderSnippet('en'),
     jsonLd: () => [buildAcademyWebPageSchema('en', 'terms')],
   },
 ] as const;

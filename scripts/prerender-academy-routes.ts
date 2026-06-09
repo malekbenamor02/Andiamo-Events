@@ -1,6 +1,7 @@
 /**
- * Post-build: generate static HTML shells for Academy routes so crawlers get
- * correct meta before React hydrates. Run via: npx vite-node scripts/prerender-academy-routes.ts
+ * Post-build: inject Academy-specific <head> tags (title, meta, JSON-LD) into
+ * per-route HTML shells. Body stays empty so users never see a flash of plain
+ * text before React loads. Run via: npx vite-node scripts/prerender-academy-routes.ts
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -66,7 +67,6 @@ function injectRoute(
     title: string;
     description: string;
     path: string;
-    snippet: string;
     jsonLd: Record<string, unknown>[];
   }
 ): string {
@@ -84,7 +84,6 @@ function injectRoute(
     ${buildJsonLdScripts(opts.jsonLd)}`;
 
   html = html.replace('</head>', `${headInjection}\n  </head>`);
-  html = html.replace('<div id="root"></div>', `<div id="root">${opts.snippet}</div>`);
 
   return html;
 }
@@ -102,7 +101,6 @@ function main() {
       title: route.title,
       description: route.description,
       path: route.path,
-      snippet: route.snippet(),
       jsonLd: route.jsonLd(),
     });
 
