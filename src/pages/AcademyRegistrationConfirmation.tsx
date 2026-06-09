@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import Loader from '@/components/ui/Loader';
+import { PageMeta } from '@/components/PageMeta';
+import LoadingScreen from '@/components/ui/LoadingScreen';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
 import { ACADEMY_REGISTER_PATH } from '@/lib/academy/academyUtils';
 import type { AcademyLanguage } from '@/types/academy';
@@ -40,15 +41,21 @@ export default function AcademyRegistrationConfirmation({
   const isOnlineSuccess = paid || status === 'paid_online' || status === 'approved';
 
   if (loading) {
-    return (
-      <div className="min-h-[50vh] flex items-center justify-center">
-        <Loader size="lg" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (
     <div className="max-w-lg mx-auto px-4 py-16 text-center">
+      <PageMeta
+        title={isEn ? 'Registration confirmation' : 'Confirmation d\'inscription'}
+        description={
+          isEn
+            ? 'Andiamo Academy registration confirmation.'
+            : 'Confirmation d\'inscription Andiamo Academy.'
+        }
+        path="/academy/register/confirmation"
+        noIndex
+      />
       {isOnlineSuccess ? (
         <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-6" />
       ) : (

@@ -10,6 +10,12 @@ import type {
   LocalizedText,
 } from '@/types/academy';
 
+/** UI-only cohort label (not used in SEO meta — keep evergreen in academySeo.ts) */
+export const ACADEMY_COHORT_LABEL = {
+  en: 'In-person — Tunis',
+  fr: 'En présentiel — Tunis',
+} as const;
+
 export const ACADEMY_FORMULAS: AcademyFormula[] = [
   {
     id: 'essentielle',
@@ -310,7 +316,7 @@ export const ACADEMY_UI = {
     instructorPhoto: '/assets/trainer-image.jpg',
     logoLight: '/assets/andiamo-academy-cropped-black.svg',
     logoDark: '/assets/andiamo-academy-cropped.svg',
-    heroBackground: '/assets/background.png',
+    heroBackground: '/assets/background.webp',
   },
   hero: {
     titleLine1: {
@@ -322,7 +328,7 @@ export const ACADEMY_UI = {
       fr: 'Certifiée & Présentielle',
     },
     meta: [
-      { label: { en: 'July 2025', fr: 'Juillet 2025' } },
+      { label: ACADEMY_COHORT_LABEL },
       { label: { en: '20 Hours', fr: '20 Heures' } },
       { label: { en: '36 Limited Seats', fr: '36 places limitées' } },
     ],

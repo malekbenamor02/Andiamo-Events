@@ -55,15 +55,17 @@ export const PAGE_DESCRIPTIONS = {
     fr: "Suggérez des événements, artistes ou lieux à Andiamo Events. Partagez vos idées – nous lisons chaque suggestion. Tunisie.",
   },
   academy: {
-    en: "Andiamo Academy — certified in-person Event Management training in Tunis. July 2025, 20 hours, 3 formulas. Register now.",
-    fr: "Andiamo Academy — formation certifiée Event Management en présentiel à Tunis. Juillet 2025, 20 heures, 3 formules. Inscrivez-vous.",
+    en: "Andiamo Academy — certified in-person Event Management training in Tunis, Tunisia. 20 hours, 3 formulas, limited seats. Register now.",
+    fr: "Andiamo Academy — formation certifiée Event Management en présentiel à Tunis. 20 heures, 3 formules, places limitées. Inscrivez-vous.",
   },
   academyRegister: {
-    en: "Register for Andiamo Academy — choose your formula and complete your Event Management training enrollment in Tunis.",
-    fr: "Inscrivez-vous à Andiamo Academy — choisissez votre formule et finalisez votre inscription à la formation Event Management à Tunis.",
+    en: "Register for Andiamo Academy — choose Essential, Pro or Premium and complete your Event Management training enrollment in Tunis, Tunisia.",
+    fr: "Inscrivez-vous à Andiamo Academy — choisissez Essentielle, Pro ou Premium et finalisez votre inscription à la formation Event Management à Tunis.",
   },
   academyTerms: {
-    en: "Andiamo Academy training terms — registration, payment, place confirmation, refunds, and rules for participants.",
-    fr: "Règlement Andiamo Academy — inscription, paiement, confirmation de place, remboursements et règles pour les participants.",
+    en: "Andiamo Academy training terms — registration, payment, place confirmation, refunds, and participant rules for Event Management training in Tunis.",
+    fr: "Règlement Andiamo Academy — inscription, paiement, confirmation de place, remboursements et règles pour la formation Event Management à Tunis.",
   },
 } as const;
+
+export { ACADEMY_PAGE_DESCRIPTIONS, ACADEMY_PAGE_TITLES } from '@/lib/seo/academySeo';

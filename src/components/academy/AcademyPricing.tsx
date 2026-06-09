@@ -10,16 +10,13 @@ interface AcademyPricingProps {
   onSelectFormula: (id: AcademyFormulaId) => void;
 }
 
-const MOBILE_ORDER: AcademyFormulaId[] = ['pro', 'essentielle', 'premium'];
-
 const AcademyPricing = ({ language, onSelectFormula }: AcademyPricingProps) => {
   const { pricing } = ACADEMY_UI;
-  const mobileFormulas = MOBILE_ORDER.map((id) => ACADEMY_FORMULAS.find((f) => f.id === id)!);
 
   return (
     <AcademySection title={pricing.title} language={language}>
       <AcademyPricingCarousel
-        formulas={mobileFormulas}
+        formulas={ACADEMY_FORMULAS}
         language={language}
         onSelectFormula={onSelectFormula}
       />

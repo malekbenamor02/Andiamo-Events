@@ -2,12 +2,17 @@ import { ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AcademyPageDisabled from '@/components/academy/AcademyPageDisabled';
 import { PageMeta } from '@/components/PageMeta';
-import { JsonLdBreadcrumb } from '@/components/JsonLd';
+import { JsonLdBreadcrumb, JsonLdWebPage } from '@/components/JsonLd';
 import { ACADEMY_TERMS_SECTIONS, ACADEMY_TERMS_UI } from '@/data/academyTermsContent';
-import { ACADEMY_REGISTER_PATH, ACADEMY_TERMS_PATH, pickLocalized } from '@/lib/academy/academyUtils';
-import Loader from '@/components/ui/Loader';
+import { ACADEMY_REGISTER_PATH, pickLocalized } from '@/lib/academy/academyUtils';
+import LoadingScreen from '@/components/ui/LoadingScreen';
 import { useAcademyPublicStatus } from '@/hooks/useAcademyPublicStatus';
-import { PAGE_DESCRIPTIONS } from '@/lib/seo';
+import {
+  ACADEMY_PATH,
+  ACADEMY_TERMS_PATH,
+  ACADEMY_PAGE_DESCRIPTIONS,
+  ACADEMY_PAGE_TITLES,
+} from '@/lib/seo/academySeo';
 import { cn } from '@/lib/utils';
 import type { AcademyLanguage } from '@/types/academy';
 
@@ -20,11 +25,7 @@ const AcademyTerms = ({ language }: AcademyTermsProps) => {
   const { loading, registrationsOpen, soldOut, message } = useAcademyPublicStatus(language);
 
   if (loading) {
-    return (
-      <main className="pt-16 min-h-screen flex items-center justify-center">
-        <Loader size="lg" />
-      </main>
-    );
+    return <LoadingScreen />;
   }
 
   if (!registrationsOpen) {
@@ -46,21 +47,26 @@ const AcademyTerms = ({ language }: AcademyTermsProps) => {
       </div>
 
       <PageMeta
-        title={pickLocalized(ui.metaTitle, language)}
-        description={PAGE_DESCRIPTIONS.academyTerms[language]}
+        title={ACADEMY_PAGE_TITLES.terms[language]}
+        description={ACADEMY_PAGE_DESCRIPTIONS.terms[language]}
+        path={ACADEMY_TERMS_PATH}
+      />
+      <JsonLdWebPage
+        name={ACADEMY_PAGE_TITLES.terms[language]}
+        description={ACADEMY_PAGE_DESCRIPTIONS.terms[language]}
         path={ACADEMY_TERMS_PATH}
       />
       <JsonLdBreadcrumb
         items={[
           { name: language === 'en' ? 'Home' : 'Accueil', url: '/' },
-          { name: language === 'en' ? 'Academy' : 'Académie', url: '/academy' },
+          { name: language === 'en' ? 'Academy' : 'Académie', url: ACADEMY_PATH },
           { name: pickLocalized(ui.metaTitle, language), url: ACADEMY_TERMS_PATH },
         ]}
       />
 
       <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-14 pb-20">
         <Link
-          to="/academy"
+          to={ACADEMY_PATH}
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -114,7 +120,7 @@ const AcademyTerms = ({ language }: AcademyTermsProps) => {
 
         <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link
-            to="/academy"
+            to={ACADEMY_PATH}
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             {pickLocalized(ui.backAcademy, language)}

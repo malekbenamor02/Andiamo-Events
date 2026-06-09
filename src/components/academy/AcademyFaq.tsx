@@ -15,7 +15,7 @@ interface AcademyFaqProps {
 
 const AcademyFaq = ({ language }: AcademyFaqProps) => {
   return (
-    <AcademySection title={ACADEMY_UI.faq.title} language={language}>
+    <AcademySection id="faq" title={ACADEMY_UI.faq.title} language={language}>
       <Accordion type="single" collapsible className="max-w-3xl mx-auto w-full">
         {ACADEMY_FAQ.map((item) => (
           <AccordionItem key={item.id} value={item.id}>

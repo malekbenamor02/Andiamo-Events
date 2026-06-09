@@ -224,6 +224,15 @@ export function JsonLdWebPage({
   );
 }
 
+/** Course schema – education/training pages (e.g. Andiamo Academy) */
+export function JsonLdCourse({ data }: { data: Record<string, unknown> }) {
+  return (
+    <Helmet>
+      <script type="application/ld+json">{JSON.stringify(data)}</script>
+    </Helmet>
+  );
+}
+
 /** LocalBusiness schema – helps local search (Tunisia). Optional address. */
 export function JsonLdLocalBusiness(props?: {
   address?: { street?: string; city?: string; country?: string };

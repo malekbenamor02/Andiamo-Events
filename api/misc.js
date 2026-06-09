@@ -1462,11 +1462,14 @@ export default async (req, res) => {
         const STATIC_URLS = [
           { loc: '/', changefreq: 'weekly', priority: '1.0' },
           { loc: '/events', changefreq: 'daily', priority: '0.9' },
+          { loc: '/academy', changefreq: 'weekly', priority: '0.88' },
+          { loc: '/academy/register', changefreq: 'weekly', priority: '0.75' },
           { loc: '/ambassador', changefreq: 'monthly', priority: '0.85' },
           { loc: '/careers', changefreq: 'monthly', priority: '0.85' },
           { loc: '/suggestions', changefreq: 'monthly', priority: '0.8' },
           { loc: '/about', changefreq: 'monthly', priority: '0.5' },
           { loc: '/contact', changefreq: 'monthly', priority: '0.5' },
+          { loc: '/academy/terms', changefreq: 'yearly', priority: '0.5' },
           { loc: '/terms', changefreq: 'yearly', priority: '0.4' },
         ];
         function escapeXml(s) {
@@ -1522,11 +1525,14 @@ ${urlNodes}
         const fallbackUrls = [
           { loc: SITE_URL + '/', changefreq: 'weekly', priority: '1.0' },
           { loc: SITE_URL + '/events', changefreq: 'daily', priority: '0.9' },
+          { loc: SITE_URL + '/academy', changefreq: 'weekly', priority: '0.88' },
+          { loc: SITE_URL + '/academy/register', changefreq: 'weekly', priority: '0.75' },
           { loc: SITE_URL + '/ambassador', changefreq: 'monthly', priority: '0.85' },
           { loc: SITE_URL + '/careers', changefreq: 'monthly', priority: '0.85' },
           { loc: SITE_URL + '/suggestions', changefreq: 'monthly', priority: '0.8' },
           { loc: SITE_URL + '/about', changefreq: 'monthly', priority: '0.5' },
           { loc: SITE_URL + '/contact', changefreq: 'monthly', priority: '0.5' },
+          { loc: SITE_URL + '/academy/terms', changefreq: 'yearly', priority: '0.5' },
           { loc: SITE_URL + '/terms', changefreq: 'yearly', priority: '0.4' },
         ];
         function esc(s) { return (s ?? '').toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;'); }

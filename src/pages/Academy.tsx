@@ -6,11 +6,17 @@ import AcademyPricing from '@/components/academy/AcademyPricing';
 import AcademyProgram from '@/components/academy/AcademyProgram';
 import AcademyFaq from '@/components/academy/AcademyFaq';
 import { PageMeta } from '@/components/PageMeta';
-import { JsonLdBreadcrumb } from '@/components/JsonLd';
-import Loader from '@/components/ui/Loader';
+import { JsonLdBreadcrumb, JsonLdCourse, JsonLdFAQ, JsonLdWebPage } from '@/components/JsonLd';
+import LoadingScreen from '@/components/ui/LoadingScreen';
 import { useAcademyPublicStatus } from '@/hooks/useAcademyPublicStatus';
-import { PAGE_DESCRIPTIONS } from '@/lib/seo';
 import { buildAcademyRegisterPath } from '@/lib/academy/academyUtils';
+import {
+  ACADEMY_PATH,
+  ACADEMY_PAGE_DESCRIPTIONS,
+  ACADEMY_PAGE_TITLES,
+  buildAcademyCourseSchema,
+  buildAcademyFaqSchema,
+} from '@/lib/seo/academySeo';
 import type { AcademyFormulaId, AcademyLanguage } from '@/types/academy';
 
 interface AcademyProps {
@@ -55,24 +61,31 @@ const Academy = ({ language }: AcademyProps) => {
     navigate(buildAcademyRegisterPath(formula));
   };
 
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
   return (
     <main className="pt-16 min-h-screen bg-background animate-page-intro" id="main-content">
       <PageMeta
-        title={language === 'en' ? 'Academy' : 'Académie'}
-        description={PAGE_DESCRIPTIONS.academy[language]}
-        path="/academy"
+        title={ACADEMY_PAGE_TITLES.main[language]}
+        description={ACADEMY_PAGE_DESCRIPTIONS.main[language]}
+        path={ACADEMY_PATH}
       />
+      <JsonLdWebPage
+        name={ACADEMY_PAGE_TITLES.main[language]}
+        description={ACADEMY_PAGE_DESCRIPTIONS.main[language]}
+        path={ACADEMY_PATH}
+      />
+      <JsonLdCourse data={buildAcademyCourseSchema(language)} />
+      <JsonLdFAQ items={buildAcademyFaqSchema(language)} />
       <JsonLdBreadcrumb
         items={[
           { name: language === 'en' ? 'Home' : 'Accueil', url: '/' },
-          { name: language === 'en' ? 'Academy' : 'Académie', url: '/academy' },
+          { name: language === 'en' ? 'Academy' : 'Académie', url: ACADEMY_PATH },
         ]}
       />
-      {loading ? (
-        <div className="flex justify-center py-24">
-          <Loader size="lg" />
-        </div>
-      ) : !registrationsOpen ? (
+      {!registrationsOpen ? (
         <AcademyPageDisabled language={language} message={message} soldOut={soldOut} />
       ) : (
         <>

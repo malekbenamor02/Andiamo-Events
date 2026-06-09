@@ -4,7 +4,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Loader from '@/components/ui/Loader';
 import { CheckCircle, XCircle } from 'lucide-react';
+import { PageMeta } from '@/components/PageMeta';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
+import { mapPublicError, mapThrownError } from '@/lib/userErrors';
 import type { AcademyLanguage } from '@/types/academy';
 
 interface AcademyPaymentProcessingProps {
@@ -56,7 +58,7 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
   useEffect(() => {
     if (!registrationId) {
       setState('failed');
-      setError(t.noId);
+      setError(mapPublicError({ error: 'invalid_request', message: t.noId }, language).description);
       return;
     }
 
@@ -72,7 +74,9 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
         const data = await res.json().catch(() => ({}));
         if (res.status === 410 || data.error === 'registration_expired') {
           setState('expired');
-          setError(data.message || t.expiredMessage);
+          setError(
+            mapPublicError({ error: 'registration_expired', message: data.message }, language).description
+          );
           return;
         }
         const formUrl = data.formUrl || data.form_url;
@@ -82,10 +86,13 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
           return;
         }
         setState('failed');
-        setError(data.error || data.message || t.generic);
+        setError(
+          mapPublicError({ error: data.error, message: data.message || data.error || t.generic }, language)
+            .description
+        );
       } catch (err: unknown) {
         setState('failed');
-        setError(err instanceof Error ? err.message : t.generic);
+        setError(mapThrownError(err, language).description);
       }
     };
 
@@ -105,14 +112,19 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
           );
         } else if (res.status === 410 || data.error === 'registration_expired') {
           setState('expired');
-          setError(data.message || t.expiredMessage);
+          setError(
+            mapPublicError({ error: 'registration_expired', message: data.message }, language).description
+          );
         } else {
           setState('failed');
-          setError(data.error || data.message || t.failedMessage);
+          setError(
+            mapPublicError({ error: data.error, message: data.message || t.failedMessage }, language)
+              .description
+          );
         }
       } catch (err: unknown) {
         setState('failed');
-        setError(err instanceof Error ? err.message : t.generic);
+        setError(mapThrownError(err, language).description);
       }
     };
 
@@ -120,12 +132,22 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
     else if (isReturn) confirm();
     else {
       setState('failed');
-      setError(t.generic);
+      setError(mapPublicError({ error: 'invalid_request', message: t.generic }, language).description);
     }
-  }, [registrationId, isReturn, isInit, language, navigate, t]);
+  }, [registrationId, isReturn, isInit, language, navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-dark flex items-center justify-center px-4 py-16">
+      <PageMeta
+        title={language === 'en' ? 'Payment processing' : 'Traitement du paiement'}
+        description={
+          language === 'en'
+            ? 'Andiamo Academy payment processing.'
+            : 'Traitement du paiement Andiamo Academy.'
+        }
+        path="/academy/payment-processing"
+        noIndex
+      />
       <Card className="w-full max-w-md glass border-2 border-primary/30">
         <CardContent className="p-8 text-center">
           {(state === 'loading' || state === 'redirecting') && (
