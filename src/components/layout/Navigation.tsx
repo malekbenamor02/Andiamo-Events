@@ -1,8 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import {
+  Menu,
+  X,
+  Home,
+  CalendarDays,
+  Users,
+  Briefcase,
+  Mail,
+  MessageSquare,
+  Info,
+  ChevronRight,
+  Globe,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigationContent } from "@/hooks/useSiteContent";
+import { PRIMARY_SLOGAN } from "@/lib/constants";
 
 interface NavigationProps {
   language: 'en' | 'fr';
@@ -27,6 +41,17 @@ interface ContactInfo {
 
 // Desktop: one slot that cycles Contact / Suggestions with smooth animation
 const CYCLE_MS = 3500;
+const MENU_CLOSE_MS = 300;
+
+const MOBILE_NAV_ICONS: Record<string, LucideIcon> = {
+  "/": Home,
+  "/events": CalendarDays,
+  "/ambassador": Users,
+  "/careers": Briefcase,
+  "/contact": Mail,
+  "/suggestions": MessageSquare,
+  "/about": Info,
+};
 
 function AnimatedContactSuggestionsSlot({
   language,
@@ -72,6 +97,7 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
   const [navigationContent, setNavigationContent] = useState<NavigationContent>({});
   const [contactInfo, setContactInfo] = useState<ContactInfo>({});
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isMenuClosing, setIsMenuClosing] = useState(false);
   // Start with white logo, then switch after background detection.
   const [useBlackLogo, setUseBlackLogo] = useState(false);
   const location = useLocation();
@@ -222,15 +248,44 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
 
   const isActive = (path: string) => location.pathname === path;
 
+  const closeMenu = useCallback(() => {
+    if (!isMenuOpen || isMenuClosing) return;
+    setIsMenuClosing(true);
+    window.setTimeout(() => {
+      setIsMenuOpen(false);
+      setIsMenuClosing(false);
+    }, MENU_CLOSE_MS);
+  }, [isMenuOpen, isMenuClosing]);
+
   const toggleMenu = () => {
-    setIsMenuOpen(prev => !prev);
+    if (isMenuOpen) {
+      closeMenu();
+      return;
+    }
+    setIsMenuClosing(false);
+    setIsMenuOpen(true);
   };
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMenuOpen]);
+
+  useEffect(() => {
+    setIsMenuOpen(false);
+    setIsMenuClosing(false);
+  }, [location.pathname]);
 
   const desktopItems = desktopNavItems[language];
   const isLightMode = theme === "light";
   const themeLabel = isLightMode ? "Light" : "Dark";
-  const mobileMenuButtonClass =
-    isLightMode && !useBlackLogo
+  const mobileMenuButtonClass = isMenuOpen
+    ? "md:hidden p-2 text-primary hover:text-primary transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-primary/35 bg-primary/12 hover:bg-primary/20 hover:border-primary/55 active:scale-95"
+    : isLightMode && !useBlackLogo
       ? "md:hidden p-2 text-white hover:text-white transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-white/25 bg-black/25 hover:bg-black/40 active:scale-95"
       : "md:hidden p-2 text-foreground hover:text-primary transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-card/60 active:scale-95";
   const inactiveDesktopLinkClass =
@@ -243,7 +298,13 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
 
   return (
     <>
-      <nav className="fixed top-[var(--site-countdown-offset,0px)] w-full z-50 bg-background/80 backdrop-blur-xl">
+      <nav
+        className={`fixed top-[var(--site-countdown-offset,0px)] w-full transition-[background-color,backdrop-filter] duration-300 ${
+          isMenuOpen
+            ? "z-[100] bg-transparent backdrop-blur-none"
+            : "z-50 bg-background/80 backdrop-blur-xl"
+        }`}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
@@ -310,7 +371,7 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
               </Button>
             </div>
 
-            {/* Mobile Menu Button */}
+            {/* Mobile Menu Button — hamburger opens, X closes (synced with menu state) */}
             <button
               type="button"
               onClick={toggleMenu}
@@ -320,20 +381,28 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
                 WebkitTapHighlightColor: 'transparent',
                 cursor: 'pointer',
                 position: 'relative',
-                zIndex: 100,
+                zIndex: 1,
               }}
-              aria-label="Toggle menu"
+              aria-label={
+                isMenuOpen
+                  ? language === "en"
+                    ? "Close menu"
+                    : "Fermer le menu"
+                  : language === "en"
+                    ? "Open menu"
+                    : "Ouvrir le menu"
+              }
               aria-expanded={isMenuOpen}
             >
               <div className="relative w-6 h-6">
-                <Menu 
+                <Menu
                   className={`absolute inset-0 w-6 h-6 transition-all duration-300 ${
-                    isMenuOpen ? 'opacity-0 rotate-90 scale-0' : 'opacity-100 rotate-0 scale-100'
+                    isMenuOpen ? "opacity-0 rotate-90 scale-0" : "opacity-100 rotate-0 scale-100"
                   }`}
                 />
-                <X 
+                <X
                   className={`absolute inset-0 w-6 h-6 transition-all duration-300 ${
-                    isMenuOpen ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-0'
+                    isMenuOpen ? "opacity-100 rotate-0 scale-100" : "opacity-0 -rotate-90 scale-0"
                   }`}
                 />
               </div>
@@ -345,95 +414,79 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
       {/* Mobile Menu - Outside nav to avoid stacking context */}
       {isMenuOpen && (
         <>
-          {/* Backdrop */}
           <div
-            className="md:hidden fixed inset-0 bg-foreground/30 backdrop-blur-sm z-[80] animate-fade-in"
-            onClick={() => setIsMenuOpen(false)}
+            className={`mobile-menu-overlay md:hidden ${isMenuClosing ? "animate-menu-overlay-out" : "animate-menu-overlay-in"}`}
+            onClick={closeMenu}
             onTouchEnd={(e) => {
               e.preventDefault();
-              setIsMenuOpen(false);
+              closeMenu();
             }}
-            style={{ 
-              touchAction: 'manipulation',
-              animation: 'fadeIn 0.3s ease-out',
-            }}
+            aria-hidden
           />
-          {/* Menu Panel */}
-          <div 
-            className="md:hidden fixed left-0 right-0 z-[90] shadow-2xl top-[calc(4rem+var(--site-countdown-offset,0px))]"
-            onClick={(e) => {
-              // Close if clicking on the menu panel itself (not on content)
-              if (e.target === e.currentTarget) {
-                setIsMenuOpen(false);
-              }
-            }}
-            onTouchEnd={(e) => {
-              if (e.target === e.currentTarget) {
-                e.preventDefault();
-                setIsMenuOpen(false);
-              }
-            }}
-            style={{
-              touchAction: 'manipulation',
-              animation: 'slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
-              maxHeight: 'calc(100vh - 4rem)',
-              overflow: 'hidden',
-            }}
+          <div
+            className={`mobile-menu-panel md:hidden ${isMenuClosing ? "animate-menu-slide-out" : "animate-menu-slide-in"}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={language === "en" ? "Navigation menu" : "Menu de navigation"}
           >
-            <div 
-              className="backdrop-blur-xl border-b border-border/50 bg-card"
-            >
-              <div className="p-6 space-y-1">
-                {navigationMobile[language].map((item, index) => (
-                  <Link
-                    key={item.href}
-                    to={item.href}
-                    onClick={() => setIsMenuOpen(false)}
-                    className={`block px-4 py-3.5 rounded-md text-base font-medium transition-all duration-300 ${
-                      isActive(item.href)
-                        ? "text-primary bg-card"
-                        : "text-foreground hover:text-primary hover:bg-card/50"
-                    }`}
-                    style={{
-                      animation: `slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${index * 0.05}s both`,
-                    }}
-                  >
-                    {item.name}
-                  </Link>
-                ))}
-                <div 
-                  className="pt-6 mt-6 border-t border-border space-y-3"
-                  style={{
-                    animation: `slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${navigationMobile[language].length * 0.05 + 0.1}s both`,
-                  }}
-                >
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      toggleLanguage();
-                    }}
-                    className="w-full justify-start hover:bg-card/50 transition-all duration-300 text-foreground"
-                  >
-                    {language.toUpperCase()}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      toggleTheme();
-                      setIsMenuOpen(false);
-                    }}
-                    className="w-full h-auto justify-start px-0 hover:bg-transparent"
-                  >
-                    <span className="theme-switch-shell">
-                      <span className={`theme-switch-track ${isLightMode ? "is-light" : "is-dark"}`}>
-                        <span className={`theme-switch-thumb ${isLightMode ? "is-light" : "is-dark"}`} />
+            <div className="mobile-menu-inner">
+              <span className="mobile-menu-glow mobile-menu-glow--primary" aria-hidden />
+              <span className="mobile-menu-glow mobile-menu-glow--accent" aria-hidden />
+
+              <div className="mobile-menu-header">
+                <p className="mobile-menu-tagline">{PRIMARY_SLOGAN[language]}</p>
+                <span className="mobile-menu-header-spacer" aria-hidden />
+              </div>
+
+              <nav className="mobile-menu-nav" aria-label={language === "en" ? "Main navigation" : "Navigation principale"}>
+                {navigationMobile[language].map((item, index) => {
+                  const Icon = MOBILE_NAV_ICONS[item.href] ?? Home;
+                  const active = isActive(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      to={item.href}
+                      onClick={closeMenu}
+                      className={`mobile-menu-link${active ? " mobile-menu-link--active" : ""}`}
+                      style={{ animationDelay: `${0.08 + index * 0.055}s` }}
+                      aria-current={active ? "page" : undefined}
+                    >
+                      {active && <span className="mobile-menu-link-indicator" aria-hidden />}
+                      <span className="mobile-menu-link-icon" aria-hidden>
+                        <Icon className="w-[18px] h-[18px]" strokeWidth={2} />
                       </span>
-                      <span className="theme-switch-label">{themeLabel}</span>
+                      <span className="mobile-menu-link-label">{item.name}</span>
+                      <ChevronRight className="mobile-menu-link-chevron" aria-hidden />
+                    </Link>
+                  );
+                })}
+              </nav>
+
+              <div
+                className="mobile-menu-footer"
+                style={{ animationDelay: `${0.08 + navigationMobile[language].length * 0.055 + 0.08}s` }}
+              >
+                <button
+                  type="button"
+                  className="mobile-menu-action"
+                  onClick={toggleLanguage}
+                >
+                  <Globe className="mobile-menu-action-icon" aria-hidden />
+                  {language === "en" ? "English" : "Français"}
+                </button>
+                <button
+                  type="button"
+                  className="mobile-menu-action mobile-menu-action--theme"
+                  onClick={toggleTheme}
+                  aria-label={language === "en" ? "Toggle theme" : "Changer le thème"}
+                >
+                  <span className="theme-switch-shell">
+                    <span className={`theme-switch-track ${isLightMode ? "is-light" : "is-dark"}`}>
+                      <span className={`theme-switch-thumb ${isLightMode ? "is-light" : "is-dark"}`} />
                     </span>
-                  </Button>
-                </div>
+                    <span className="theme-switch-label">{themeLabel}</span>
+                  </span>
+                </button>
               </div>
             </div>
           </div>
@@ -441,41 +494,6 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
       )}
 
       <style>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-        
-        @keyframes slideDown {
-          from {
-            opacity: 0;
-            transform: translateY(-20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        @keyframes slideInLeft {
-          from {
-            opacity: 0;
-            transform: translateX(-20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-        
-        .animate-fade-in {
-          animation: fadeIn 0.3s ease-out;
-        }
-
         .theme-switch-shell {
           display: inline-flex;
           flex-direction: row;
