@@ -8,9 +8,9 @@ import https from 'https';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
-const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
-const { sendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/transactional-email.cjs'));
-const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/can-send-transactional-email.cjs'));
+const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = requireCjs(path.join(__dirname, '_lib/email-branding.cjs'));
+const { sendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/transactional-email.cjs'));
+const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/can-send-transactional-email.cjs'));
 import querystring from 'querystring';
 
 // Import shared CORS utility (using dynamic import for ES modules)
