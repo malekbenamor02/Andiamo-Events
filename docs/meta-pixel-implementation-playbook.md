@@ -1,110 +1,58 @@
 # Meta Pixel Implementation Playbook
 
-This is the execution guide for Andiamo's Meta measurement program: KPI mapping, event dictionary, QA, reporting views, retargeting audiences, and weekly optimization cadence.
+Execution guide for Andiamo's Meta measurement: one confirmed **`Purchase`** conversion with CAPI deduplication.
 
-## 1) KPI Mapping
+## 1) KPI mapping
 
-| KPI | Primary signal(s) | Where to read | Target/Guardrail |
-|---|---|---|---|
-| AI Optimization (Learning) | `Purchase`, `Lead`, ad set delivery status | Ads Manager (Delivery) | Keep ad sets out of `Learning Limited`; aim for 50+ optimization events/week per ad set |
-| Retargeting | `ViewContent`, `InitiateCheckout`, `Purchase`, `PassSelect`, `PassPurchaseVisit` | Audiences + Ads results | Positive incremental ROAS vs prospecting benchmark |
-| Audience Insights | Breakdown by age, gender, placement, region, device | Ads Manager breakdowns | Shift spend to top slices weekly |
-| ROAS | Purchase value + spend | Ads Manager columns (`Purchase ROAS`) | Campaign-specific threshold (for example >= 2.0) |
-| CPA / CPL | Cost per `Purchase` / `Lead` | Ads Manager (`Cost per result`) | Segment-specific cap by campaign type |
+| KPI | Primary signal | Where to read |
+|-----|----------------|---------------|
+| Sales optimization | `Purchase` | Ads Manager → Results |
+| ROAS | Purchase value + spend | Purchase ROAS column |
+| CPA | Cost per `Purchase` | Cost per result |
+| Match quality | Hashed user data on CAPI | Events Manager → Diagnostics |
 
-## 2) Event Dictionary (Source of Truth)
+## 2) Event dictionary
 
-### Standard Events
+| Event | Trigger | Required params |
+|-------|---------|-----------------|
+| `PageView` | Route change | — |
+| **`Purchase`** | Online PAID or ambassador order created | `value`, `currency`, `content_ids`, `num_items`, `order_id`, `event_id` + user data |
+| `Lead` | Ambassador application submit | `content_name`, `city`, `ville` |
 
-| Event | Trigger | Required params | Notes |
-|---|---|---|---|
-| `PageView` | Route change | none | Sent globally on SPA navigation |
-| `ViewContent` | Pass purchase page loaded (purchase available) | `content_type`, `content_ids`, `content_name` | Standard product/content signal |
-| `InitiateCheckout` | Valid checkout submit flow starts | `value`, `currency`, `num_items`, `content_ids`, `content_type` | Mid-funnel optimization |
-| `Purchase` | Order created successfully | `value`, `currency`, `content_ids`, `content_type`, `num_items` | Sent browser + server (CAPI) with dedup `event_id` |
-| `Lead` | Ambassador application submitted successfully | `content_name`, `status`, `city`, `ville` | Standard lead optimization event |
+**Removed from pass checkout:** `PassPurchaseVisit`, `PassSelect`, `InitiateCheckout`, `OrderSubmitOnline`, `OrderSubmitAmbassador`, `ViewContent`.
 
-### Custom Events
+### CAPI / dedup
 
-| Event | Trigger |
-|---|---|
-| `PassPurchaseVisit` | User enters pass purchase flow |
-| `PassSelect` | User selects first quantity of pass |
-| `OrderSubmitOnline` | Online order creation succeeds |
-| `OrderSubmitAmbassador` | Ambassador-cash order creation succeeds |
-| `AmbassadorApplicationVisit` | User visits ambassador application page |
-| `AmbassadorApplicationSubmitSuccess` | Ambassador application submission succeeds |
+- `eventId` at checkout → Pixel `eventID` + CAPI `event_id`
+- `meta_attribution` on order: `fbp`, `fbc`, `eventSourceUrl`, `clientUserAgent`, `clientIp`
+- `meta_purchase_sent_at` — server idempotency
 
-### CAPI / Dedup Inputs
+## 3) QA checklist (Events Manager)
 
-- `metaEventId` -> used as Pixel `eventID` and CAPI `event_id`.
-- `metaFbp`, `metaFbc` -> browser cookie attribution forwarded to backend.
-- `metaEventSourceUrl` -> page URL sent to CAPI.
+- Ambassador order → `Purchase` with value, user data, single count (dedup)
+- Online paid → CAPI `Purchase` on confirm; browser `Purchase` if user hits success page
+- No PII in payment redirect URLs (snapshot in sessionStorage)
+- Diagnostics: no missing `value`/`currency`
 
-## 3) QA Checklist (Events Manager)
+## 4) Ads Manager saved view
 
-Use this sequence in `Test Events`:
+Column set **Andiamo - Conversion Core:**
 
-- Open pass purchase page -> verify `PageView`, `PassPurchaseVisit`, `ViewContent`.
-- Add first pass quantity -> verify `PassSelect`.
-- Submit valid order -> verify `InitiateCheckout` then `Purchase`.
-- Submit ambassador application -> verify `AmbassadorApplicationSubmitSuccess` and `Lead`.
-- Confirm no duplicate `Purchase` for a single order (browser + server dedup should collapse by shared `event_id`).
-- Resolve diagnostics for missing `value`/`currency`, low match quality, or duplicate signals.
+- Results, Cost per result, Amount spent
+- Purchases, Purchase conversion value, Purchase ROAS
+- Frequency, CTR
 
-## 4) Ads Manager Saved Reporting Views
+Optimize ad sets on **Purchase** only.
 
-Create a saved column set named `Andiamo - Conversion Core`:
+## 5) Retargeting (optional)
 
-- Delivery
-- Results
-- Cost per result
-- Amount spent
-- Purchases
-- Purchase conversion value
-- Purchase ROAS
-- Leads
-- CPC (link)
-- CTR (link click-through rate)
-- Frequency
+| Audience | Include | Exclude |
+|----------|---------|---------|
+| Purchasers | `Purchase` | — |
+| All visitors | `PageView` | `Purchase` |
 
-Create breakdown presets:
+## 6) Weekly cadence
 
-- `Audience`: Age, Gender
-- `Delivery`: Placement, Device platform
-- `Geo`: Region / City
-- `Time`: Day
-
-## 5) Retargeting Audience Matrix
-
-| Audience | Include | Exclude | Window |
-|---|---|---|---|
-| All visitors | `PageView` | none | 30/60/180d |
-| Product viewers | `ViewContent` | `Purchase` | 14-30d |
-| Checkout no purchase | `InitiateCheckout` | `Purchase` | 3-14d |
-| Purchasers | `Purchase` | none | 180d |
-| Leads | `Lead` | none | 180d |
-
-Exclusion rules:
-
-- Prospecting excludes `Purchase` last 180d.
-- Mid-funnel retargeting excludes converted `Purchase` users.
-- High-intent retargeting tiers should be mutually exclusive by event depth.
-
-## 6) Weekly Optimization SOP
-
-Every week:
-
-1. Check ad sets in `Learning Limited`.
-2. Consolidate fragmented ad sets or broaden targeting where event volume is low.
-3. Reallocate budget from high-CPA segments to high-ROAS segments.
-4. Inspect audience breakdown winners and adjust budgets/creative by top slices.
-5. Rotate retargeting creatives if frequency rises and CTR declines.
-6. Document decisions in a changelog (what changed, why, and expected effect).
-
-## 7) Operational Guardrails
-
-- Keep attribution window consistent while comparing periods.
-- Do not compare ROAS/CPA across campaigns with different optimization goals without labeling.
-- If CAPI is disabled or token expires, keep browser Pixel active and monitor diagnostics.
-- Any event schema change must update this playbook and QA checklist in the same release.
+- Check Purchase volume vs orders in admin
+- Review Event match quality
+- Confirm ad sets optimize on **Purchase**, not legacy custom events

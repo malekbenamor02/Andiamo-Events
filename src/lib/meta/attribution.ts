@@ -1,12 +1,4 @@
-/**
- * Helpers for Meta browser/server event attribution and deduplication.
- */
-
-export interface MetaAttributionContext {
-  fbp?: string;
-  fbc?: string;
-  eventSourceUrl?: string;
-}
+import type { MetaAttributionContext } from './types';
 
 function readCookie(name: string): string | undefined {
   if (typeof document === 'undefined') return undefined;

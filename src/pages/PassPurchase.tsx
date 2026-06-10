@@ -43,8 +43,13 @@ import {
   type PresaleDiscountPolicy,
 } from '@/lib/presale/presaleDiscount';
 import { trackEvent } from '@/lib/ga';
-import { trackMetaEvent, trackMetaViewContent, trackMetaInitiateCheckout } from '@/lib/meta';
-import { createMetaEventId, getMetaAttributionContext } from '@/lib/metaAttribution';
+import {
+  createMetaEventId,
+  getMetaAttributionContext,
+  buildConfirmedPurchasePayload,
+  savePurchaseSnapshot,
+  trackConfirmedPurchase,
+} from '@/lib/meta';
 import { v4 as uuidv4 } from 'uuid';
 import {
   passPurchaseValidationCopy,
@@ -547,17 +552,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         event_name: event.name,
         language,
         ...(page_path && { page_path }),
-      });
-      trackMetaEvent('PassPurchaseVisit', {
-        event_id: event.id,
-        event_name: event.name,
-        language,
-        page_path: page_path ?? undefined,
-      });
-      trackMetaViewContent({
-        content_type: 'product_group',
-        content_ids: [event.id],
-        content_name: event.name,
       });
     }
   }, [event?.id, purchaseBlockedReason, language, event?.name]);
@@ -1135,15 +1129,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         price: pass.price,
         language,
       });
-      trackMetaEvent('PassSelect', {
-        event_id: event.id,
-        event_name: event.name,
-        pass_id: pass.id,
-        pass_name: pass.name,
-        quantity: clampedQuantity,
-        price: pass.price,
-        language,
-      });
     }
 
     setSelectedPasses(newPasses);
@@ -1374,13 +1359,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     try {
       const metaEventId = createMetaEventId('purchase');
       const metaAttribution = getMetaAttributionContext();
-      trackMetaInitiateCheckout({
-        value: totalPrice,
-        currency: 'TND',
-        num_items: totalQuantity,
-        content_ids: selectedPassesArray.map((p) => p.passId),
-        content_type: 'product',
-      });
 
       const idempotencyKey = uuidv4();
       let recaptchaToken: string | null = null;
@@ -1448,7 +1426,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
       // Handle redirect based on payment method
       if (paymentMethod === PaymentMethod.ONLINE) {
-        // Track online payment order
         const onlineParams = {
           event_id: event?.id || eventId || undefined,
           event_name: event?.name,
@@ -1466,17 +1443,27 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           })),
         };
         trackEvent('order_submit_online', onlineParams);
-        trackMetaEvent('OrderSubmitOnline', onlineParams);
 
-        const passIds = selectedPassesArray.map((p) => p.passId).join(',');
-        const redirectUrl =
-          `/payment-processing?orderId=${order.id}` +
-          `&init=1&meta_event_id=${encodeURIComponent(metaEventId)}` +
-          `&value=${encodeURIComponent(String(totalPrice))}` +
-          `&qty=${encodeURIComponent(String(totalQuantity))}` +
-          `&pass_ids=${encodeURIComponent(passIds)}`;
+        const metaPurchase = buildConfirmedPurchasePayload({
+          eventId: metaEventId,
+          orderId: order.id,
+          value: totalPrice,
+          paymentMethod: 'online',
+          passes: selectedPassesArray,
+          customer: {
+            email: customerInfoForOrder.email,
+            phone: customerInfoForOrder.phone,
+            fullName: customerInfoForOrder.full_name,
+            city: customerInfoForOrder.city,
+            ville: customerInfoForOrder.ville,
+          },
+          attribution: metaAttribution,
+          contentName: event?.name,
+        });
+        savePurchaseSnapshot(order.id, metaPurchase);
+
         endCheckoutAttempt();
-        navigate(redirectUrl, { replace: true });
+        navigate(`/payment-processing?orderId=${order.id}&init=1`, { replace: true });
       } else if (paymentMethod === PaymentMethod.EXTERNAL_APP) {
         const option = paymentOptions.find(o => o.option_type === 'external_app');
         if (option?.external_link) {
@@ -1492,7 +1479,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           endCheckoutAttempt();
         }
       } else if (paymentMethod === PaymentMethod.AMBASSADOR_CASH) {
-        // Track ambassador payment order
         const ambassadorParams = {
           event_id: event?.id || eventId || undefined,
           event_name: event?.name,
@@ -1511,7 +1497,25 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           })),
         };
         trackEvent('order_submit_ambassador', ambassadorParams);
-        trackMetaEvent('OrderSubmitAmbassador', ambassadorParams);
+
+        trackConfirmedPurchase(
+          buildConfirmedPurchasePayload({
+            eventId: metaEventId,
+            orderId: order.id,
+            value: totalPrice,
+            paymentMethod: 'ambassador_cash',
+            passes: selectedPassesArray,
+            customer: {
+              email: customerInfoForOrder.email,
+              phone: customerInfoForOrder.phone,
+              fullName: customerInfoForOrder.full_name,
+              city: customerInfoForOrder.city,
+              ville: customerInfoForOrder.ville,
+            },
+            attribution: metaAttribution,
+            contentName: event?.name,
+          })
+        );
 
         toast({
           title: t[language].success,

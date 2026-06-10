@@ -38,6 +38,7 @@ const { buildOrderConfirmationEmailHtml } = requireCjs('./_lib/order-confirmatio
 const { fetchAmbassadorSocialLinkFromApplications } = requireCjs('./_lib/ambassador-social-link.cjs');
 const { computeOnlinePaymentFees } = requireCjs('./_lib/online-payment-fee.cjs');
 const { sendTransactionalEmail } = requireCjs('./_lib/transactional-email.cjs');
+const { scheduleConfirmedPurchaseCapi } = requireCjs('./_lib/meta/conversions-api.cjs');
 
 // --- Basic helpers (shared within this module) ---
 
@@ -265,7 +266,11 @@ export default async (req, res) => {
       ambassadorId,
       eventId,
       recaptchaToken,
-      idempotencyKey
+      idempotencyKey,
+      metaEventId,
+      metaFbp,
+      metaFbc,
+      metaEventSourceUrl,
     } = bodyData;
 
     // reCAPTCHA: bypass if localhost-bypass-token or RECAPTCHA_SECRET_KEY not set
@@ -818,6 +823,25 @@ export default async (req, res) => {
 
     // STEP 6: Create order
     const isOnline = paymentMethod !== 'ambassador_cash';
+    const clientIp = getClientIp(req);
+    const clientUserAgentRaw = req.headers['user-agent'];
+    const clientUserAgent =
+      typeof clientUserAgentRaw === 'string'
+        ? clientUserAgentRaw.slice(0, 512)
+        : Array.isArray(clientUserAgentRaw)
+          ? String(clientUserAgentRaw[0] || '').slice(0, 512)
+          : null;
+    const metaAttribution =
+      metaEventId || metaFbp || metaFbc || metaEventSourceUrl || clientUserAgent || clientIp
+        ? {
+            ...(metaEventId ? { eventId: String(metaEventId).slice(0, 128) } : {}),
+            ...(metaFbp ? { fbp: String(metaFbp).slice(0, 256) } : {}),
+            ...(metaFbc ? { fbc: String(metaFbc).slice(0, 256) } : {}),
+            ...(metaEventSourceUrl ? { eventSourceUrl: String(metaEventSourceUrl).slice(0, 2048) } : {}),
+            ...(clientUserAgent ? { clientUserAgent } : {}),
+            ...(clientIp ? { clientIp } : {}),
+          }
+        : null;
     const orderData = {
       source: paymentMethod === 'ambassador_cash' ? 'platform_cod' : 'platform_online',
       user_name: customerInfo.full_name.trim(),
@@ -841,6 +865,7 @@ export default async (req, res) => {
       presale_code_id: presaleCodeIdForOrder || null,
       event_promo_code_id: eventPromoCodeIdForOrder || null,
       event_promo_uses_claimed: eventPromoUsesClaimed,
+      ...(metaAttribution ? { meta_attribution: metaAttribution } : {}),
       notes: JSON.stringify({
         all_passes: validatedPasses.map(p => ({
           passId: p.passId,
@@ -1012,6 +1037,9 @@ export default async (req, res) => {
     if (fetchError) {
       console.warn('Failed to fetch created order with relations:', fetchError);
       await logOrderCreateSuccess(dbClient, req, order.id, { payment_method: paymentMethod, total_quantity: totalQuantity });
+      if (paymentMethod === 'ambassador_cash') {
+        scheduleConfirmedPurchaseCapi(dbClient, order.id, { req });
+      }
       return res.status(201).json({
         success: true,
         order: order
@@ -1024,6 +1052,11 @@ export default async (req, res) => {
       ambassador_id: ambassadorId || null,
       event_id: eventId || null
     });
+
+    if (paymentMethod === 'ambassador_cash') {
+      scheduleConfirmedPurchaseCapi(dbClient, createdOrder.id, { req });
+    }
+
     res.status(201).json({
       success: true,
       order: createdOrder

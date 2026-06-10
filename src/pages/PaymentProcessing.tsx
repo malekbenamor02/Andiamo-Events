@@ -11,8 +11,7 @@ import Loader from '@/components/ui/Loader';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { getApiBaseUrl } from '@/lib/api-routes';
 import { mapPublicError, mapThrownError } from '@/lib/userErrors';
-import { trackMetaPurchase } from '@/lib/meta';
-import { createMetaEventId } from '@/lib/metaAttribution';
+import { consumePurchaseSnapshot, trackConfirmedPurchase } from '@/lib/meta';
 
 interface PaymentProcessingProps {
   language?: 'en' | 'fr';
@@ -24,15 +23,6 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
   const orderId = searchParams.get('orderId') || searchParams.get('order_id');
   const isReturn = searchParams.get('return') === '1';
   const isInit = searchParams.get('init') === '1';
-  const metaEventId = searchParams.get('meta_event_id') || undefined;
-  const passIds = (searchParams.get('pass_ids') || '')
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean);
-  const checkoutValue = Number(searchParams.get('value') || '0');
-  const checkoutQty = Number(searchParams.get('qty') || '0');
-
-  // Success/failure is determined only by the backend (ClicToPay getOrderStatus). Frontend does not trust URL params.
 
   const [state, setState] = useState<'loading' | 'success' | 'failed' | 'redirecting' | 'unknown'>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -167,22 +157,15 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
   }, [orderId, isReturn, isInit, language]);
 
   useEffect(() => {
-    if (state !== 'success' || purchaseTracked) return;
+    if (state !== 'success' || purchaseTracked || !orderId) return;
     if (!confirmResult?.alreadyPaid && !(confirmResult?.success && confirmResult?.status === 'PAID')) return;
 
-    const value = Number.isFinite(checkoutValue) && checkoutValue > 0 ? checkoutValue : 0;
-    trackMetaPurchase(
-      {
-        value,
-        currency: 'TND',
-        content_ids: passIds.length ? passIds : undefined,
-        content_type: 'product',
-        num_items: Number.isFinite(checkoutQty) && checkoutQty > 0 ? checkoutQty : undefined,
-      },
-      { eventId: metaEventId || createMetaEventId('purchase_confirmed') }
-    );
+    const snapshot = consumePurchaseSnapshot(orderId);
+    if (snapshot) {
+      trackConfirmedPurchase(snapshot);
+    }
     setPurchaseTracked(true);
-  }, [state, purchaseTracked, confirmResult, checkoutValue, checkoutQty, passIds, metaEventId]);
+  }, [state, purchaseTracked, confirmResult, orderId]);
 
   return (
     <div className="min-h-screen bg-gradient-dark flex items-center justify-center px-4 py-16">

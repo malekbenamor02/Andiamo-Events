@@ -18,8 +18,7 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { PageMeta } from '@/components/PageMeta';
 import { PAGE_DESCRIPTIONS } from '@/lib/seo';
-import { trackMetaEvent, trackMetaLead } from '@/lib/meta';
-import { createMetaEventId } from '@/lib/metaAttribution';
+import { trackMetaEvent, trackMetaLead, createMetaEventId } from '@/lib/meta';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
 interface ApplicationProps {
