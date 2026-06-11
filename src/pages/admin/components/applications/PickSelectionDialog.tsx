@@ -154,7 +154,7 @@ export function PickSelectionDialog({
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder={language === "en" ? "e.g. Sousse June batch" : "ex. Lot Sousse juin"}
+              placeholder={language === "en" ? "Selection name..." : "Nom de la sélection..."}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleCreateAndSelect();
               }}
