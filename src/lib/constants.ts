@@ -49,9 +49,7 @@ export const TUNIS_VILLES = [
   'Marsa',
   'Megrine/Rades',
   'Menzah 7/8/9',
-  'Mourouj',
   'Mourouj 1/2/3',
-  'Rades',
   'Soukra'
 ] as const;
 
