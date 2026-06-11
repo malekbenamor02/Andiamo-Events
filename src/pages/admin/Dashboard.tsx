@@ -147,6 +147,7 @@ import { OverviewTab } from "./components/OverviewTab";
 import type { SuggestionReadFilter, SuggestionTypeFilter } from "./components/SuggestionsTab";
 import type { MarketingTabProps } from "./components/MarketingTab";
 import { peekAndConsumeAdminVerifyCache } from "@/lib/admin-verify-cache";
+import { filterAmbassadorApplications } from "./lib/filterApplications";
 
 const LazyReportsAnalytics = React.lazy(() =>
   import("@/components/admin/analytics/ReportsAnalytics").then((m) => ({ default: m.ReportsAnalytics })),
@@ -1768,94 +1769,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }, [ambassadors]);
 
   // Filter applications based on search term, city, ville, status, and date range
-  // Show all applications (pending, approved, rejected, removed) - full history
-  // Memoized for performance
-  const filteredApplications = useMemo(() => {
-    if (!applications.length) return [];
-
-    const searchLower = applicationSearchTerm.toLowerCase().trim();
-    const hasSearch = searchLower.length > 0;
-    
-    // Pre-compute date ranges if needed
-    let fromDate: Date | null = null;
-    let toDate: Date | null = null;
-    
-    if (applicationDateFrom) {
-      fromDate = new Date(applicationDateFrom);
-      fromDate.setHours(0, 0, 0, 0);
-    }
-    
-    if (applicationDateTo) {
-      toDate = new Date(applicationDateTo);
-      toDate.setHours(23, 59, 59, 999);
-    }
-
-    return applications.filter(application => {
-      // Status filter - normalize status comparison
-      if (applicationStatusFilter !== 'all') {
-        const appStatus = (application.status || '').toLowerCase().trim();
-        const filterStatus = applicationStatusFilter.toLowerCase().trim();
-        if (appStatus !== filterStatus) {
-          return false;
-        }
-      }
-
-      // City filter
-      if (applicationCityFilter !== 'all' && application.city !== applicationCityFilter) {
-        return false;
-      }
-
-      // Ville filter - optimized with map lookup
-      if (applicationVilleFilter !== 'all') {
-        let applicationVille = application.ville;
-        
-        // If no ville in application, try to get it from matching ambassador using map
-        if (!applicationVille && (application.city === 'Sousse' || application.city === 'Tunis')) {
-          const phoneKey = `phone:${application.phone_number}`;
-          const emailKey = application.email ? `email:${application.email}` : null;
-          
-          const phoneMatch = ambassadorMap.get(phoneKey);
-          const emailMatch = emailKey ? ambassadorMap.get(emailKey) : null;
-          
-          applicationVille = phoneMatch?.ville || emailMatch?.ville;
-        }
-        
-        if (applicationVille !== applicationVilleFilter) {
-          return false;
-        }
-      }
-
-      // Date range filtering
-      if (fromDate || toDate) {
-        const applicationDate = new Date(application.created_at);
-        applicationDate.setHours(0, 0, 0, 0);
-        
-        if (fromDate && applicationDate < fromDate) return false;
-        if (toDate && applicationDate > toDate) return false;
-      }
-
-      // Search filter - only check if there's a search term
-      if (hasSearch) {
-        const matchesSearch = (
-          application.full_name.toLowerCase().includes(searchLower) ||
-          (application.email && application.email.toLowerCase().includes(searchLower)) ||
-          application.phone_number.includes(searchLower)
-        );
-        if (!matchesSearch) return false;
-      }
-
-      return true;
-    });
-  }, [
-    applications,
-    applicationStatusFilter,
-    applicationCityFilter,
-    applicationVilleFilter,
-    applicationSearchTerm,
-    applicationDateFrom,
-    applicationDateTo,
-    ambassadorMap
-  ]);
+  const filteredApplications = useMemo(
+    () =>
+      filterAmbassadorApplications(applications, {
+        searchTerm: applicationSearchTerm,
+        statusFilter: applicationStatusFilter,
+        cityFilter: applicationCityFilter,
+        villeFilter: applicationVilleFilter,
+        dateFrom: applicationDateFrom,
+        dateTo: applicationDateTo,
+        ambassadorMap,
+      }),
+    [
+      applications,
+      applicationStatusFilter,
+      applicationCityFilter,
+      applicationVilleFilter,
+      applicationSearchTerm,
+      applicationDateFrom,
+      applicationDateTo,
+      ambassadorMap,
+    ],
+  );
 
   // Filter contact messages based on search term
   const filteredContactMessages = contactMessages.filter(message => {
@@ -11464,6 +11399,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onCopyCredentials={copyCredentials}
                 processingId={processingId}
                 orphanedCount={applications.filter(app => app.status === 'approved' && !ambassadors.some(amb => amb.phone === app.phone_number || (app.email && amb.email && amb.email === app.email))).length}
+                currentAdminId={currentAdminId}
+                currentAdminName={currentAdminName}
+                currentAdminEmail={currentAdminEmail}
+                ambassadorMap={ambassadorMap}
                   />
                 </Suspense>
               )}

@@ -32,6 +32,28 @@ export interface SelectedMotivation {
   motivation: string;
 }
 
+/** Named draft batch for grouping ambassador applications during admin review. */
+export interface AmbassadorApplicationSelection {
+  id: string;
+  name: string;
+  status: 'draft' | 'archived';
+  created_at: string;
+  updated_at: string;
+  created_by_admin_id?: string | null;
+  created_by_name?: string | null;
+  item_count?: number;
+}
+
+/** Application membership in a review selection. */
+export interface AmbassadorApplicationSelectionItem {
+  id: string;
+  selection_id: string;
+  application_id: string;
+  added_at: string;
+  added_by_admin_id?: string | null;
+  added_by_name?: string | null;
+}
+
 export interface EventPass {
   id?: string;
   name: string;

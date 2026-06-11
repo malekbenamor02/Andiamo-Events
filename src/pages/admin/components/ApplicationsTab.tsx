@@ -1,105 +1,19 @@
 /**
  * Admin Dashboard — Ambassador Applications tab.
- * Extracted from Dashboard.tsx for maintainability.
+ * All Applications (with add-to-draft) + Draft Selections sub-view.
  */
 
-import React, { Fragment } from "react";
-import Loader from "@/components/ui/Loader";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogClose,
-} from "@/components/ui/dialog";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { TabsContent } from "@/components/ui/tabs";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Download,
-  Trash2,
-  Settings,
-  X,
-  Phone,
-  Mail,
-  MapPin,
-  Calendar as CalendarIcon,
-  FileText,
-  CheckCircle,
-  XCircle,
-  Mail as MailIcon,
-  AlertCircle,
-  Copy,
-} from "lucide-react";
-import { Instagram, ExternalLink } from "lucide-react";
-import { format } from "date-fns";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
+import { FolderPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { AmbassadorApplication, Ambassador, SelectedMotivation } from "../types";
-
-function isInstagramUrl(url: string) {
-  return (
-    url.startsWith("https://www.instagram.com/") ||
-    url.startsWith("https://instagram.com/")
-  );
-}
-
-function SocialLinkIcon({ url }: { url: string }) {
-  if (isInstagramUrl(url)) {
-    return (
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center justify-center text-primary hover:text-primary/80 transition-colors"
-        title="View Instagram Profile"
-      >
-        <Instagram className="w-4 h-4" />
-      </a>
-    );
-  }
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-primary hover:underline transition-colors"
-      title={url}
-    >
-      <ExternalLink className="w-4 h-4" />
-    </a>
-  );
-}
+import type { Ambassador, AmbassadorApplication, SelectedMotivation } from "../types";
+import { useApplicationSelections } from "../hooks/useApplicationSelections";
+import { ApplicationsListCore } from "./applications/ApplicationsListCore";
+import { ApplicationSelectionsPanel } from "./applications/ApplicationSelectionsPanel";
+import { PickSelectionDialog } from "./applications/PickSelectionDialog";
 
 export interface ApplicationsTabTranslation {
   approve: string;
@@ -135,7 +49,7 @@ export interface ApplicationsTabProps {
   setSelectedMotivation: (v: SelectedMotivation | null) => void;
   isMotivationDialogOpen: boolean;
   setIsMotivationDialogOpen: (v: boolean) => void;
-  getStatusBadge: (status: string) => React.ReactNode;
+  getStatusBadge: (status: string) => ReactNode;
   onExportExcel: () => Promise<void>;
   onCleanupOrphaned: () => void;
   onApprove: (app: AmbassadorApplication) => void;
@@ -144,816 +58,188 @@ export interface ApplicationsTabProps {
   onCopyCredentials: (app: AmbassadorApplication) => void;
   processingId: string | null;
   orphanedCount: number;
+  currentAdminId: string | null;
+  currentAdminName: string | null;
+  currentAdminEmail: string | null;
+  ambassadorMap: Map<string, { ville?: string }>;
 }
 
-export function ApplicationsTab({
-  language,
-  t,
-  filteredApplications,
-  applications,
-  ambassadors,
-  applicationSearchTerm,
-  setApplicationSearchTerm,
-  applicationStatusFilter,
-  setApplicationStatusFilter,
-  applicationCityFilter,
-  setApplicationCityFilter,
-  applicationVilleFilter,
-  setApplicationVilleFilter,
-  applicationDateFrom,
-  setApplicationDateFrom,
-  applicationDateTo,
-  setApplicationDateTo,
-  emailStatus,
-  emailFailedApplications,
-  selectedMotivation,
-  setSelectedMotivation,
-  isMotivationDialogOpen,
-  setIsMotivationDialogOpen,
-  getStatusBadge,
-  onExportExcel,
-  onCleanupOrphaned,
-  onApprove,
-  onReject,
-  onResendEmail,
-  onCopyCredentials,
-  processingId,
-  orphanedCount,
-}: ApplicationsTabProps) {
+type ApplicationsViewMode = "all" | "selections";
+
+export function ApplicationsTab(props: ApplicationsTabProps) {
+  const {
+    language,
+    applications,
+    currentAdminId,
+    currentAdminName,
+    currentAdminEmail,
+  } = props;
   const { toast } = useToast();
+  const [viewMode, setViewMode] = useState<ApplicationsViewMode>("all");
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+  const [addToDraftIds, setAddToDraftIds] = useState<string[] | null>(null);
+
+  const selectionsApi = useApplicationSelections();
+  const { fetchSelections, selections, loadingSelections, addApplicationsToSelection, createSelection } =
+    selectionsApi;
+
+  const adminDisplayName =
+    (currentAdminName && currentAdminName.trim()) ||
+    (currentAdminEmail && currentAdminEmail.trim()) ||
+    null;
+
+  useEffect(() => {
+    fetchSelections().catch(console.error);
+  }, [fetchSelections]);
+
+  const openAddToDraft = useCallback((apps: AmbassadorApplication[]) => {
+    const pendingIds = apps.filter((a) => a.status === "pending").map((a) => a.id);
+    if (pendingIds.length === 0) {
+      toast({
+        title: language === "en" ? "Nothing to add" : "Rien à ajouter",
+        description:
+          language === "en"
+            ? "Only pending applications can be added to a draft."
+            : "Seules les candidatures en attente peuvent être ajoutées.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (selections.length > 0) {
+      fetchSelections({ silent: true }).catch(console.error);
+    }
+    setAddToDraftIds(pendingIds);
+  }, [language, toast, selections.length, fetchSelections]);
+
+  const handleToggleBulkSelect = useCallback((applicationId: string, checked: boolean) => {
+    setBulkSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(applicationId);
+      else next.delete(applicationId);
+      return next;
+    });
+  }, []);
+
+  const handleToggleAllBulkSelect = useCallback((applicationIds: string[], checked: boolean) => {
+    setBulkSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) applicationIds.forEach((id) => next.add(id));
+      else applicationIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, []);
+
+  const bulkAddApps = useMemo(
+    () => applications.filter((a) => bulkSelectedIds.has(a.id)),
+    [applications, bulkSelectedIds],
+  );
+
+  const handlePickSelectionConfirm = async (selectionId: string) => {
+    if (!addToDraftIds?.length) return;
+    const result = await addApplicationsToSelection({
+      selectionId,
+      applicationIds: addToDraftIds,
+      addedByAdminId: currentAdminId,
+      addedByName: adminDisplayName,
+    });
+
+    const { added, skipped } = result;
+    setBulkSelectedIds((prev) => {
+      const next = new Set(prev);
+      addToDraftIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    setAddToDraftIds(null);
+
+    let description =
+      language === "en"
+        ? `${added} application${added === 1 ? "" : "s"} added to draft.`
+        : `${added} candidature${added === 1 ? "" : "s"} ajoutée(s).`;
+    if (skipped > 0) {
+      description +=
+        language === "en"
+          ? ` ${skipped} already in this draft.`
+          : ` ${skipped} déjà dans ce brouillon.`;
+    }
+
+    toast({
+      title: language === "en" ? "Added to draft" : "Ajouté au brouillon",
+      description,
+    });
+  };
+
+  const handleCreateSelectionFromPicker = async (name: string) => {
+    return createSelection({
+      name,
+      createdByAdminId: currentAdminId,
+      createdByName: adminDisplayName,
+    });
+  };
+
+  const bulkToolbar =
+    bulkSelectedIds.size > 0 ? (
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => openAddToDraft(bulkAddApps)}
+        style={{ borderColor: "#E21836", color: "#E21836" }}
+        className="hover:bg-[#E21836]/10"
+      >
+        <FolderPlus className="w-4 h-4 mr-1" />
+        {language === "en"
+          ? `Add ${bulkSelectedIds.size} to draft`
+          : `Ajouter ${bulkSelectedIds.size} au brouillon`}
+      </Button>
+    ) : null;
 
   return (
     <TabsContent value="applications" className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-primary">
-          Ambassador Applications
-        </h2>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onExportExcel}
-            className="transform hover:scale-105 transition-all duration-300"
-            style={{
-              background: "#1F1F1F",
-              borderColor: "#2A2A2A",
-              color: "#FFFFFF",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#E21836";
-              e.currentTarget.style.borderColor = "#E21836";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#1F1F1F";
-              e.currentTarget.style.borderColor = "#2A2A2A";
-            }}
-          >
-            <Download className="w-4 h-4 mr-2" />
-            {language === "en" ? "Export to Excel" : "Exporter vers Excel"}
-          </Button>
-          <Badge
-            className="animate-pulse"
-            style={{
-              background: "rgba(0, 207, 255, 0.15)",
-              color: "#00CFFF",
-            }}
-          >
-            {filteredApplications.length} Applications
-          </Badge>
-          {orphanedCount > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onCleanupOrphaned}
-              className="text-xs"
-            >
-              <Trash2 className="w-3 h-3 mr-1" />
-              {language === "en"
-                ? `Cleanup ${orphanedCount} Orphaned`
-                : `Nettoyer ${orphanedCount} Orphelines`}
-            </Button>
-          )}
-        </div>
+      <div className="flex flex-wrap gap-2 border-b border-border pb-3">
+        <Button
+          type="button"
+          variant={viewMode === "all" ? "default" : "ghost"}
+          size="sm"
+          className={cn(viewMode === "all" && "shadow-sm")}
+          onClick={() => setViewMode("all")}
+        >
+          {language === "en" ? "All Applications" : "Toutes les candidatures"}
+        </Button>
+        <Button
+          type="button"
+          variant={viewMode === "selections" ? "default" : "ghost"}
+          size="sm"
+          className={cn(viewMode === "selections" && "shadow-sm")}
+          onClick={() => setViewMode("selections")}
+        >
+          {language === "en" ? "Draft Selections" : "Sélections brouillon"}
+        </Button>
       </div>
 
-      <div className="space-y-4">
-        <div className="relative">
-          <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input
-            placeholder="Search by name, email, or phone..."
-            value={applicationSearchTerm}
-            onChange={(e) => setApplicationSearchTerm(e.target.value)}
-            className="pl-10 transition-all duration-300 focus:scale-105"
-          />
-        </div>
+      {viewMode === "all" ? (
+        <ApplicationsListCore
+          {...props}
+          showAddToDraft
+          onAddToDraft={(app) => openAddToDraft([app])}
+          enableBulkSelect
+          bulkSelectedIds={bulkSelectedIds}
+          onToggleBulkSelect={handleToggleBulkSelect}
+          onToggleAllBulkSelect={handleToggleAllBulkSelect}
+          extraToolbar={bulkToolbar}
+        />
+      ) : (
+        <ApplicationSelectionsPanel {...props} selectionsApi={selectionsApi} />
+      )}
 
-        <div className="flex flex-wrap gap-4 items-center">
-          <div className="flex items-center gap-2">
-            <Label className="text-sm font-medium text-muted-foreground">
-              {language === "en" ? "Status:" : "Statut:"}
-            </Label>
-            <Select
-              value={applicationStatusFilter}
-              onValueChange={setApplicationStatusFilter}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue
-                  placeholder={
-                    language === "en" ? "All Statuses" : "Tous les Statuts"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  {language === "en" ? "All Statuses" : "Tous les Statuts"}
-                </SelectItem>
-                <SelectItem value="pending">
-                  {language === "en" ? "Pending" : "En Attente"}
-                </SelectItem>
-                <SelectItem value="approved">
-                  {language === "en" ? "Approved" : "Approuvé"}
-                </SelectItem>
-                <SelectItem value="rejected">
-                  {language === "en" ? "Rejected" : "Rejeté"}
-                </SelectItem>
-                <SelectItem value="suspended">
-                  {language === "en" ? "Suspended" : "Suspendu"}
-                </SelectItem>
-                <SelectItem value="removed">
-                  {language === "en" ? "Removed" : "Retiré"}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Label className="text-sm font-medium text-muted-foreground">
-              {language === "en" ? "City:" : "Ville:"}
-            </Label>
-            <Select
-              value={applicationCityFilter}
-              onValueChange={(value) => {
-                setApplicationCityFilter(value);
-                if (value !== "all") setApplicationVilleFilter("all");
-              }}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue
-                  placeholder={
-                    language === "en" ? "All Cities" : "Toutes les Villes"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  {language === "en" ? "All Cities" : "Toutes les Villes"}
-                </SelectItem>
-                {CITIES.map((city) => (
-                  <SelectItem key={city} value={city}>
-                    {city}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {(applicationCityFilter === "Sousse" ||
-            applicationCityFilter === "Tunis" ||
-            applicationCityFilter === "all") && (
-            <div className="flex items-center gap-2">
-              <Label className="text-sm font-medium text-muted-foreground">
-                {language === "en"
-                  ? "Ville (Neighborhood):"
-                  : "Quartier:"}
-              </Label>
-              <div className="relative">
-                <Select
-                  value={applicationVilleFilter}
-                  onValueChange={setApplicationVilleFilter}
-                  disabled={
-                    applicationCityFilter !== "Sousse" &&
-                    applicationCityFilter !== "Tunis" &&
-                    applicationCityFilter !== "all"
-                  }
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue
-                      placeholder={
-                        language === "en"
-                          ? "All Villes"
-                          : "Tous les Quartiers"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent
-                    position="popper"
-                    side="bottom"
-                    sideOffset={4}
-                    avoidCollisions={false}
-                    className="[&[data-side=top]]:!hidden"
-                  >
-                    <SelectItem value="all">
-                      {language === "en" ? "All Villes" : "Tous les Quartiers"}
-                    </SelectItem>
-                    {applicationCityFilter === "Sousse" &&
-                      SOUSSE_VILLES.map((ville) => (
-                        <SelectItem key={ville} value={ville}>
-                          {ville}
-                        </SelectItem>
-                      ))}
-                    {applicationCityFilter === "Tunis" &&
-                      TUNIS_VILLES.map((ville) => (
-                        <SelectItem key={ville} value={ville}>
-                          {ville}
-                        </SelectItem>
-                      ))}
-                    {applicationCityFilter === "all" && (
-                      <>
-                        {SOUSSE_VILLES.map((ville) => (
-                          <SelectItem
-                            key={`sousse-${ville}`}
-                            value={ville}
-                          >
-                            {ville} (Sousse)
-                          </SelectItem>
-                        ))}
-                        {TUNIS_VILLES.map((ville) => (
-                          <SelectItem key={`tunis-${ville}`} value={ville}>
-                            {ville} (Tunis)
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
-
-          {(applicationStatusFilter !== "pending" ||
-            applicationCityFilter !== "all" ||
-            applicationVilleFilter !== "all") && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setApplicationStatusFilter("pending");
-                setApplicationCityFilter("all");
-                setApplicationVilleFilter("all");
-              }}
-              className="text-xs"
-            >
-              <X className="w-3 h-3 mr-1" />
-              {language === "en" ? "Clear Filters" : "Effacer les Filtres"}
-            </Button>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex items-center gap-2">
-            <Label className="text-sm font-medium text-foreground/70 whitespace-nowrap">
-              {language === "en" ? "From Date:" : "Date de début:"}
-            </Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-[200px] justify-start text-left font-normal border-border/50 bg-background hover:bg-muted/30 hover:border-primary/30 transition-all duration-300 shadow-sm",
-                    !applicationDateFrom && "text-muted-foreground",
-                    applicationDateFrom && "border-primary/50 bg-primary/5"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                  <span className="truncate">
-                    {applicationDateFrom ? (
-                      format(applicationDateFrom, "PPP")
-                    ) : (
-                      <span className="text-muted-foreground">
-                        {language === "en"
-                          ? "Pick a date"
-                          : "Choisir une date"}
-                      </span>
-                    )}
-                  </span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={applicationDateFrom}
-                  onSelect={(date) => setApplicationDateFrom(date)}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Label className="text-sm font-medium text-foreground/70 whitespace-nowrap">
-              {language === "en" ? "To Date:" : "Date de fin:"}
-            </Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-[200px] justify-start text-left font-normal border-border/50 bg-background hover:bg-muted/30 hover:border-primary/30 transition-all duration-300 shadow-sm",
-                    !applicationDateTo && "text-muted-foreground",
-                    applicationDateTo && "border-primary/50 bg-primary/5",
-                    !applicationDateFrom && "opacity-50 cursor-not-allowed"
-                  )}
-                  disabled={!applicationDateFrom}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                  <span className="truncate">
-                    {applicationDateTo ? (
-                      format(applicationDateTo, "PPP")
-                    ) : (
-                      <span className="text-muted-foreground">
-                        {language === "en"
-                          ? "Pick a date"
-                          : "Choisir une date"}
-                      </span>
-                    )}
-                  </span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={applicationDateTo}
-                  onSelect={(date) => setApplicationDateTo(date)}
-                  disabled={(date) =>
-                    applicationDateFrom ? date < applicationDateFrom : false
-                  }
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          {(applicationDateFrom || applicationDateTo) && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setApplicationDateFrom(undefined);
-                setApplicationDateTo(undefined);
-              }}
-              className="text-xs border-border/50 hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive transition-all duration-300 shadow-sm"
-            >
-              <X className="w-3 h-3 mr-1.5" />
-              {language === "en" ? "Clear Dates" : "Effacer les Dates"}
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <div className="rounded-md border border-border overflow-hidden">
-        <div className="overflow-x-hidden">
-          <Table className="[&>div]:overflow-x-hidden">
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
-                  Name
-                </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
-                  Age
-                </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
-                  Phone
-                </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
-                  Email
-                </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
-                  City
-                </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
-                  {language === "en" ? "Ville" : "Quartier"}
-                </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
-                  Status
-                </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
-                  Applied
-                </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
-                  Details
-                </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto text-right">
-                  Actions
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TooltipProvider delayDuration={300}>
-              {filteredApplications.map((application) => {
-                const showReviewerTooltip =
-                  application.status !== "pending" &&
-                  !!(application.reviewed_by_name?.trim() || application.reviewed_at);
-                const reviewerDisplayName =
-                  application.reviewed_by_name?.trim() ||
-                  (language === "en" ? "Not recorded" : "Non enregistré");
-                const row = (
-                <TableRow
-                  className={cn(
-                    "transform transition-all duration-300 hover:bg-muted/30",
-                    showReviewerTooltip && "cursor-help",
-                  )}
-                >
-                  <TableCell className="font-medium text-xs px-2 py-2">
-                    {application.full_name}
-                  </TableCell>
-                  <TableCell className="text-xs px-2 py-2">
-                    {application.age}
-                  </TableCell>
-                  <TableCell className="text-xs px-2 py-2">
-                    <div className="flex items-center space-x-1">
-                      <Phone className="w-3 h-3 text-muted-foreground" />
-                      <span>{application.phone_number}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs px-2 py-2">
-                    {application.email ? (
-                      <div
-                        className="flex items-center space-x-1 group cursor-pointer"
-                        onClick={() => {
-                          navigator.clipboard.writeText(application.email!);
-                          toast({
-                            title: "Email Copied!",
-                            description: `${application.email} copied to clipboard`,
-                          });
-                        }}
-                        title="Click to copy email"
-                      >
-                        <MailIcon className="w-3 h-3 text-primary group-hover:text-primary/80 transition-colors" />
-                        <span className="text-xs break-all max-w-[100px] truncate text-primary group-hover:text-primary/80 transition-colors">
-                          {application.email}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground text-xs">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs px-2 py-2">
-                    <div className="flex items-center space-x-1">
-                      <MapPin className="w-3 h-3 text-muted-foreground" />
-                      <span>{application.city}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs px-2 py-2">
-                    {application.ville ? (
-                      <span className="text-xs">{application.ville}</span>
-                    ) : (application.city === "Sousse" ||
-                        application.city === "Tunis") ? (
-                      (() => {
-                        const matchingAmbassador = ambassadors.find(
-                          (amb) =>
-                            amb.phone === application.phone_number ||
-                            (application.email &&
-                              amb.email === application.email)
-                        );
-                        return matchingAmbassador?.ville ? (
-                          <span className="text-xs text-muted-foreground italic">
-                            {matchingAmbassador.ville}*
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">
-                            -
-                          </span>
-                        );
-                      })()
-                    ) : (
-                      <span className="text-muted-foreground text-xs">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs px-2 py-2">
-                    <div className="flex items-center gap-2">
-                      {getStatusBadge(application.status)}
-                      {application.status === "approved" && (
-                        <div
-                          className="flex items-center"
-                          title={
-                            emailStatus[application.id] === "sent"
-                              ? language === "en"
-                                ? "Email sent successfully"
-                                : "Email envoyé avec succès"
-                              : emailStatus[application.id] === "failed"
-                                ? language === "en"
-                                  ? "Email failed to send"
-                                  : "Échec de l'envoi de l'email"
-                                : emailStatus[application.id] === "pending"
-                                  ? language === "en"
-                                    ? "Email sending..."
-                                    : "Envoi de l'email..."
-                                  : language === "en"
-                                    ? "Email status unknown"
-                                    : "Statut de l'email inconnu"
-                          }
-                        >
-                          {emailStatus[application.id] === "sent" ? (
-                            <CheckCircle className="w-3 h-3 text-green-500" />
-                          ) : emailStatus[application.id] === "failed" ? (
-                            <XCircle className="w-3 h-3 text-red-500" />
-                          ) : emailStatus[application.id] === "pending" ? (
-                            <Loader size="sm" className="[background:#facc15] shrink-0" />
-                          ) : emailFailedApplications.has(application.id) ? (
-                            <XCircle className="w-3 h-3 text-red-500" />
-                          ) : (
-                            <MailIcon className="w-3 h-3 text-muted-foreground" />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs px-2 py-2">
-                    <div className="flex items-center space-x-1">
-                      <CalendarIcon className="w-3 h-3 text-muted-foreground" />
-                      <span className="text-xs">
-                        {format(new Date(application.created_at), "dd/MM/yyyy")}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs px-2 py-2">
-                    <div className="flex items-center gap-2">
-                      {application.motivation && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedMotivation({
-                              application,
-                              motivation: application.motivation!,
-                            });
-                            setIsMotivationDialogOpen(true);
-                          }}
-                          className="inline-flex items-center justify-center p-0 m-0 border-0 bg-transparent hover:opacity-80 transition-opacity cursor-pointer"
-                          title={
-                            language === "en"
-                              ? "Click to view motivation"
-                              : "Cliquer pour voir la motivation"
-                          }
-                        >
-                          <FileText className="w-3 h-3 text-primary" />
-                        </button>
-                      )}
-                      {application.social_link && (
-                        <div className="flex items-center">
-                          <SocialLinkIcon url={application.social_link} />
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right text-xs px-2 py-2">
-                    <div className="flex items-center justify-end gap-1">
-                      {application.status === "pending" && (
-                        <>
-                          <Button
-                            onClick={() => onApprove(application)}
-                            disabled={processingId === application.id}
-                            size="sm"
-                            style={{
-                              background: "#22C55E",
-                              color: "#FFFFFF",
-                              fontSize: "0.7rem",
-                              padding: "0.25rem 0.5rem",
-                              height: "auto",
-                            }}
-                            className="transform hover:scale-105 transition-all duration-300"
-                            onMouseEnter={(e) =>
-                              (e.currentTarget.style.background = "#16A34A")
-                            }
-                            onMouseLeave={(e) =>
-                              (e.currentTarget.style.background = "#22C55E")
-                            }
-                          >
-                            {processingId === application.id ? (
-                              <>
-                                <Loader size="sm" className="[background:white] shrink-0 mr-1" />
-                                <span className="text-xs">{t.processing}</span>
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle className="w-2.5 h-2.5 mr-1" />
-                                <span className="text-xs">{t.approve}</span>
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            onClick={() => onReject(application)}
-                            disabled={processingId === application.id}
-                            variant="destructive"
-                            size="sm"
-                            style={{
-                              fontSize: "0.7rem",
-                              padding: "0.25rem 0.5rem",
-                              height: "auto",
-                            }}
-                            className="transform hover:scale-105 transition-all duration-300"
-                          >
-                            {processingId === application.id ? (
-                              <>
-                                <Loader size="sm" className="[background:white] shrink-0 mr-1" />
-                                <span className="text-xs">{t.processing}</span>
-                              </>
-                            ) : (
-                              <>
-                                <XCircle className="w-2.5 h-2.5 mr-1" />
-                                <span className="text-xs">{t.reject}</span>
-                              </>
-                            )}
-                          </Button>
-                        </>
-                      )}
-                      {application.status === "approved" && (
-                        <div className="flex gap-1">
-                          <Button
-                            onClick={() => onResendEmail(application)}
-                            disabled={processingId === application.id}
-                            size="sm"
-                            style={{
-                              background: "#3B82F6",
-                              color: "#FFFFFF",
-                              fontSize: "0.7rem",
-                              padding: "0.25rem 0.5rem",
-                              height: "auto",
-                            }}
-                            className="transform hover:scale-105 transition-all duration-300"
-                            onMouseEnter={(e) =>
-                              (e.currentTarget.style.background = "#2563EB")
-                            }
-                            onMouseLeave={(e) =>
-                              (e.currentTarget.style.background = "#3B82F6")
-                            }
-                            title={
-                              emailStatus[application.id] === "failed"
-                                ? language === "en"
-                                  ? "Email failed - Click to resend"
-                                  : "Échec de l'email - Cliquez pour renvoyer"
-                                : emailStatus[application.id] === "sent"
-                                  ? language === "en"
-                                    ? "Email sent - Click to resend"
-                                    : "Email envoyé - Cliquez pour renvoyer"
-                                  : language === "en"
-                                    ? "Resend approval email"
-                                    : "Renvoyer l'email d'approbation"
-                            }
-                          >
-                            {processingId === application.id ? (
-                              <>
-                                <Loader size="sm" className="[background:white] shrink-0 mr-1" />
-                                <span className="text-xs">
-                                  {language === "en"
-                                    ? "Sending..."
-                                    : "Envoi..."}
-                                </span>
-                              </>
-                            ) : emailStatus[application.id] === "failed" ? (
-                              <>
-                                <AlertCircle className="w-2.5 h-2.5 mr-1" />
-                                <span className="text-xs">
-                                  {language === "en" ? "Resend" : "Renvoyer"}
-                                </span>
-                              </>
-                            ) : emailStatus[application.id] === "sent" ? (
-                              <>
-                                <MailIcon className="w-2.5 h-2.5 mr-1" />
-                                <span className="text-xs">
-                                  {language === "en" ? "Resend" : "Renvoyer"}
-                                </span>
-                              </>
-                            ) : (
-                              <>
-                                <MailIcon className="w-2.5 h-2.5 mr-1" />
-                                <span className="text-xs">
-                                  {language === "en" ? "Resend" : "Renvoyer"}
-                                </span>
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            onClick={() => onCopyCredentials(application)}
-                            size="sm"
-                            variant="outline"
-                            style={{
-                              fontSize: "0.7rem",
-                              padding: "0.25rem 0.4rem",
-                              height: "auto",
-                              minWidth: "auto",
-                            }}
-                            className="transform hover:scale-105 transition-all duration-300 p-1"
-                            title={
-                              language === "en"
-                                ? "Copy credentials to clipboard"
-                                : "Copier les identifiants dans le presse-papiers"
-                            }
-                          >
-                            <Copy className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-                );
-                return (
-                  <Fragment key={application.id}>
-                    {showReviewerTooltip ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>{row}</TooltipTrigger>
-                        <TooltipContent side="top" align="center" className="max-w-xs">
-                          <p className="text-xs text-muted-foreground">
-                            {language === "en" ? "Reviewed by" : "Examiné par"}
-                          </p>
-                          <p className="text-sm font-semibold">{reviewerDisplayName}</p>
-                          {application.reviewed_at ? (
-                            <p className="text-xs text-muted-foreground mt-1 tabular-nums">
-                              {format(new Date(application.reviewed_at), "dd/MM/yyyy HH:mm")}
-                            </p>
-                          ) : null}
-                        </TooltipContent>
-                      </Tooltip>
-                    ) : (
-                      row
-                    )}
-                  </Fragment>
-                );
-              })}
-              </TooltipProvider>
-              {filteredApplications.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8">
-                    {applicationSearchTerm ? (
-                      <div className="space-y-2">
-                        <p className="text-muted-foreground animate-pulse">
-                          No applications found matching "
-                          {applicationSearchTerm}"
-                        </p>
-                        <Button
-                          variant="outline"
-                          onClick={() => setApplicationSearchTerm("")}
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          Clear Search
-                        </Button>
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground animate-pulse">
-                        {t.noApplications}
-                      </p>
-                    )}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-
-      <Dialog
-        open={isMotivationDialogOpen}
-        onOpenChange={setIsMotivationDialogOpen}
-      >
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {language === "en"
-                ? "Application Motivation"
-                : "Motivation de la Candidature"}
-            </DialogTitle>
-          </DialogHeader>
-          {selectedMotivation && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground mb-2">
-                  {language === "en" ? "Applicant:" : "Candidat:"}
-                </p>
-                <p className="text-lg font-semibold">
-                  {selectedMotivation.application.full_name}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground mb-2">
-                  {language === "en" ? "Motivation:" : "Motivation:"}
-                </p>
-                <div className="p-4 bg-muted/50 rounded-lg border border-border max-h-[60vh] overflow-y-auto">
-                  <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-                    {selectedMotivation.motivation}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-          <div className="flex justify-end gap-2 mt-4">
-            <DialogClose asChild>
-              <Button variant="outline">
-                {language === "en" ? "Close" : "Fermer"}
-              </Button>
-            </DialogClose>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <PickSelectionDialog
+        open={addToDraftIds !== null}
+        onOpenChange={(open) => !open && setAddToDraftIds(null)}
+        language={language}
+        applicationCount={addToDraftIds?.length ?? 0}
+        selections={selections}
+        loadingSelections={loadingSelections && selections.length === 0}
+        onConfirm={handlePickSelectionConfirm}
+        onCreateSelection={handleCreateSelectionFromPicker}
+      />
     </TabsContent>
   );
 }
