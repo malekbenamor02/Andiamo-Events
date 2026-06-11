@@ -6,7 +6,7 @@ import { verifyAdminAuth } from './admin-verify.js';
 let corsUtils = null;
 async function getCorsUtils() {
   if (!corsUtils) {
-    corsUtils = await import('../lib/cors.js');
+    corsUtils = await import('../../lib/cors.js');
   }
   return corsUtils;
 }
@@ -40,19 +40,17 @@ export async function handleAdminLogs(req, res) {
     });
   }
 
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  if (!process.env.SUPABASE_URL || (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_ANON_KEY)) {
     return res.status(500).json({ 
       error: 'Supabase not configured',
-      details: 'Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables'
+      details: 'Please check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY) environment variables'
     });
   }
 
   try {
     const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
-    );
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+    const supabase = createClient(process.env.SUPABASE_URL, supabaseKey);
 
     // Parse query parameters (all optional)
     const {
