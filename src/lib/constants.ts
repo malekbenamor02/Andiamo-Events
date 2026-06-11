@@ -37,13 +37,21 @@ export const TUNIS_VILLES = [
   'Bardo',
   'Carthage',
   'Centre Ville',
+  'Cité El Khadra',
   'Ennasser/Ghazela',
   'Ezzahra/Boumhel',
   'Gammarth',
   'Jardin de Carthage',
+  'Kram',
+  'Lac 1/2',
+  'Manar',
+  'Manouba',
+  'Marsa',
   'Megrine/Rades',
   'Menzah 7/8/9',
   'Mourouj',
+  'Mourouj 1/2/3',
+  'Rades',
   'Soukra'
 ] as const;
 
