@@ -70,11 +70,20 @@ export function useAcademyRegistration(
   const [promoPreview, setPromoPreview] = useState<AcademyPromoPreview>({ status: 'idle' });
 
   useEffect(() => {
-    if (!RECAPTCHA_SITE_KEY || (window as Window & { grecaptcha?: unknown }).grecaptcha) return;
+    if (isLocalhostClient() || !RECAPTCHA_SITE_KEY) return;
+    if ((window as Window & { grecaptcha?: unknown }).grecaptcha) return;
+
     const script = document.createElement('script');
     script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
     script.async = true;
     document.head.appendChild(script);
+
+    return () => {
+      document.querySelector('script[src*="recaptcha/api.js"]')?.remove();
+      const badge = document.querySelector('.grecaptcha-badge') as HTMLElement | null;
+      if (badge) badge.remove();
+      delete (window as Window & { grecaptcha?: unknown }).grecaptcha;
+    };
   }, []);
 
   useEffect(() => {

@@ -266,10 +266,6 @@ export const ACADEMY_UI = {
     },
     paymentRib: { en: 'Bank transfer (RIB)', fr: 'Virement bancaire (RIB)' },
     paymentD17: { en: 'D17', fr: 'D17' },
-    paymentManualContactHint: {
-      en: 'Contact Andiamo Events at +216 28 070 128 to receive the RIB or D17 number.',
-      fr: 'Contactez Andiamo Events au +216 28 070 128 pour obtenir le RIB ou le numéro D17.',
-    },
     paymentManualContactCallout: {
       en: 'To complete your payment, please contact Andiamo Events at +216 28 070 128. Our team will provide you with the RIB or D17 details.',
       fr: 'Pour finaliser votre paiement, veuillez contacter Andiamo Events au +216 28 070 128. Notre équipe vous communiquera le RIB ou le numéro D17.',
