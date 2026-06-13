@@ -41,6 +41,7 @@ const { cancelExpiredAcademyPendingRegistrations } = require('./api/_lib/academy
 const { requireCronSecret } = require('./api/_lib/cron-auth.cjs');
 const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
 const { getEmailTransporter } = require('./api/_lib/get-email-transporter.cjs');
+const { scheduleConfirmedAcademyPurchaseCapi } = require('./api/_lib/meta/conversions-api.cjs');
 
 const ACADEMY_EMAIL_FROM = '"Andiamo Events" <contact@andiamoevents.com>';
 
@@ -71,6 +72,33 @@ function getClientIp(req) {
   const xf = req.headers['x-forwarded-for'];
   if (xf) return String(xf).split(',')[0].trim();
   return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function buildAcademyMetaAttribution(req, body) {
+  const metaEventId = body?.metaEventId || body?.meta_event_id;
+  const metaFbp = body?.metaFbp || body?.meta_fbp;
+  const metaFbc = body?.metaFbc || body?.meta_fbc;
+  const metaEventSourceUrl = body?.metaEventSourceUrl || body?.meta_event_source_url;
+  const clientIp = getClientIp(req);
+  const clientUserAgent = (req.get('user-agent') || '').slice(0, 512);
+  if (
+    !metaEventId &&
+    !metaFbp &&
+    !metaFbc &&
+    !metaEventSourceUrl &&
+    !clientUserAgent &&
+    !clientIp
+  ) {
+    return null;
+  }
+  return {
+    ...(metaEventId ? { eventId: String(metaEventId).slice(0, 128) } : {}),
+    ...(metaFbp ? { fbp: String(metaFbp).slice(0, 256) } : {}),
+    ...(metaFbc ? { fbc: String(metaFbc).slice(0, 256) } : {}),
+    ...(metaEventSourceUrl ? { eventSourceUrl: String(metaEventSourceUrl).slice(0, 2048) } : {}),
+    ...(clientUserAgent ? { clientUserAgent } : {}),
+    ...(clientIp ? { clientIp } : {}),
+  };
 }
 
 function checkIpRate(ip) {
@@ -188,14 +216,16 @@ function academyRegistrationResponse(reg, extra = {}) {
   };
 }
 
-async function respondToExistingAcademyRegistration(res, db, existing, vData, lang) {
+async function respondToExistingAcademyRegistration(res, db, existing, vData, lang, req) {
   if (['pending_payment', 'pending_online'].includes(existing.status)) {
     if (existing.payment_method === 'card' && vData.paymentMethod === 'card') {
+      const metaAttribution = buildAcademyMetaAttribution(req, req.body);
       await db
         .from('academy_registrations')
         .update({
           full_name: vData.fullName,
           phone: vData.phone,
+          ...(metaAttribution ? { meta_attribution: metaAttribution } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', existing.id);
@@ -434,7 +464,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
 
       const existingReg = await findActiveAcademyRegistration(db, vData.email, vData.formule);
       if (existingReg) {
-        return await respondToExistingAcademyRegistration(res, db, existingReg, vData, lang);
+        return await respondToExistingAcademyRegistration(res, db, existingReg, vData, lang, req);
       }
 
       let promoId = null;
@@ -471,6 +501,8 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         initialStatus = 'proof_received';
       }
 
+      const metaAttribution = buildAcademyMetaAttribution(req, body);
+
       const insertRow = {
         registration_number: regNum,
         full_name: vData.fullName,
@@ -487,6 +519,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         ip_address: ip,
         user_agent: (req.get('user-agent') || '').slice(0, 512),
         client_elapsed_ms: vData.clientElapsedMs,
+        ...(metaAttribution ? { meta_attribution: metaAttribution } : {}),
       };
 
       const { data: inserted, error: insertErr } = await db
@@ -498,7 +531,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         if (insertErr.code === '23505') {
           const duplicate = await findActiveAcademyRegistration(db, vData.email, vData.formule);
           if (duplicate) {
-            return await respondToExistingAcademyRegistration(res, db, duplicate, vData, lang);
+            return await respondToExistingAcademyRegistration(res, db, duplicate, vData, lang, req);
           }
           return res.status(409).json({
             error: 'registration_exists',
@@ -553,6 +586,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
             .update({ last_email_type: 'manual_received', email_sent_at: new Date().toISOString() })
             .eq('id', inserted.id);
         }
+        scheduleConfirmedAcademyPurchaseCapi(db, inserted.id, { req });
       }
 
       res.status(201).json(academyRegistrationResponse(inserted));
@@ -724,9 +758,11 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       }
 
       if (activeReg.status === 'approved') {
+        scheduleConfirmedAcademyPurchaseCapi(db, registrationId, { req });
         return res.json({ success: true, alreadyPaid: true, status: 'approved' });
       }
       if (activeReg.status === 'paid_online') {
+        scheduleConfirmedAcademyPurchaseCapi(db, registrationId, { req });
         const approveResult = await tryAutoApprove(db, activeReg, null, null, { skipApprovedEmail: true });
         return res.json({
           success: true,
@@ -792,6 +828,8 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
           .update({ last_email_type: 'online_confirmed', email_sent_at: new Date().toISOString() })
           .eq('id', registrationId);
       }
+
+      scheduleConfirmedAcademyPurchaseCapi(db, registrationId, { req });
 
       res.json({
         success: true,

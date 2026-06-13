@@ -47,6 +47,7 @@ import {
   createMetaEventId,
   getMetaAttributionContext,
   buildConfirmedPurchasePayload,
+  resolveMetaPurchaseValue,
   savePurchaseSnapshot,
   trackConfirmedPurchase,
 } from '@/lib/meta';
@@ -1444,10 +1445,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         };
         trackEvent('order_submit_online', onlineParams);
 
+        const metaPurchaseValue = resolveMetaPurchaseValue({
+          paymentMethod: 'online',
+          subtotal: totalPrice,
+          orderTotalWithFees: order.total_with_fees,
+          orderTotalPrice: order.total_price,
+        });
         const metaPurchase = buildConfirmedPurchasePayload({
           eventId: metaEventId,
           orderId: order.id,
-          value: totalPrice,
+          value: metaPurchaseValue,
           paymentMethod: 'online',
           passes: selectedPassesArray,
           customer: {
@@ -1498,11 +1505,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         };
         trackEvent('order_submit_ambassador', ambassadorParams);
 
+        const metaPurchaseValue = resolveMetaPurchaseValue({
+          paymentMethod: 'ambassador_cash',
+          subtotal: totalPrice,
+          orderTotalPrice: order.total_price,
+        });
         trackConfirmedPurchase(
           buildConfirmedPurchasePayload({
             eventId: metaEventId,
             orderId: order.id,
-            value: totalPrice,
+            value: metaPurchaseValue,
             paymentMethod: 'ambassador_cash',
             passes: selectedPassesArray,
             customer: {

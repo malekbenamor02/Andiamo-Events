@@ -12,8 +12,16 @@ import { normalizeAcademyPromoCodeInput } from '@/lib/academy/promoCode';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
 import { mapPublicError, mapThrownError } from '@/lib/userErrors';
 import { useAcademyPublicStatus } from '@/hooks/useAcademyPublicStatus';
-import type { AcademyFormulaId, AcademyLanguage, AcademyRegistrationFormData } from '@/types/academy';
+import type { AcademyFormulaId, AcademyLanguage, AcademyPaymentMethod, AcademyRegistrationFormData } from '@/types/academy';
 import { EMPTY_ACADEMY_FORM } from '@/types/academy';
+import {
+  buildAcademyPurchasePayload,
+  createMetaEventId,
+  getMetaAttributionContext,
+  isValidAcademyPurchasePayload,
+  saveAcademyPurchaseSnapshot,
+  trackConfirmedPurchase,
+} from '@/lib/meta';
 
 const HIGHLIGHT_MS = 2000;
 const PROMO_VALIDATE_DEBOUNCE_MS = 450;
@@ -273,6 +281,9 @@ export function useAcademyRegistration(
 
       setIsSubmitting(true);
       try {
+        const metaEventId = createMetaEventId('academy_purchase');
+        const metaAttribution = getMetaAttributionContext();
+
         const recaptchaToken = await executeRecaptcha();
         if (!recaptchaToken && !isLocalhostClient()) {
           toast({
@@ -296,6 +307,12 @@ export function useAcademyRegistration(
         if (promo) fd.append('promoCode', promo);
         if (recaptchaToken) fd.append('recaptchaToken', recaptchaToken);
         if (formData.paymentProof) fd.append('paymentProof', formData.paymentProof);
+        fd.append('metaEventId', metaEventId);
+        if (metaAttribution.fbp) fd.append('metaFbp', metaAttribution.fbp);
+        if (metaAttribution.fbc) fd.append('metaFbc', metaAttribution.fbc);
+        if (metaAttribution.eventSourceUrl) {
+          fd.append('metaEventSourceUrl', metaAttribution.eventSourceUrl);
+        }
 
         const res = await fetch(`${getApiBaseUrl()}${API_ROUTES.ACADEMY_REGISTER}`, {
           method: 'POST',
@@ -333,9 +350,35 @@ export function useAcademyRegistration(
         }
 
         const registrationId = data.registrationId as string;
+        const totalAmountDt = Number(data.totalAmountDt) || displayTotal;
+        const formule = formData.formule as AcademyFormulaId;
+        const paymentMethod = formData.paymentMethod as AcademyPaymentMethod;
+        const promoCodeForMeta = promoPreview.status === 'valid' ? promoPreview.code : undefined;
+
+        const metaPayload = buildAcademyPurchasePayload({
+          eventId: metaEventId,
+          registrationId,
+          formule,
+          paymentMethod,
+          customer: {
+            fullName: formData.fullName,
+            email: formData.email,
+            phone: formData.phone,
+          },
+          attribution: metaAttribution,
+          totalAmountDt,
+          promoCode: promoCodeForMeta,
+        });
+
         if (data.redirectToPayment && registrationId) {
+          if (isValidAcademyPurchasePayload(metaPayload)) {
+            saveAcademyPurchaseSnapshot(registrationId, metaPayload);
+          }
           navigate(`/academy/payment-processing?registrationId=${registrationId}&init=1`);
         } else if (registrationId) {
+          if (isValidAcademyPurchasePayload(metaPayload)) {
+            trackConfirmedPurchase(metaPayload);
+          }
           navigate(`/academy/register/confirmation?registrationId=${registrationId}`);
         }
       } catch (err: unknown) {
@@ -349,7 +392,7 @@ export function useAcademyRegistration(
         setIsSubmitting(false);
       }
     },
-    [formData, language, honeypot, navigate, toast, promoPreview, registrationsOpen, soldOut]
+    [formData, language, honeypot, navigate, toast, promoPreview, registrationsOpen, soldOut, displayTotal]
   );
 
   return {

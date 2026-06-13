@@ -48,6 +48,8 @@ export interface Order {
   pass_type?: string | null;  // DEPRECATED - use order_passes
   quantity: number;
   total_price: number;
+  fee_amount?: number | null;
+  total_with_fees?: number | null;
   payment_method: PaymentMethod;
   status: OrderStatus;
   payment_status?: string | null;  // For online orders: PENDING_PAYMENT, PAID, FAILED, REFUNDED

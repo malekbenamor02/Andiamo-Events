@@ -6,6 +6,12 @@ import Loader from '@/components/ui/Loader';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { PageMeta } from '@/components/PageMeta';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
+import { mapPublicError, mapThrownError } from '@/lib/userErrors';
+import {
+  consumeAcademyPurchaseSnapshot,
+  isValidAcademyPurchasePayload,
+  trackConfirmedPurchase,
+} from '@/lib/meta';
 import type { AcademyLanguage } from '@/types/academy';
 
 interface AcademyPaymentProcessingProps {
@@ -104,6 +110,10 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
         });
         const data = await res.json().catch(() => ({}));
         if (data.success || data.alreadyPaid) {
+          const snapshot = consumeAcademyPurchaseSnapshot(registrationId);
+          if (snapshot && isValidAcademyPurchasePayload(snapshot)) {
+            trackConfirmedPurchase(snapshot);
+          }
           setState('success');
           navigate(
             `/academy/register/confirmation?registrationId=${registrationId}&paid=1`,

@@ -2,6 +2,8 @@
 
 const { computeOnlinePaymentFees } = require('../online-payment-fee.cjs');
 
+const META_TICKET_CONTENT_CATEGORY = 'Event Ticket';
+
 /**
  * Resolve purchase value in TND for Meta (fee-inclusive for online when applicable).
  * @param {Record<string, unknown>} order
@@ -58,6 +60,7 @@ function buildPurchaseCustomData({ order, orderPasses, event }) {
   return {
     value,
     currency: 'TND',
+    content_category: META_TICKET_CONTENT_CATEGORY,
     content_ids: contentIds,
     content_type: 'product',
     content_name: event?.name != null ? String(event.name) : undefined,
@@ -86,6 +89,7 @@ function buildCustomerFromOrder(order) {
 }
 
 module.exports = {
+  META_TICKET_CONTENT_CATEGORY,
   resolvePurchaseValue,
   buildPurchaseCustomData,
   buildCustomerFromOrder,

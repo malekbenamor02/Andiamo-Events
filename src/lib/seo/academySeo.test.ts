@@ -36,7 +36,7 @@ describe('buildAcademyCourseSchema', () => {
     expect(schema.timeRequired).toBe('PT20H');
     expect(schema.offers).toMatchObject({
       '@type': 'AggregateOffer',
-      lowPrice: 900,
+      lowPrice: 850,
       highPrice: 2500,
       priceCurrency: 'TND',
     });

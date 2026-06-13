@@ -4,7 +4,7 @@
  */
 
 import { buildPixelAdvancedMatching } from './userData';
-import type { MetaPurchasePayload } from './types';
+import { META_TICKET_CONTENT_CATEGORY, type MetaPurchasePayload } from './types';
 
 const META_PIXEL_ID =
   (import.meta.env.VITE_META_PIXEL_ID as string | undefined)?.trim() || '';
@@ -129,6 +129,7 @@ export function trackConfirmedPurchase(payload: MetaPurchasePayload): void {
   const customData: Record<string, unknown> = {
     value: payload.value,
     currency: payload.currency,
+    content_category: payload.contentCategory ?? META_TICKET_CONTENT_CATEGORY,
     content_ids: payload.contentIds,
     content_type: 'product',
     num_items: payload.numItems,
@@ -137,6 +138,7 @@ export function trackConfirmedPurchase(payload: MetaPurchasePayload): void {
   };
   if (payload.contentName) customData.content_name = payload.contentName;
   if (payload.contents?.length) customData.contents = payload.contents;
+  if (payload.promoCode) customData.promo_code = payload.promoCode;
 
   window.fbq!('track', 'Purchase', customData, { eventID: payload.eventId });
 }

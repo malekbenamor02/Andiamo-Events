@@ -52,7 +52,7 @@ export function buildPixelAdvancedMatching(customer: MetaCustomerData): Record<s
   const { fn, ln } = splitFullName(customer.fullName);
   const em = normalizeEmail(customer.email);
   const ph = normalizePhone(customer.phone);
-  const ct = normalizeCity(customer.city);
+  const ct = customer.city ? normalizeCity(customer.city) : undefined;
 
   const out: Record<string, string> = { country: 'tn' };
   if (em) out.em = em;

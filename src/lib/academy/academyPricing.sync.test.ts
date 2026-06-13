@@ -4,7 +4,7 @@ import type { AcademyFormulaId } from '@/types/academy';
 
 /** Authoritative server prices — keep in sync with api/_lib/academy-pricing.cjs */
 const SERVER_FORMULA_PRICES_DT: Record<AcademyFormulaId, number> = {
-  essentielle: 900,
+  essentielle: 850,
   pro: 1100,
   premium: 2500,
 };

@@ -4,7 +4,7 @@ const { parseAcademyOnlineFeeRate } = require('./academy-fee-rate.cjs');
 
 /** Server-side formula prices (must match src/data/academyContent.ts) */
 const FORMULA_PRICES_DT = {
-  essentielle: 900,
+  essentielle: 850,
   pro: 1100,
   premium: 2500,
 };

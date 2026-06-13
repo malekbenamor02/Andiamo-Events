@@ -26,7 +26,7 @@ export const ACADEMY_FORMULAS: AcademyFormula[] = [
   {
     id: 'essentielle',
     name: { en: 'Essential', fr: 'Essentielle' },
-    priceDt: 900,
+    priceDt: 850,
     seatsTotal: 12,
     seatsRemainingMock: 8,
     features: [
@@ -58,7 +58,7 @@ export const ACADEMY_FORMULAS: AcademyFormula[] = [
     seatsRemainingMock: 3,
     features: [
       { en: 'Everything in Pro', fr: 'Tout le contenu de la formule Pro' },
-      { en: 'Consulting on first international event', fr: 'Conseil pour votre premier événement international' },
+      { en: 'Consulting on first event', fr: 'Conseil pour votre premier événement' },
       { en: 'Personal guidance for first event launch', fr: 'Accompagnement personnel pour le lancement de votre premier événement' },
     ],
   },
@@ -103,7 +103,7 @@ export const ACADEMY_COMPARISON_ROWS: AcademyComparisonRow[] = [
     premium: comparisonYes(),
   },
   {
-    label: { en: 'Consulting on first international event', fr: 'Conseil premier événement international' },
+    label: { en: 'Consulting on first event', fr: 'Conseil premier événement' },
     essentielle: comparisonNo(),
     pro: comparisonNo(),
     premium: comparisonYes(),
@@ -151,8 +151,8 @@ export const ACADEMY_FAQ: AcademyFaqItem[] = [
       fr: 'Quelles formules sont disponibles et à quel prix ?',
     },
     answer: {
-      en: 'There are 3 formulas: Essential at 900 DT, Pro at 1,100 DT, and Premium at 2,500 DT.',
-      fr: '3 formules : Essentielle à 900 DT, Pro à 1 100 DT et Premium à 2 500 DT.',
+      en: 'There are 3 formulas: Essential at 850 DT, Pro at 1,100 DT, and Premium at 2,500 DT.',
+      fr: '3 formules : Essentielle à 850 DT, Pro à 1 100 DT et Premium à 2 500 DT.',
     },
   },
   {

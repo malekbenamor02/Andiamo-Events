@@ -67,23 +67,44 @@ function normalizeCity(city) {
   return v.length ? v : null;
 }
 
+function normalizeCountry(country) {
+  if (!country || typeof country !== 'string') return 'tn';
+  const v = country.trim().toLowerCase();
+  return v.length === 2 ? v : 'tn';
+}
+
 /**
- * @param {{ email?: string|null; phone?: string|null; fullName?: string|null; city?: string|null }} customer
- * @returns {{ em?: string; ph?: string; fn?: string; ln?: string; ct?: string; country?: string }}
+ * No stable customer/user ID on orders — use normalized email when available.
+ * @param {{ email?: string|null }} customer
+ * @returns {string|null}
+ */
+function resolveHashedExternalId(customer) {
+  const em = normalizeEmail(customer.email);
+  return em ? sha256(em) : null;
+}
+
+/**
+ * @param {{ email?: string|null; phone?: string|null; fullName?: string|null; city?: string|null; country?: string|null }} customer
+ * @returns {{ em?: string; ph?: string; fn?: string; ln?: string; ct?: string; country?: string; external_id?: string }}
  */
 function buildHashedUserData(customer) {
   const { fn, ln } = splitFullName(customer.fullName);
   const em = normalizeEmail(customer.email);
   const ph = normalizePhone(customer.phone);
   const ct = normalizeCity(customer.city);
+  const country = normalizeCountry(customer.country);
 
   /** @type {Record<string, string>} */
-  const out = { country: 'tn' };
+  const out = { country: sha256(country) };
   if (em) out.em = sha256(em);
   if (ph) out.ph = sha256(ph);
   if (fn) out.fn = sha256(fn);
   if (ln) out.ln = sha256(ln);
   if (ct) out.ct = sha256(ct);
+
+  const externalId = resolveHashedExternalId(customer);
+  if (externalId) out.external_id = externalId;
+
   return out;
 }
 
@@ -94,5 +115,7 @@ module.exports = {
   normalizeNamePart,
   splitFullName,
   normalizeCity,
+  normalizeCountry,
+  resolveHashedExternalId,
   buildHashedUserData,
 };
