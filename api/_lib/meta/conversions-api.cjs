@@ -10,6 +10,7 @@ const {
   buildCustomerFromRegistration,
   isAcademyRegistrationTrackable,
 } = require('./academy-purchase-payload.cjs');
+const { isMissingMetaColumnError, logMissingMetaColumnsWarning } = require('../academy-meta-db.cjs');
 
 const GRAPH_API_VERSION = 'v21.0';
 
@@ -262,7 +263,11 @@ async function sendConfirmedAcademyPurchaseForRegistrationId(dbClient, registrat
       .is('meta_purchase_sent_at', null);
 
     if (updateError) {
-      console.warn('[Meta CAPI] Failed to set academy meta_purchase_sent_at:', updateError.message);
+      if (isMissingMetaColumnError(updateError)) {
+        logMissingMetaColumnsWarning('meta_purchase_sent_at update');
+      } else {
+        console.warn('[Meta CAPI] Failed to set academy meta_purchase_sent_at:', updateError.message);
+      }
     }
   }
 

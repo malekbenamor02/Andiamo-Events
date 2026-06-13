@@ -42,6 +42,10 @@ const { requireCronSecret } = require('./api/_lib/cron-auth.cjs');
 const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
 const { getEmailTransporter } = require('./api/_lib/get-email-transporter.cjs');
 const { scheduleConfirmedAcademyPurchaseCapi } = require('./api/_lib/meta/conversions-api.cjs');
+const {
+  insertAcademyRegistration,
+  updateAcademyRegistration,
+} = require('./api/_lib/academy-meta-db.cjs');
 
 const ACADEMY_EMAIL_FROM = '"Andiamo Events" <contact@andiamoevents.com>';
 
@@ -220,15 +224,12 @@ async function respondToExistingAcademyRegistration(res, db, existing, vData, la
   if (['pending_payment', 'pending_online'].includes(existing.status)) {
     if (existing.payment_method === 'card' && vData.paymentMethod === 'card') {
       const metaAttribution = buildAcademyMetaAttribution(req, req.body);
-      await db
-        .from('academy_registrations')
-        .update({
-          full_name: vData.fullName,
-          phone: vData.phone,
-          ...(metaAttribution ? { meta_attribution: metaAttribution } : {}),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
+      await updateAcademyRegistration(db, existing.id, {
+        full_name: vData.fullName,
+        phone: vData.phone,
+        ...(metaAttribution ? { meta_attribution: metaAttribution } : {}),
+        updated_at: new Date().toISOString(),
+      });
       return res.status(200).json(
         academyRegistrationResponse(existing, {
           resumed: true,
@@ -522,11 +523,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         ...(metaAttribution ? { meta_attribution: metaAttribution } : {}),
       };
 
-      const { data: inserted, error: insertErr } = await db
-        .from('academy_registrations')
-        .insert(insertRow)
-        .select('*')
-        .single();
+      const { data: inserted, error: insertErr } = await insertAcademyRegistration(db, insertRow);
       if (insertErr) {
         if (insertErr.code === '23505') {
           const duplicate = await findActiveAcademyRegistration(db, vData.email, vData.formule);
