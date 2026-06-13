@@ -35,7 +35,7 @@ const {
   buildAcademyManualPaymentReceivedEmailHtml,
   buildAcademyApprovedEmailHtml,
 } = require('./api/_lib/academy-email-html.cjs');
-const { getFormulaBasePrice, FORMULA_IDS } = require('./api/_lib/academy-pricing.cjs');
+const { getFormulaBasePrice, FORMULA_IDS, registrationAmountsAreValid } = require('./api/_lib/academy-pricing.cjs');
 const { normalizeAcademyPromoCode } = require('./api/_lib/academy-registration-validation.cjs');
 const { cancelExpiredAcademyPendingRegistrations } = require('./api/_lib/academy-expire-pending.cjs');
 const { requireCronSecret } = require('./api/_lib/cron-auth.cjs');
@@ -632,6 +632,16 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       }
       if (!['pending_payment', 'pending_online'].includes(activeReg.status)) {
         return res.status(400).json({ error: 'Registration is not ready for payment', status: activeReg.status });
+      }
+
+      const settings = await getAcademySettings(db);
+      if (!registrationAmountsAreValid(activeReg, settings.online_payment_fee_rate)) {
+        console.error('academy clictopay: registration amount mismatch', {
+          registrationId,
+          formule: activeReg.formule,
+          total_amount_dt: activeReg.total_amount_dt,
+        });
+        return res.status(400).json({ error: 'Invalid registration pricing' });
       }
 
       const base = resolvePublicBaseUrl(req);

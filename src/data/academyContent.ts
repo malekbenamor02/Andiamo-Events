@@ -1,7 +1,5 @@
-// TODO: Replace feature bullets and ACADEMY_COMPARISON_ROWS with Section 4 comparative table from formation doc.
-
 import type {
-  AcademyChapter,
+  AcademyComparisonCell,
   AcademyComparisonRow,
   AcademyFaqItem,
   AcademyFormula,
@@ -16,19 +14,27 @@ export const ACADEMY_COHORT_LABEL = {
   fr: 'En présentiel — Tunis',
 } as const;
 
+const comparisonText = (en: string, fr: string): AcademyComparisonCell => ({
+  kind: 'text',
+  value: { en, fr },
+});
+
+const comparisonYes = (): AcademyComparisonCell => ({ kind: 'boolean', value: true });
+const comparisonNo = (): AcademyComparisonCell => ({ kind: 'boolean', value: false });
+
 export const ACADEMY_FORMULAS: AcademyFormula[] = [
   {
     id: 'essentielle',
     name: { en: 'Essential', fr: 'Essentielle' },
-    priceDt: 850,
+    priceDt: 900,
     seatsTotal: 12,
     seatsRemainingMock: 8,
     features: [
       { en: '20 hours of certified in-person training', fr: '20 heures de formation certifiée en présentiel' },
-      { en: 'Full event management program (7 chapters)', fr: 'Programme complet Event Management (7 chapitres)' },
-      { en: 'Training materials and workbook', fr: 'Supports de cours et workbook' },
-      { en: 'Certificate of completion', fr: 'Attestation de fin de formation' },
-      { en: 'Access to class group (12 participants max)', fr: 'Accès au groupe classe (12 participants max)' },
+      { en: 'Full event management program — +7 chapters', fr: 'Programme complet Event Management — +7 chapitres' },
+      { en: 'Official certificate', fr: 'Certificat officiel' },
+      { en: 'Andiamo training materials & bloc-note', fr: 'Supports de formation Andiamo & bloc-note' },
+      { en: 'Buffet + water every day', fr: 'Buffet + eau chaque jour' },
     ],
   },
   {
@@ -40,10 +46,8 @@ export const ACADEMY_FORMULAS: AcademyFormula[] = [
     seatsRemainingMock: 5,
     features: [
       { en: 'Everything in Essential', fr: 'Tout le contenu de la formule Essentielle' },
-      { en: 'Practical case studies with real event scenarios', fr: 'Études de cas pratiques sur des événements réels' },
-      { en: '1-on-1 feedback session with the trainer', fr: 'Session de feedback individuelle avec le formateur' },
-      { en: 'Event planning templates (budget, timeline, checklist)', fr: 'Templates de planification (budget, planning, checklist)' },
-      { en: 'Priority support during training days', fr: 'Support prioritaire pendant les jours de formation' },
+      { en: '3-month international event internship', fr: 'Stage événementiel international de 3 mois' },
+      { en: 'Real event rotation with Andiamo Event', fr: 'Rotation sur événements réels avec Andiamo Event' },
     ],
   },
   {
@@ -54,169 +58,55 @@ export const ACADEMY_FORMULAS: AcademyFormula[] = [
     seatsRemainingMock: 3,
     features: [
       { en: 'Everything in Pro', fr: 'Tout le contenu de la formule Pro' },
-      { en: 'VIP small-group coaching (max 12)', fr: 'Coaching VIP en petit groupe (max 12)' },
-      { en: 'Post-training mentorship follow-up (30 days)', fr: 'Suivi mentorat post-formation (30 jours)' },
-      { en: 'Andiamo Event network introduction', fr: 'Introduction au réseau Andiamo Event' },
-      { en: 'Certificate of excellence + LinkedIn recommendation', fr: 'Certificat d\'excellence + recommandation LinkedIn' },
+      { en: 'Consulting on first international event', fr: 'Conseil pour votre premier événement international' },
+      { en: 'Personal guidance for first event launch', fr: 'Accompagnement personnel pour le lancement de votre premier événement' },
     ],
   },
 ];
 
 export const ACADEMY_COMPARISON_ROWS: AcademyComparisonRow[] = [
   {
-    label: { en: '20h certified in-person training', fr: '20h formation certifiée présentiel' },
-    essentielle: true,
-    pro: true,
-    premium: true,
+    label: { en: 'Seats', fr: 'Places' },
+    essentielle: comparisonText('12', '12'),
+    pro: comparisonText('12', '12'),
+    premium: comparisonText('12', '12'),
+    muted: true,
   },
   {
-    label: { en: '7-chapter full program', fr: 'Programme complet 7 chapitres' },
-    essentielle: true,
-    pro: true,
-    premium: true,
+    label: { en: '20h certified in-person training', fr: '20h formation certifiée en présentiel' },
+    essentielle: comparisonYes(),
+    pro: comparisonYes(),
+    premium: comparisonYes(),
   },
   {
-    label: { en: 'Certificate of completion', fr: 'Attestation de fin de formation' },
-    essentielle: true,
-    pro: true,
-    premium: true,
+    label: { en: 'Official certificate', fr: 'Certificat officiel' },
+    essentielle: comparisonYes(),
+    pro: comparisonYes(),
+    premium: comparisonYes(),
   },
   {
-    label: { en: 'Practical case studies', fr: 'Études de cas pratiques' },
-    essentielle: false,
-    pro: true,
-    premium: true,
+    label: { en: 'Andiamo materials', fr: 'Supports Andiamo' },
+    essentielle: comparisonYes(),
+    pro: comparisonYes(),
+    premium: comparisonYes(),
   },
   {
-    label: { en: '1-on-1 trainer feedback', fr: 'Feedback individuel formateur' },
-    essentielle: false,
-    pro: true,
-    premium: true,
+    label: { en: 'Buffet + water', fr: 'Buffet + eau' },
+    essentielle: comparisonYes(),
+    pro: comparisonYes(),
+    premium: comparisonYes(),
   },
   {
-    label: { en: 'Event planning templates', fr: 'Templates de planification' },
-    essentielle: false,
-    pro: true,
-    premium: true,
+    label: { en: '3-month international event internship', fr: 'Stage événementiel international 3 mois' },
+    essentielle: comparisonNo(),
+    pro: comparisonYes(),
+    premium: comparisonYes(),
   },
   {
-    label: { en: '30-day post-training mentorship', fr: 'Mentorat post-formation 30 jours' },
-    essentielle: false,
-    pro: false,
-    premium: true,
-  },
-  {
-    label: { en: 'Andiamo network introduction', fr: 'Introduction réseau Andiamo' },
-    essentielle: false,
-    pro: false,
-    premium: true,
-  },
-  {
-    label: { en: 'Certificate of excellence', fr: 'Certificat d\'excellence' },
-    essentielle: false,
-    pro: false,
-    premium: true,
-  },
-];
-
-export const ACADEMY_CHAPTERS: AcademyChapter[] = [
-  {
-    number: 1,
-    title: { en: 'Introduction to Event Management', fr: 'Introduction à l\'Event Management' },
-    description: {
-      en: 'Industry landscape, roles, and the event lifecycle from concept to closure.',
-      fr: 'Panorama du secteur, rôles et cycle de vie d\'un événement de la conception à la clôture.',
-    },
-    tags: [
-      { en: 'Industry', fr: 'Secteur' },
-      { en: 'Roles', fr: 'Rôles' },
-      { en: 'Lifecycle', fr: 'Cycle de vie' },
-    ],
-    image: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=900&q=80',
-  },
-  {
-    number: 2,
-    title: { en: 'Concept & Creative Direction', fr: 'Concept & Direction créative' },
-    description: {
-      en: 'Building a strong event identity, theme, and guest experience vision.',
-      fr: 'Construire une identité forte, un thème et une vision d\'expérience invité.',
-    },
-    tags: [
-      { en: 'Identity', fr: 'Identité' },
-      { en: 'Theme', fr: 'Thème' },
-      { en: 'Experience', fr: 'Expérience' },
-    ],
-    image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=900&q=80',
-  },
-  {
-    number: 3,
-    title: { en: 'Planning & Operations', fr: 'Planification & Opérations' },
-    description: {
-      en: 'Timelines, logistics, vendors, and on-site operational readiness.',
-      fr: 'Planning, logistique, prestataires et préparation opérationnelle sur site.',
-    },
-    tags: [
-      { en: 'Logistics', fr: 'Logistique' },
-      { en: 'Vendors', fr: 'Prestataires' },
-      { en: 'Operations', fr: 'Opérations' },
-    ],
-    image: 'https://images.unsplash.com/photo-1511578314322-379afb476865?w=900&q=80',
-  },
-  {
-    number: 4,
-    title: { en: 'Budget & Financial Management', fr: 'Budget & Gestion financière' },
-    description: {
-      en: 'Cost structure, sponsorship, ticketing economics, and margin control.',
-      fr: 'Structure des coûts, sponsoring, économie billetterie et maîtrise des marges.',
-    },
-    tags: [
-      { en: 'Budget', fr: 'Budget' },
-      { en: 'Sponsoring', fr: 'Sponsoring' },
-      { en: 'Ticketing', fr: 'Billetterie' },
-    ],
-    image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=900&q=80',
-  },
-  {
-    number: 5,
-    title: { en: 'Marketing & Promotion', fr: 'Marketing & Promotion' },
-    description: {
-      en: 'Digital strategy, community building, and conversion for event launches.',
-      fr: 'Stratégie digitale, communauté et conversion pour le lancement d\'événements.',
-    },
-    tags: [
-      { en: 'Digital', fr: 'Digital' },
-      { en: 'Community', fr: 'Communauté' },
-      { en: 'Launch', fr: 'Lancement' },
-    ],
-    image: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=900&q=80',
-  },
-  {
-    number: 6,
-    title: { en: 'Production & On-Site Execution', fr: 'Production & Exécution sur site' },
-    description: {
-      en: 'Technical production, team coordination, and live event problem-solving.',
-      fr: 'Production technique, coordination d\'équipe et résolution de problèmes en live.',
-    },
-    tags: [
-      { en: 'Production', fr: 'Production' },
-      { en: 'Team', fr: 'Équipe' },
-      { en: 'On-site', fr: 'Sur site' },
-    ],
-    image: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=900&q=80',
-  },
-  {
-    number: 7,
-    title: { en: 'Post-Event & Growth', fr: 'Post-événement & Croissance' },
-    description: {
-      en: 'Debrief, reporting, retention, and scaling your event brand.',
-      fr: 'Debrief, reporting, fidélisation et développement de votre marque événementielle.',
-    },
-    tags: [
-      { en: 'Debrief', fr: 'Debrief' },
-      { en: 'Reporting', fr: 'Reporting' },
-      { en: 'Growth', fr: 'Croissance' },
-    ],
-    image: 'https://images.unsplash.com/photo-1515169069816-ef7c2a9f792b?w=900&q=80',
+    label: { en: 'Consulting on first international event', fr: 'Conseil premier événement international' },
+    essentielle: comparisonNo(),
+    pro: comparisonNo(),
+    premium: comparisonYes(),
   },
 ];
 
@@ -261,8 +151,8 @@ export const ACADEMY_FAQ: AcademyFaqItem[] = [
       fr: 'Quelles formules sont disponibles et à quel prix ?',
     },
     answer: {
-      en: 'There are 3 formulas: Essentielle at 850 DT, Pro at 1,100 DT, and Premium at 2,500 DT.',
-      fr: '3 formules : Essentielle à 850 DT, Pro à 1 100 DT et Premium à 2 500 DT.',
+      en: 'There are 3 formulas: Essential at 900 DT, Pro at 1,100 DT, and Premium at 2,500 DT.',
+      fr: '3 formules : Essentielle à 900 DT, Pro à 1 100 DT et Premium à 2 500 DT.',
     },
   },
   {
@@ -305,15 +195,15 @@ export const ACADEMY_FAQ: AcademyFaqItem[] = [
       fr: 'Comment contacter l\'équipe ?',
     },
     answer: {
-      en: 'Reach us on Instagram @andiamoevents, by email at contact@andiamoevents.com, or by phone at +216 24 508 245.',
-      fr: 'Contactez-nous sur Instagram @andiamoevents, par email à contact@andiamoevents.com, ou par téléphone au +216 24 508 245.',
+      en: 'Reach us on Instagram @andiamoevents, by email at contact@andiamoevents.com, or by phone at +216 28 070 128.',
+      fr: 'Contactez-nous sur Instagram @andiamoevents, par email à contact@andiamoevents.com, ou par téléphone au +216 28 070 128.',
     },
   },
 ];
 
 export const ACADEMY_UI = {
   assets: {
-    instructorPhoto: '/assets/trainer-image.jpg',
+    trainerPhoto: '/assets/trainer.png',
     logoLight: '/assets/andiamo-academy-cropped-black.svg',
     logoDark: '/assets/andiamo-academy-cropped.svg',
     heroBackground: '/assets/background.webp',
@@ -350,13 +240,7 @@ export const ACADEMY_UI = {
     chooseCta: { en: 'Choose this formula', fr: 'Choisir cette formule' },
     compareTitle: { en: 'Compare formulas', fr: 'Comparer les formules' },
   },
-  program: {
-    title: { en: 'Program & Chapters', fr: 'Programme & Chapitres' },
-    chapterBadge: { en: 'Chapter', fr: 'Chapitre' },
-    scrollHint: {
-      en: 'Scroll to explore each chapter',
-      fr: 'Faites défiler pour explorer chaque chapitre',
-    },
+  trainer: {
     instructorTitle: { en: 'Your trainer', fr: 'Votre formateur' },
   },
   faq: {
@@ -382,6 +266,14 @@ export const ACADEMY_UI = {
     },
     paymentRib: { en: 'Bank transfer (RIB)', fr: 'Virement bancaire (RIB)' },
     paymentD17: { en: 'D17', fr: 'D17' },
+    paymentManualContactHint: {
+      en: 'Contact Andiamo Events at +216 28 070 128 to receive the RIB or D17 number.',
+      fr: 'Contactez Andiamo Events au +216 28 070 128 pour obtenir le RIB ou le numéro D17.',
+    },
+    paymentManualContactCallout: {
+      en: 'To complete your payment, please contact Andiamo Events at +216 28 070 128. Our team will provide you with the RIB or D17 details.',
+      fr: 'Pour finaliser votre paiement, veuillez contacter Andiamo Events au +216 28 070 128. Notre équipe vous communiquera le RIB ou le numéro D17.',
+    },
     paymentProof: { en: 'Payment proof', fr: 'Justificatif de paiement' },
     paymentProofHint: {
       en: 'JPG, PNG, WebP, GIF, or PDF only (max 5 MB)',

@@ -88,6 +88,8 @@ const AcademyRegistrationForm = ({ language, selectedFormula }: AcademyRegistrat
   } = useAcademyRegistration(language, selectedFormula);
 
   const showPaymentProof = requiresAcademyPaymentProof(formData.paymentMethod);
+  const showManualPaymentHint =
+    formData.paymentMethod === 'rib' || formData.paymentMethod === 'd17';
   const selectedFormulaData = ACADEMY_FORMULAS.find((f) => f.id === formData.formule);
 
   const inputClass = (hasError: boolean) =>
@@ -215,6 +217,7 @@ const AcademyRegistrationForm = ({ language, selectedFormula }: AcademyRegistrat
             <div className="grid gap-3 sm:grid-cols-1">
               {PAYMENT_OPTIONS.map((id) => {
                 const selected = formData.paymentMethod === id;
+                const isManualPayment = id === 'rib' || id === 'd17';
                 return (
                   <button
                     key={id}
@@ -234,6 +237,11 @@ const AcademyRegistrationForm = ({ language, selectedFormula }: AcademyRegistrat
                       <span className="block text-sm font-medium text-foreground leading-snug">
                         {paymentLabel(id, form, language)}
                       </span>
+                      {isManualPayment && (
+                        <span className="mt-1 block text-xs text-muted-foreground leading-relaxed">
+                          {pickLocalized(form.paymentManualContactHint, language)}
+                        </span>
+                      )}
                     </span>
                     <span
                       className={cn(
@@ -250,6 +258,11 @@ const AcademyRegistrationForm = ({ language, selectedFormula }: AcademyRegistrat
                 );
               })}
             </div>
+            {showManualPaymentHint && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground/90 leading-relaxed">
+                {pickLocalized(form.paymentManualContactCallout, language)}
+              </div>
+            )}
             {errors.paymentMethod && (
               <p className="text-sm text-destructive">{errors.paymentMethod}</p>
             )}

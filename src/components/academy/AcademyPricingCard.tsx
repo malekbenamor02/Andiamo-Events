@@ -20,11 +20,12 @@ const AcademyPricingCard = ({ formula, language, onSelect, layout = 'grid' }: Ac
   return (
     <article
       className={cn(
-        'relative flex flex-col rounded-2xl border bg-card/80 backdrop-blur-sm transition-all duration-300',
+        'relative flex h-full flex-col rounded-2xl border bg-card/80 backdrop-blur-sm transition-all duration-300',
         'p-8 md:p-10 lg:p-12',
         layout === 'carousel' && 'w-full',
+        isRecommended && layout === 'grid' && 'md:scale-105 md:-translate-y-4 origin-bottom',
         isRecommended
-          ? 'border-primary/40 shadow-[0_0_40px_hsl(var(--primary)/0.2)] md:scale-105 md:-translate-y-4 z-10'
+          ? 'border-primary/40 shadow-[0_0_40px_hsl(var(--primary)/0.2)] z-10'
           : 'border-border/50 hover:border-primary/30'
       )}
     >
@@ -56,7 +57,7 @@ const AcademyPricingCard = ({ formula, language, onSelect, layout = 'grid' }: Ac
       </ul>
 
       <Button
-        className={cn('w-full', isRecommended ? 'btn-gradient' : '')}
+        className={cn('mt-auto w-full', isRecommended ? 'btn-gradient' : '')}
         variant={isRecommended ? 'default' : 'outline'}
         onClick={() => onSelect(formula.id)}
       >

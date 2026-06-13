@@ -2,6 +2,7 @@ import AcademySection from '@/components/academy/AcademySection';
 import AcademyPricingCard from '@/components/academy/AcademyPricingCard';
 import AcademyPricingCarousel from '@/components/academy/AcademyPricingCarousel';
 import AcademyComparisonMatrix from '@/components/academy/AcademyComparisonMatrix';
+import AcademyTrainer from '@/components/academy/AcademyTrainer';
 import { ACADEMY_FORMULAS, ACADEMY_UI } from '@/data/academyContent';
 import type { AcademyFormulaId, AcademyLanguage } from '@/types/academy';
 
@@ -21,7 +22,7 @@ const AcademyPricing = ({ language, onSelectFormula }: AcademyPricingProps) => {
         onSelectFormula={onSelectFormula}
       />
 
-      <div className="hidden lg:grid lg:grid-cols-3 gap-8 lg:gap-12 items-end">
+      <div className="hidden lg:grid lg:grid-cols-3 lg:items-end gap-8 lg:gap-12 lg:pt-5">
         {ACADEMY_FORMULAS.map((formula) => (
           <AcademyPricingCard
             key={formula.id}
@@ -34,6 +35,7 @@ const AcademyPricing = ({ language, onSelectFormula }: AcademyPricingProps) => {
       </div>
 
       <AcademyComparisonMatrix language={language} />
+      <AcademyTrainer language={language} onCtaClick={() => onSelectFormula()} />
     </AcademySection>
   );
 };

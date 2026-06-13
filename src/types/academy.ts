@@ -20,20 +20,17 @@ export interface AcademyFormula {
   seatsRemainingMock: number;
 }
 
+export type AcademyComparisonCell =
+  | { kind: 'text'; value: LocalizedText }
+  | { kind: 'boolean'; value: boolean };
+
 export interface AcademyComparisonRow {
   label: LocalizedText;
-  essentielle: boolean;
-  pro: boolean;
-  premium: boolean;
-}
-
-export interface AcademyChapter {
-  number: number;
-  title: LocalizedText;
-  description: LocalizedText;
-  tags: LocalizedText[];
-  /** Optional cover; falls back to branded gradient panel */
-  image?: string;
+  essentielle: AcademyComparisonCell;
+  pro: AcademyComparisonCell;
+  premium: AcademyComparisonCell;
+  /** Muted styling for the whole row (e.g. seats count) */
+  muted?: boolean;
 }
 
 export interface AcademyFaqItem {

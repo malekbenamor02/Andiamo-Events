@@ -89,11 +89,11 @@ const AcademyPricingCarousel = ({
   return (
     <div className="lg:hidden -mx-4 px-4 pb-2 pt-1 relative">
       <div ref={emblaRef} className="overflow-hidden touch-pan-y">
-        <div className="flex -ml-4">
+        <div className="flex -ml-4 items-stretch">
           {formulas.map((formula) => (
             <div
               key={formula.id}
-              className="min-w-0 shrink-0 grow-0 basis-[min(100%,20rem)] sm:basis-[22rem] pl-4 pt-5"
+              className="flex min-w-0 shrink-0 grow-0 basis-[min(100%,20rem)] sm:basis-[22rem] pl-4 pt-5"
             >
               <AcademyPricingCard
                 formula={formula}

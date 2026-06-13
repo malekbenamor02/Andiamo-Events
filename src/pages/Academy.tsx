@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import AcademyPageDisabled from '@/components/academy/AcademyPageDisabled';
 import AcademyHero from '@/components/academy/AcademyHero';
 import AcademyPricing from '@/components/academy/AcademyPricing';
-import AcademyProgram from '@/components/academy/AcademyProgram';
 import AcademyFaq from '@/components/academy/AcademyFaq';
 import { PageMeta } from '@/components/PageMeta';
 import { JsonLdBreadcrumb, JsonLdCourse, JsonLdFAQ, JsonLdWebPage } from '@/components/JsonLd';
@@ -96,7 +95,6 @@ const Academy = ({ language }: AcademyProps) => {
             <AcademyHero language={language} onCtaClick={() => goToRegistration()} />
           </div>
           <AcademyPricing language={language} onSelectFormula={goToRegistration} />
-          <AcademyProgram language={language} onCtaClick={() => goToRegistration()} />
           <AcademyFaq language={language} />
         </>
       )}
