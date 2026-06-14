@@ -611,7 +611,10 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       const db = getServiceDb();
       if (!db) return academyServiceError(res, 503, 'Database not configured');
       await cancelExpiredAcademyPendingRegistrations(db);
-      const { id } = req.params;
+      const id = String(req.params.id || '').trim();
+      if (!/^[0-9a-f-]{36}$/i.test(id)) {
+        return res.status(400).json({ error: 'invalid_registration_id' });
+      }
       const { data, error } = await db
         .from('academy_registrations')
         .select('id, registration_number, status, payment_method, total_amount_dt, formule')

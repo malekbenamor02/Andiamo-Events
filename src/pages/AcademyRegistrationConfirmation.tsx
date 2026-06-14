@@ -4,44 +4,72 @@ import { CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PageMeta } from '@/components/PageMeta';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import NotFound from '@/pages/NotFound';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
-import { ACADEMY_REGISTER_PATH } from '@/lib/academy/academyUtils';
+import { ACADEMY_REGISTER_PATH, isAcademyRegistrationId } from '@/lib/academy/academyUtils';
 import type { AcademyLanguage } from '@/types/academy';
 
 interface AcademyRegistrationConfirmationProps {
   language: AcademyLanguage;
 }
 
+type ConfirmationState = 'loading' | 'ready' | 'missing';
+
 export default function AcademyRegistrationConfirmation({
   language,
 }: AcademyRegistrationConfirmationProps) {
   const [searchParams] = useSearchParams();
-  const registrationId = searchParams.get('registrationId') || '';
-  const paid = searchParams.get('paid') === '1';
-  const [loading, setLoading] = useState(!!registrationId);
+  const rawRegistrationId = searchParams.get('registrationId');
+  const registrationId = rawRegistrationId?.trim() ?? '';
+  const [pageState, setPageState] = useState<ConfirmationState>(() =>
+    isAcademyRegistrationId(registrationId) ? 'loading' : 'missing'
+  );
   const [status, setStatus] = useState<string | null>(null);
   const [registrationNumber, setRegistrationNumber] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!registrationId) {
-      setLoading(false);
+    if (!isAcademyRegistrationId(registrationId)) {
+      setPageState('missing');
       return;
     }
+
+    let cancelled = false;
+    setPageState('loading');
+
     fetch(`${getApiBaseUrl()}${API_ROUTES.ACADEMY_REGISTRATION_STATUS(registrationId)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setStatus(data.status || null);
-        setRegistrationNumber(data.registrationNumber || null);
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (res.status === 404 || !res.ok) {
+          setPageState('missing');
+          return;
+        }
+
+        setStatus(typeof data.status === 'string' ? data.status : null);
+        setRegistrationNumber(
+          typeof data.registrationNumber === 'string' ? data.registrationNumber : null
+        );
+        setPageState('ready');
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!cancelled) setPageState('missing');
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [registrationId]);
 
   const isEn = language === 'en';
-  const isOnlineSuccess = paid || status === 'paid_online' || status === 'approved';
+  const isOnlineSuccess = status === 'paid_online' || status === 'approved';
 
-  if (loading) {
+  if (pageState === 'loading') {
     return <LoadingScreen />;
+  }
+
+  if (pageState === 'missing') {
+    return <NotFound />;
   }
 
   return (

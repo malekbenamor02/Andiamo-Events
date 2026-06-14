@@ -35,3 +35,9 @@ export function requiresAcademyPaymentProof(
 ): method is 'rib' | 'd17' {
   return method === 'rib' || method === 'd17';
 }
+
+const ACADEMY_REGISTRATION_ID_RE = /^[0-9a-f-]{36}$/i;
+
+export function isAcademyRegistrationId(value: string | null | undefined): value is string {
+  return typeof value === 'string' && ACADEMY_REGISTRATION_ID_RE.test(value.trim());
+}
