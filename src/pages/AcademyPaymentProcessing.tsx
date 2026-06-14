@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,9 +9,12 @@ import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
 import { mapPublicError, mapThrownError } from '@/lib/userErrors';
 import {
   consumeAcademyPurchaseSnapshot,
+  isValidAcademyMetaPixelPayload,
   isValidAcademyPurchasePayload,
+  trackAcademyPurchaseFromBackend,
   trackConfirmedPurchase,
 } from '@/lib/meta';
+import type { AcademyMetaTrackingResponse } from '@/lib/meta';
 import type { AcademyLanguage } from '@/types/academy';
 
 interface AcademyPaymentProcessingProps {
@@ -27,6 +30,7 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
 
   const [state, setState] = useState<'loading' | 'success' | 'failed' | 'expired' | 'redirecting'>('loading');
   const [error, setError] = useState<string | null>(null);
+  const confirmStartedRef = useRef(false);
 
   const t =
     language === 'en'
@@ -102,6 +106,8 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
     };
 
     const confirm = async () => {
+      if (confirmStartedRef.current) return;
+      confirmStartedRef.current = true;
       try {
         const res = await fetch(`${base}${API_ROUTES.ACADEMY_CLICTOPAY_CONFIRM}`, {
           method: 'POST',
@@ -110,9 +116,15 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
         });
         const data = await res.json().catch(() => ({}));
         if (data.success || data.alreadyPaid) {
-          const snapshot = consumeAcademyPurchaseSnapshot(registrationId);
-          if (snapshot && isValidAcademyPurchasePayload(snapshot)) {
-            trackConfirmedPurchase(snapshot);
+          const metaTracking = data.metaTracking as AcademyMetaTrackingResponse | undefined;
+          if (metaTracking?.pixel && isValidAcademyMetaPixelPayload(metaTracking.pixel)) {
+            trackAcademyPurchaseFromBackend(metaTracking.pixel);
+          } else {
+            // Transitional fallback for in-flight card sessions created before backend tracking.
+            const snapshot = consumeAcademyPurchaseSnapshot(registrationId);
+            if (snapshot && isValidAcademyPurchasePayload(snapshot)) {
+              trackConfirmedPurchase(snapshot);
+            }
           }
           setState('success');
           navigate(

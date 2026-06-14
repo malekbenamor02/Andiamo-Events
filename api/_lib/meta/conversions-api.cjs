@@ -6,11 +6,10 @@ const {
   buildCustomerFromOrder,
 } = require('./purchase-payload.cjs');
 const {
-  buildAcademyPurchaseCustomData,
-  buildCustomerFromRegistration,
-  isAcademyRegistrationTrackable,
-} = require('./academy-purchase-payload.cjs');
-const { isMissingMetaColumnError, logMissingMetaColumnsWarning } = require('../academy-meta-db.cjs');
+  buildCanonicalAcademyPurchaseEvent,
+  buildCapiServerEventFromCanonical,
+  processConfirmedAcademyPurchaseTracking,
+} = require('./academy-purchase-tracking.cjs');
 
 const GRAPH_API_VERSION = 'v21.0';
 
@@ -130,75 +129,8 @@ function buildCapiPurchaseEvent(params) {
  * }} params
  */
 function buildCapiAcademyPurchaseEvent(params) {
-  const { registration, attribution, req, promoCode } = params;
-  if (!isAcademyRegistrationTrackable(registration)) {
-    return null;
-  }
-
-  const attr = parseMetaAttribution(attribution ?? registration.meta_attribution);
-  const customData = buildAcademyPurchaseCustomData(registration, { promoCode });
-  if (!customData) return null;
-
-  const userData = buildHashedUserData(buildCustomerFromRegistration(registration));
-
-  if (attr.fbp) userData.fbp = String(attr.fbp);
-  if (attr.fbc) userData.fbc = String(attr.fbc);
-
-  const clientIp =
-    attr.clientIp != null
-      ? String(attr.clientIp)
-      : attr.client_ip != null
-        ? String(attr.client_ip)
-        : registration.ip_address != null
-          ? String(registration.ip_address)
-          : undefined;
-  if (clientIp && clientIp !== 'unknown') {
-    userData.client_ip_address = clientIp;
-  }
-
-  const clientUserAgent =
-    attr.clientUserAgent != null
-      ? String(attr.clientUserAgent)
-      : attr.client_user_agent != null
-        ? String(attr.client_user_agent)
-        : registration.user_agent != null
-          ? String(registration.user_agent)
-          : req?.headers?.['user-agent']
-            ? String(req.headers['user-agent'])
-            : undefined;
-  if (clientUserAgent) {
-    userData.client_user_agent = clientUserAgent;
-  }
-
-  const eventId =
-    attr.eventId != null
-      ? String(attr.eventId)
-      : attr.event_id != null
-        ? String(attr.event_id)
-        : `academy_purchase_${registration.id}`;
-
-  const eventSourceUrl =
-    attr.eventSourceUrl != null
-      ? String(attr.eventSourceUrl)
-      : attr.event_source_url != null
-        ? String(attr.event_source_url)
-        : undefined;
-
-  /** @type {Record<string, unknown>} */
-  const serverEvent = {
-    event_name: 'Purchase',
-    event_time: Math.floor(Date.now() / 1000),
-    event_id: eventId,
-    action_source: 'website',
-    user_data: userData,
-    custom_data: customData,
-  };
-
-  if (eventSourceUrl) {
-    serverEvent.event_source_url = eventSourceUrl;
-  }
-
-  return serverEvent;
+  const canonical = buildCanonicalAcademyPurchaseEvent(params);
+  return buildCapiServerEventFromCanonical(canonical);
 }
 
 /**
@@ -225,53 +157,21 @@ async function sendConfirmedAcademyPurchase(params) {
  * @param {{ req?: import('http').IncomingMessage|null }} [options]
  */
 async function sendConfirmedAcademyPurchaseForRegistrationId(dbClient, registrationId, options = {}) {
-  if (!canSendCapiEvents()) {
-    return { ok: false, skipped: true };
+  const result = await processConfirmedAcademyPurchaseTracking(dbClient, registrationId, options);
+  if (!result.trackable) {
+    return { ok: false, skipped: true, error: 'invalid_academy_registration' };
   }
-
-  const { data: registration, error: regError } = await dbClient
-    .from('academy_registrations')
-    .select('*, academy_promo_codes ( code )')
-    .eq('id', registrationId)
-    .single();
-
-  if (regError || !registration) {
-    console.warn('[Meta CAPI] Academy registration not found for Purchase:', registrationId);
-    return { ok: false, error: 'registration_not_found' };
-  }
-
-  if (registration.meta_purchase_sent_at) {
+  if (result.capi?.skipped && result.capi?.error === 'already_sent') {
     return { ok: true, skipped: true, reason: 'already_sent' };
   }
-
-  const promoCode =
-    registration.academy_promo_codes?.code != null
-      ? String(registration.academy_promo_codes.code)
-      : null;
-
-  const result = await sendConfirmedAcademyPurchase({
-    registration,
-    promoCode,
-    req: options.req ?? null,
-  });
-
-  if (result.ok) {
-    const { error: updateError } = await dbClient
-      .from('academy_registrations')
-      .update({ meta_purchase_sent_at: new Date().toISOString() })
-      .eq('id', registrationId)
-      .is('meta_purchase_sent_at', null);
-
-    if (updateError) {
-      if (isMissingMetaColumnError(updateError)) {
-        logMissingMetaColumnsWarning('meta_purchase_sent_at update');
-      } else {
-        console.warn('[Meta CAPI] Failed to set academy meta_purchase_sent_at:', updateError.message);
-      }
-    }
+  if (!result.capi?.attempted) {
+    return { ok: false, skipped: true };
   }
-
-  return result;
+  return {
+    ok: Boolean(result.capi?.ok),
+    skipped: Boolean(result.capi?.skipped),
+    ...(result.capi?.error ? { error: result.capi.error } : {}),
+  };
 }
 
 /**

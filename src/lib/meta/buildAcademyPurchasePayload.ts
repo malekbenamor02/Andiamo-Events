@@ -6,6 +6,7 @@ import type { MetaAttributionContext, MetaCustomerData, MetaPurchasePayload } fr
 import { META_ACADEMY_CONTENT_CATEGORY } from './types';
 import type { AcademyFormulaId, AcademyPaymentMethod } from '@/types/academy';
 
+/** @deprecated Transitional fallback only — main path uses backend metaTracking.pixel */
 export function buildAcademyPurchasePayload(input: {
   eventId: string;
   registrationId: string;

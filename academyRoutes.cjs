@@ -41,7 +41,7 @@ const { cancelExpiredAcademyPendingRegistrations } = require('./api/_lib/academy
 const { requireCronSecret } = require('./api/_lib/cron-auth.cjs');
 const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
 const { getEmailTransporter } = require('./api/_lib/get-email-transporter.cjs');
-const { scheduleConfirmedAcademyPurchaseCapi } = require('./api/_lib/meta/conversions-api.cjs');
+const { processConfirmedAcademyPurchaseTracking } = require('./api/_lib/meta/academy-purchase-tracking.cjs');
 const {
   insertAcademyRegistration,
   updateAcademyRegistration,
@@ -218,6 +218,18 @@ function academyRegistrationResponse(reg, extra = {}) {
     redirectToPayment: reg.payment_method === 'card',
     ...extra,
   };
+}
+
+async function runAcademyPurchaseTracking(db, registrationId, req) {
+  try {
+    return await processConfirmedAcademyPurchaseTracking(db, registrationId, { req });
+  } catch (err) {
+    console.warn(
+      '[Academy Meta Tracking] processing failed:',
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
 }
 
 async function respondToExistingAcademyRegistration(res, db, existing, vData, lang, req) {
@@ -575,6 +587,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         ip,
       });
 
+      let metaTracking = null;
       if (requiresPaymentProof(vData.paymentMethod)) {
         const sent = await sendAcademyEmail(inserted, 'manual_received');
         if (sent) {
@@ -583,10 +596,10 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
             .update({ last_email_type: 'manual_received', email_sent_at: new Date().toISOString() })
             .eq('id', inserted.id);
         }
-        scheduleConfirmedAcademyPurchaseCapi(db, inserted.id, { req });
+        metaTracking = await runAcademyPurchaseTracking(db, inserted.id, req);
       }
 
-      res.status(201).json(academyRegistrationResponse(inserted));
+      res.status(201).json(academyRegistrationResponse(inserted, { metaTracking }));
     } catch (e) {
       console.error('POST /api/academy/register', e);
       return academyServiceError(res, 500, e);
@@ -755,16 +768,17 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
       }
 
       if (activeReg.status === 'approved') {
-        scheduleConfirmedAcademyPurchaseCapi(db, registrationId, { req });
-        return res.json({ success: true, alreadyPaid: true, status: 'approved' });
+        const metaTracking = await runAcademyPurchaseTracking(db, registrationId, req);
+        return res.json({ success: true, alreadyPaid: true, status: 'approved', metaTracking });
       }
       if (activeReg.status === 'paid_online') {
-        scheduleConfirmedAcademyPurchaseCapi(db, registrationId, { req });
+        const metaTracking = await runAcademyPurchaseTracking(db, registrationId, req);
         const approveResult = await tryAutoApprove(db, activeReg, null, null, { skipApprovedEmail: true });
         return res.json({
           success: true,
           status: approveResult.approved ? 'approved' : 'paid_online',
           approved: approveResult.approved,
+          metaTracking,
         });
       }
       if (activeReg.status !== 'pending_online' && activeReg.status !== 'pending_payment') {
@@ -826,7 +840,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
           .eq('id', registrationId);
       }
 
-      scheduleConfirmedAcademyPurchaseCapi(db, registrationId, { req });
+      const metaTracking = await runAcademyPurchaseTracking(db, registrationId, req);
 
       res.json({
         success: true,
@@ -834,6 +848,7 @@ function registerAcademyRoutes(app, { requireAdminAuth }) {
         approved: approveResult.approved,
         capReached: approveResult.reason === 'cap_reached',
         registrationNumber: paidReg.registration_number,
+        metaTracking,
       });
     } catch (e) {
       console.error('academy clictopay confirm', e);

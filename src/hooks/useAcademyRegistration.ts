@@ -18,10 +18,12 @@ import {
   buildAcademyPurchasePayload,
   createMetaEventId,
   getMetaAttributionContext,
+  isValidAcademyMetaPixelPayload,
   isValidAcademyPurchasePayload,
-  saveAcademyPurchaseSnapshot,
+  trackAcademyPurchaseFromBackend,
   trackConfirmedPurchase,
 } from '@/lib/meta';
+import type { AcademyMetaTrackingResponse } from '@/lib/meta';
 
 const HIGHLIGHT_MS = 2000;
 const PROMO_VALIDATE_DEBOUNCE_MS = 450;
@@ -281,7 +283,6 @@ export function useAcademyRegistration(
 
       setIsSubmitting(true);
       try {
-        const metaEventId = createMetaEventId('academy_purchase');
         const metaAttribution = getMetaAttributionContext();
 
         const recaptchaToken = await executeRecaptcha();
@@ -307,7 +308,6 @@ export function useAcademyRegistration(
         if (promo) fd.append('promoCode', promo);
         if (recaptchaToken) fd.append('recaptchaToken', recaptchaToken);
         if (formData.paymentProof) fd.append('paymentProof', formData.paymentProof);
-        fd.append('metaEventId', metaEventId);
         if (metaAttribution.fbp) fd.append('metaFbp', metaAttribution.fbp);
         if (metaAttribution.fbc) fd.append('metaFbc', metaAttribution.fbc);
         if (metaAttribution.eventSourceUrl) {
@@ -350,34 +350,36 @@ export function useAcademyRegistration(
         }
 
         const registrationId = data.registrationId as string;
-        const totalAmountDt = Number(data.totalAmountDt) || displayTotal;
-        const formule = formData.formule as AcademyFormulaId;
-        const paymentMethod = formData.paymentMethod as AcademyPaymentMethod;
-        const promoCodeForMeta = promoPreview.status === 'valid' ? promoPreview.code : undefined;
-
-        const metaPayload = buildAcademyPurchasePayload({
-          eventId: metaEventId,
-          registrationId,
-          formule,
-          paymentMethod,
-          customer: {
-            fullName: formData.fullName,
-            email: formData.email,
-            phone: formData.phone,
-          },
-          attribution: metaAttribution,
-          totalAmountDt,
-          promoCode: promoCodeForMeta,
-        });
+        const metaTracking = data.metaTracking as AcademyMetaTrackingResponse | undefined;
 
         if (data.redirectToPayment && registrationId) {
-          if (isValidAcademyPurchasePayload(metaPayload)) {
-            saveAcademyPurchaseSnapshot(registrationId, metaPayload);
-          }
           navigate(`/academy/payment-processing?registrationId=${registrationId}&init=1`);
         } else if (registrationId) {
-          if (isValidAcademyPurchasePayload(metaPayload)) {
-            trackConfirmedPurchase(metaPayload);
+          if (metaTracking?.pixel && isValidAcademyMetaPixelPayload(metaTracking.pixel)) {
+            trackAcademyPurchaseFromBackend(metaTracking.pixel);
+          } else {
+            // Transitional fallback when backend metaTracking is missing or invalid.
+            const totalAmountDt = Number(data.totalAmountDt) || displayTotal;
+            const formule = formData.formule as AcademyFormulaId;
+            const paymentMethod = formData.paymentMethod as AcademyPaymentMethod;
+            const promoCodeForMeta = promoPreview.status === 'valid' ? promoPreview.code : undefined;
+            const fallbackPayload = buildAcademyPurchasePayload({
+              eventId: createMetaEventId('academy_purchase'),
+              registrationId,
+              formule,
+              paymentMethod,
+              customer: {
+                fullName: formData.fullName,
+                email: formData.email,
+                phone: formData.phone,
+              },
+              attribution: metaAttribution,
+              totalAmountDt,
+              promoCode: promoCodeForMeta,
+            });
+            if (isValidAcademyPurchasePayload(fallbackPayload)) {
+              trackConfirmedPurchase(fallbackPayload);
+            }
           }
           navigate(`/academy/register/confirmation?registrationId=${registrationId}`);
         }

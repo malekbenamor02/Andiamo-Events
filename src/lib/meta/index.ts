@@ -4,6 +4,8 @@ export type {
   MetaPurchaseLineItem,
   MetaPurchasePayload,
   MetaPurchaseSnapshot,
+  AcademyMetaPixelPayload,
+  AcademyMetaTrackingResponse,
 } from './types';
 export {
   META_TICKET_CONTENT_CATEGORY,
@@ -33,4 +35,6 @@ export {
   trackMetaEvent,
   trackMetaLead,
   trackConfirmedPurchase,
+  trackAcademyPurchaseFromBackend,
+  isValidAcademyMetaPixelPayload,
 } from './pixel';

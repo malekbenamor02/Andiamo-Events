@@ -41,6 +41,7 @@ export function saveAcademyPurchaseSnapshot(
 export function consumeAcademyPurchaseSnapshot(
   registrationId: string
 ): MetaPurchaseSnapshot | null {
+  // Transitional fallback only — main card path uses backend metaTracking.pixel.
   if (typeof sessionStorage === 'undefined') return null;
   const key = `${ACADEMY_STORAGE_PREFIX}${registrationId}`;
   try {
