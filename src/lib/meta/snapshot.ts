@@ -3,6 +3,7 @@ import type { MetaPurchaseSnapshot } from './types';
 const STORAGE_PREFIX = 'andiamo_meta_purchase:';
 const ACADEMY_STORAGE_PREFIX = 'andiamo_meta_academy_purchase:';
 
+/** Transitional fallback only — main ticket path uses backend metaTracking.pixel. */
 export function savePurchaseSnapshot(orderId: string, snapshot: MetaPurchaseSnapshot): void {
   if (typeof sessionStorage === 'undefined') return;
   try {
@@ -12,6 +13,7 @@ export function savePurchaseSnapshot(orderId: string, snapshot: MetaPurchaseSnap
   }
 }
 
+/** Transitional fallback only — main ticket path uses backend metaTracking.pixel. */
 export function consumePurchaseSnapshot(orderId: string): MetaPurchaseSnapshot | null {
   if (typeof sessionStorage === 'undefined') return null;
   const key = `${STORAGE_PREFIX}${orderId}`;

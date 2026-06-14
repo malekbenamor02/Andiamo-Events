@@ -10,6 +10,7 @@ const {
   buildCapiServerEventFromCanonical,
   processConfirmedAcademyPurchaseTracking,
 } = require('./academy-purchase-tracking.cjs');
+const { processConfirmedTicketPurchaseTracking } = require('./ticket-purchase-tracking.cjs');
 
 const GRAPH_API_VERSION = 'v21.0';
 
@@ -58,6 +59,10 @@ function parseMetaAttribution(raw) {
  *   req?: import('http').IncomingMessage|null;
  * }} params
  */
+/**
+ * @deprecated Ticket purchases use ticket-purchase-tracking orchestrator.
+ * Legacy helper retained for tests; event_id requires meta_attribution.eventId.
+ */
 function buildCapiPurchaseEvent(params) {
   const { order, orderPasses, event, attribution, req } = params;
   const attr = parseMetaAttribution(attribution ?? order.meta_attribution);
@@ -91,10 +96,13 @@ function buildCapiPurchaseEvent(params) {
 
   const eventId =
     attr.eventId != null
-      ? String(attr.eventId)
+      ? String(attr.eventId).slice(0, 128)
       : attr.event_id != null
-        ? String(attr.event_id)
-        : `purchase_${order.id}`;
+        ? String(attr.event_id).slice(0, 128)
+        : null;
+  if (!eventId) {
+    return null;
+  }
 
   const eventSourceUrl =
     attr.eventSourceUrl != null
@@ -256,66 +264,35 @@ async function sendConfirmedPurchase(params) {
     return { ok: false, skipped: true };
   }
   const serverEvent = buildCapiPurchaseEvent(params);
+  if (!serverEvent) {
+    return { ok: false, skipped: true, error: 'missing_event_id' };
+  }
   return postCapiEvent(serverEvent);
 }
 
 /**
  * Load order relations and send CAPI Purchase once (idempotent via meta_purchase_sent_at).
+ * Delegates to ticket purchase tracking orchestrator.
  * @param {import('@supabase/supabase-js').SupabaseClient} dbClient
  * @param {string} orderId
  * @param {{ req?: import('http').IncomingMessage|null }} [options]
  */
 async function sendConfirmedPurchaseForOrderId(dbClient, orderId, options = {}) {
-  if (!canSendCapiEvents()) {
-    return { ok: false, skipped: true };
+  const result = await processConfirmedTicketPurchaseTracking(dbClient, orderId, options);
+  if (!result.trackable) {
+    return { ok: false, skipped: true, error: 'not_trackable' };
   }
-
-  const { data: order, error: orderError } = await dbClient
-    .from('orders')
-    .select('*, events ( id, name )')
-    .eq('id', orderId)
-    .single();
-
-  if (orderError || !order) {
-    console.warn('[Meta CAPI] Order not found for Purchase:', orderId);
-    return { ok: false, error: 'order_not_found' };
-  }
-
-  if (order.meta_purchase_sent_at) {
+  if (result.capi?.skipped && result.capi?.error === 'already_sent') {
     return { ok: true, skipped: true, reason: 'already_sent' };
   }
-
-  const { data: orderPasses, error: passesError } = await dbClient
-    .from('order_passes')
-    .select('*')
-    .eq('order_id', orderId);
-
-  if (passesError) {
-    console.warn('[Meta CAPI] Failed to load order_passes:', passesError.message);
-    return { ok: false, error: passesError.message };
+  if (!result.capi?.attempted) {
+    return { ok: false, skipped: true };
   }
-
-  const event = order.events || null;
-  const result = await sendConfirmedPurchase({
-    order,
-    orderPasses: orderPasses || [],
-    event,
-    req: options.req ?? null,
-  });
-
-  if (result.ok) {
-    const { error: updateError } = await dbClient
-      .from('orders')
-      .update({ meta_purchase_sent_at: new Date().toISOString() })
-      .eq('id', orderId)
-      .is('meta_purchase_sent_at', null);
-
-    if (updateError) {
-      console.warn('[Meta CAPI] Failed to set meta_purchase_sent_at:', updateError.message);
-    }
-  }
-
-  return result;
+  return {
+    ok: Boolean(result.capi?.ok),
+    skipped: Boolean(result.capi?.skipped),
+    ...(result.capi?.error ? { error: result.capi.error } : {}),
+  };
 }
 
 /**
@@ -325,7 +302,7 @@ async function sendConfirmedPurchaseForOrderId(dbClient, orderId, options = {}) 
  * @param {{ req?: import('http').IncomingMessage|null }} [options]
  */
 function scheduleConfirmedPurchaseCapi(dbClient, orderId, options = {}) {
-  sendConfirmedPurchaseForOrderId(dbClient, orderId, options).catch((err) => {
+  processConfirmedTicketPurchaseTracking(dbClient, orderId, options).catch((err) => {
     console.warn(
       '[Meta CAPI] scheduleConfirmedPurchaseCapi failed:',
       err instanceof Error ? err.message : err

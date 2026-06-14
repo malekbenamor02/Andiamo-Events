@@ -35,3 +35,19 @@ test('resolvePurchaseValue uses fee-inclusive total for online orders', () => {
   );
   assert.strictEqual(value, 105);
 });
+
+test('buildPurchaseCustomData includes promo_code when provided', () => {
+  const data = buildPurchaseCustomData({
+    order: {
+      id: 'order-1',
+      payment_method: 'online',
+      total_with_fees: 90,
+      total_price: 90,
+    },
+    orderPasses: [{ pass_id: 'pass-1', quantity: 1, price: 90 }],
+    event: { name: 'Summer Fest' },
+    promoCode: 'SAVE10',
+  });
+  assert.strictEqual(data.promo_code, 'SAVE10');
+  assert.strictEqual(data.value, 90);
+});

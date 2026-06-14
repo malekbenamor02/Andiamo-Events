@@ -3,7 +3,7 @@
  * Handles ClicToPay redirect: calls confirm API and shows success/failure
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,13 @@ import Loader from '@/components/ui/Loader';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { getApiBaseUrl } from '@/lib/api-routes';
 import { mapPublicError, mapThrownError } from '@/lib/userErrors';
-import { consumePurchaseSnapshot, trackConfirmedPurchase } from '@/lib/meta';
+import {
+  consumePurchaseSnapshot,
+  isValidTicketMetaPixelPayload,
+  trackConfirmedPurchase,
+  trackPurchaseFromBackend,
+} from '@/lib/meta';
+import type { TicketMetaTrackingResponse } from '@/lib/meta';
 
 interface PaymentProcessingProps {
   language?: 'en' | 'fr';
@@ -36,8 +42,10 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
     emailSent?: boolean;
     smsSent?: boolean;
     alreadyPaid?: boolean;
+    metaTracking?: TicketMetaTrackingResponse;
   } | null>(null);
   const [purchaseTracked, setPurchaseTracked] = useState(false);
+  const confirmStartedRef = useRef(false);
 
   const t = language === 'en' ? {
     title: 'Processing payment',
@@ -99,6 +107,9 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
     };
 
     const confirm = async () => {
+      if (confirmStartedRef.current) return;
+      confirmStartedRef.current = true;
+
       const base = getApiBaseUrl();
       const url = `${base}/api/clictopay-confirm-payment`;
       const body = JSON.stringify({ orderId });
@@ -160,9 +171,15 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
     if (state !== 'success' || purchaseTracked || !orderId) return;
     if (!confirmResult?.alreadyPaid && !(confirmResult?.success && confirmResult?.status === 'PAID')) return;
 
-    const snapshot = consumePurchaseSnapshot(orderId);
-    if (snapshot) {
-      trackConfirmedPurchase(snapshot);
+    const metaTracking = confirmResult.metaTracking;
+    if (metaTracking?.pixel && isValidTicketMetaPixelPayload(metaTracking.pixel)) {
+      trackPurchaseFromBackend(metaTracking.pixel);
+    } else {
+      // Transitional fallback for in-flight sessions created before backend tracking.
+      const snapshot = consumePurchaseSnapshot(orderId);
+      if (snapshot) {
+        trackConfirmedPurchase(snapshot);
+      }
     }
     setPurchaseTracked(true);
   }, [state, purchaseTracked, confirmResult, orderId]);

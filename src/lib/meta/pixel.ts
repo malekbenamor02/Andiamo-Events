@@ -4,7 +4,12 @@
  */
 
 import { buildPixelAdvancedMatching } from './userData';
-import { META_TICKET_CONTENT_CATEGORY, type AcademyMetaPixelPayload, type MetaPurchasePayload } from './types';
+import {
+  META_TICKET_CONTENT_CATEGORY,
+  type AcademyMetaPixelPayload,
+  type MetaPurchasePayload,
+  type TicketMetaPixelPayload,
+} from './types';
 
 const META_PIXEL_ID =
   (import.meta.env.VITE_META_PIXEL_ID as string | undefined)?.trim() || '';
@@ -21,6 +26,9 @@ let isInitialized = false;
 let isDisabled = false;
 
 const FB_EVENTS_URL = 'https://connect.facebook.net/en_US/fbevents.js';
+
+const ACADEMY_PIXEL_FIRED_PREFIX = 'andiamo_meta_academy_pixel_fired:';
+const TICKET_PIXEL_FIRED_PREFIX = 'andiamo_meta_ticket_pixel_fired:';
 
 function ensureFbqStub(): void {
   if (window.fbq) return;
@@ -117,8 +125,89 @@ export function trackMetaLead(
   }
 }
 
+function isValidBackendPixelPayload(
+  payload: TicketMetaPixelPayload | AcademyMetaPixelPayload | null | undefined
+): payload is TicketMetaPixelPayload | AcademyMetaPixelPayload {
+  if (!payload) return false;
+  return Boolean(
+    payload.eventId &&
+      payload.orderId &&
+      payload.value > 0 &&
+      payload.contentIds?.length > 0 &&
+      payload.paymentMethod &&
+      payload.contentCategory &&
+      payload.advancedMatching &&
+      typeof payload.advancedMatching === 'object'
+  );
+}
+
+export function isValidTicketMetaPixelPayload(
+  payload: TicketMetaPixelPayload | null | undefined
+): payload is TicketMetaPixelPayload {
+  return isValidBackendPixelPayload(payload);
+}
+
+export function isValidAcademyMetaPixelPayload(
+  payload: AcademyMetaPixelPayload | null | undefined
+): payload is AcademyMetaPixelPayload {
+  return isValidBackendPixelPayload(payload);
+}
+
+function hasPixelFired(prefix: string, orderId: string): boolean {
+  if (typeof sessionStorage === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(`${prefix}${orderId}`) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markPixelFired(prefix: string, orderId: string): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(`${prefix}${orderId}`, '1');
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function firePurchaseFromBackendPayload(
+  payload: TicketMetaPixelPayload | AcademyMetaPixelPayload,
+  firedPrefix: string
+): void {
+  if (!canTrack()) return;
+  if (!isValidBackendPixelPayload(payload)) return;
+  if (hasPixelFired(firedPrefix, payload.orderId)) return;
+
+  window.fbq!('init', META_PIXEL_ID, payload.advancedMatching);
+
+  const customData: Record<string, unknown> = {
+    value: payload.value,
+    currency: payload.currency,
+    content_category: payload.contentCategory,
+    content_ids: payload.contentIds,
+    content_type: 'product',
+    num_items: payload.numItems,
+    order_id: payload.orderId,
+    payment_method: payload.paymentMethod,
+  };
+  if (payload.contentName) customData.content_name = payload.contentName;
+  if (payload.contents?.length) customData.contents = payload.contents;
+  if (payload.promoCode) customData.promo_code = payload.promoCode;
+
+  window.fbq!('track', 'Purchase', customData, { eventID: payload.eventId });
+  markPixelFired(firedPrefix, payload.orderId);
+}
+
 /**
- * Fire standard Purchase when a sale is confirmed (browser Pixel + CAPI dedup via eventId).
+ * Fire ticket/pass Purchase from backend-provided tracking payload (source of truth).
+ */
+export function trackPurchaseFromBackend(payload: TicketMetaPixelPayload): void {
+  firePurchaseFromBackendPayload(payload, TICKET_PIXEL_FIRED_PREFIX);
+}
+
+/**
+ * Transitional fallback — prefer trackPurchaseFromBackend from API metaTracking.pixel.
  */
 export function trackConfirmedPurchase(payload: MetaPurchasePayload): void {
   if (!canTrack()) return;
@@ -143,66 +232,9 @@ export function trackConfirmedPurchase(payload: MetaPurchasePayload): void {
   window.fbq!('track', 'Purchase', customData, { eventID: payload.eventId });
 }
 
-export function isValidAcademyMetaPixelPayload(
-  payload: AcademyMetaPixelPayload | null | undefined
-): payload is AcademyMetaPixelPayload {
-  if (!payload) return false;
-  return Boolean(
-    payload.eventId &&
-      payload.orderId &&
-      payload.value > 0 &&
-      payload.contentIds?.length > 0 &&
-      payload.paymentMethod &&
-      payload.contentCategory &&
-      payload.advancedMatching &&
-      typeof payload.advancedMatching === 'object'
-  );
-}
-
-const ACADEMY_PIXEL_FIRED_PREFIX = 'andiamo_meta_academy_pixel_fired:';
-
-function hasAcademyPixelFired(orderId: string): boolean {
-  if (typeof sessionStorage === 'undefined') return false;
-  try {
-    return sessionStorage.getItem(`${ACADEMY_PIXEL_FIRED_PREFIX}${orderId}`) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function markAcademyPixelFired(orderId: string): void {
-  if (typeof sessionStorage === 'undefined') return;
-  try {
-    sessionStorage.setItem(`${ACADEMY_PIXEL_FIRED_PREFIX}${orderId}`, '1');
-  } catch {
-    // ignore quota / private mode
-  }
-}
-
 /**
  * Fire Academy Purchase from backend-provided tracking payload (source of truth).
  */
 export function trackAcademyPurchaseFromBackend(payload: AcademyMetaPixelPayload): void {
-  if (!canTrack()) return;
-  if (!isValidAcademyMetaPixelPayload(payload)) return;
-  if (hasAcademyPixelFired(payload.orderId)) return;
-
-  window.fbq!('init', META_PIXEL_ID, payload.advancedMatching);
-
-  const customData: Record<string, unknown> = {
-    value: payload.value,
-    currency: payload.currency,
-    content_category: payload.contentCategory,
-    content_ids: payload.contentIds,
-    content_type: 'product',
-    num_items: payload.numItems,
-    order_id: payload.orderId,
-    payment_method: payload.paymentMethod,
-  };
-  if (payload.contentName) customData.content_name = payload.contentName;
-  if (payload.contents?.length) customData.contents = payload.contents;
-  if (payload.promoCode) customData.promo_code = payload.promoCode;
-
-  window.fbq!('track', 'Purchase', customData, { eventID: payload.eventId });
-  markAcademyPixelFired(payload.orderId);
+  firePurchaseFromBackendPayload(payload, ACADEMY_PIXEL_FIRED_PREFIX);
 }

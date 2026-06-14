@@ -46,6 +46,32 @@ export interface MetaPurchasePayload {
 
 export interface MetaPurchaseSnapshot extends MetaPurchasePayload {}
 
+export interface TicketMetaPixelPayload {
+  eventId: string;
+  orderId: string;
+  value: number;
+  currency: string;
+  contentCategory: MetaContentCategory;
+  contentIds: string[];
+  contentName: string;
+  numItems: number;
+  paymentMethod: string;
+  contents: MetaPurchaseLineItem[];
+  promoCode?: string;
+  advancedMatching: Record<string, string>;
+}
+
+export interface TicketMetaTrackingResponse {
+  trackable: boolean;
+  pixel: TicketMetaPixelPayload | null;
+  capi?: {
+    attempted: boolean;
+    ok: boolean;
+    skipped: boolean;
+    error?: string;
+  };
+}
+
 export interface AcademyMetaPixelPayload {
   eventId: string;
   orderId: string;

@@ -38,7 +38,19 @@ const { buildOrderConfirmationEmailHtml } = requireCjs('./_lib/order-confirmatio
 const { fetchAmbassadorSocialLinkFromApplications } = requireCjs('./_lib/ambassador-social-link.cjs');
 const { computeOnlinePaymentFees } = requireCjs('./_lib/online-payment-fee.cjs');
 const { sendTransactionalEmail } = requireCjs('./_lib/transactional-email.cjs');
-const { scheduleConfirmedPurchaseCapi } = requireCjs('./_lib/meta/conversions-api.cjs');
+const { processConfirmedTicketPurchaseTracking } = requireCjs('./_lib/meta/ticket-purchase-tracking.cjs');
+
+async function runTicketMetaTrackingSafe(dbClient, orderId, req) {
+  try {
+    return await processConfirmedTicketPurchaseTracking(dbClient, orderId, { req });
+  } catch (err) {
+    console.warn(
+      '[Ticket Meta Tracking] tracking failed:',
+      err instanceof Error ? err.message : err
+    );
+    return { trackable: false, pixel: null, capi: { attempted: false, ok: false, skipped: true } };
+  }
+}
 
 // --- Basic helpers (shared within this module) ---
 
@@ -1037,12 +1049,14 @@ export default async (req, res) => {
     if (fetchError) {
       console.warn('Failed to fetch created order with relations:', fetchError);
       await logOrderCreateSuccess(dbClient, req, order.id, { payment_method: paymentMethod, total_quantity: totalQuantity });
+      let metaTracking = null;
       if (paymentMethod === 'ambassador_cash') {
-        scheduleConfirmedPurchaseCapi(dbClient, order.id, { req });
+        metaTracking = await runTicketMetaTrackingSafe(dbClient, order.id, req);
       }
       return res.status(201).json({
         success: true,
-        order: order
+        order: order,
+        ...(metaTracking ? { metaTracking } : {}),
       });
     }
 
@@ -1053,13 +1067,15 @@ export default async (req, res) => {
       event_id: eventId || null
     });
 
+    let metaTracking = null;
     if (paymentMethod === 'ambassador_cash') {
-      scheduleConfirmedPurchaseCapi(dbClient, createdOrder.id, { req });
+      metaTracking = await runTicketMetaTrackingSafe(dbClient, createdOrder.id, req);
     }
 
     res.status(201).json({
       success: true,
-      order: createdOrder
+      order: createdOrder,
+      ...(metaTracking ? { metaTracking } : {}),
     });
 
   } catch (error) {

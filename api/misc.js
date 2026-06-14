@@ -43,7 +43,19 @@ const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot
 const { uploadTicketQrToR2OrSupabase } = requireFromRoot(path.join(__dirname, '_lib', 'r2-media.cjs'));
 const { sendTransactionalEmail } = requireFromRoot(path.join(__dirname, '_lib', 'transactional-email.cjs'));
 const { canSendTransactionalEmail } = requireFromRoot(path.join(__dirname, '_lib', 'can-send-transactional-email.cjs'));
-const { scheduleConfirmedPurchaseCapi } = requireFromRoot(path.join(__dirname, '_lib', 'meta', 'conversions-api.cjs'));
+const { processConfirmedTicketPurchaseTracking } = requireFromRoot(path.join(__dirname, '_lib', 'meta', 'ticket-purchase-tracking.cjs'));
+
+async function runTicketMetaTrackingSafe(dbClient, orderId, req) {
+  try {
+    return await processConfirmedTicketPurchaseTracking(dbClient, orderId, { req });
+  } catch (err) {
+    console.warn(
+      '[Ticket Meta Tracking] tracking failed:',
+      err instanceof Error ? err.message : err
+    );
+    return { trackable: false, pixel: null, capi: { attempted: false, ok: false, skipped: true } };
+  }
+}
 
 // Eager load with a static specifier so @vercel/nft bundles transitive deps (@sparticuz/chromium, puppeteer-core, pdf-lib).
 // Lazy require(path.join(...)) omitted those packages → runtime "Cannot find module '@sparticuz/chromium'" on Vercel.
@@ -4105,8 +4117,14 @@ We Create Memories`;
         if (orderError || !order) return res.status(404).json({ error: 'Order not found' });
         if (order.status !== 'PENDING_ONLINE') {
           if (order.status === 'PAID') {
-            scheduleConfirmedPurchaseCapi(dbClient, orderId, { req });
-            return res.status(200).json({ success: true, message: 'Order already paid', orderId, alreadyPaid: true });
+            const metaTracking = await runTicketMetaTrackingSafe(dbClient, orderId, req);
+            return res.status(200).json({
+              success: true,
+              message: 'Order already paid',
+              orderId,
+              alreadyPaid: true,
+              metaTracking,
+            });
           }
           return res.status(400).json({ error: 'Order is not pending online payment', details: `Status: ${order.status}` });
         }
@@ -4244,8 +4262,8 @@ We Create Memories`;
         if (updateError || !updatedOrder) {
           const { data: check } = await dbClient.from('orders').select('status').eq('id', orderId).single();
           if (check?.status === 'PAID') {
-            scheduleConfirmedPurchaseCapi(dbClient, orderId, { req });
-            return res.status(200).json({ success: true, orderId, alreadyPaid: true });
+            const metaTracking = await runTicketMetaTrackingSafe(dbClient, orderId, req);
+            return res.status(200).json({ success: true, orderId, alreadyPaid: true, metaTracking });
           }
           return res.status(500).json({ error: 'Failed to update order', details: updateError?.message });
         }
@@ -4479,10 +4497,11 @@ Billets envoyés par email. We Create Memories`;
             order_id: orderId, action: 'clictopay_confirm', performed_by: null, performed_by_type: 'system', details: { old_status: oldStatus, new_status: 'PAID', ticket_result: ticketResult }
           });
         } catch (e) { /* ignore */ }
-        scheduleConfirmedPurchaseCapi(dbClient, orderId, { req });
+        const metaTracking = await runTicketMetaTrackingSafe(dbClient, orderId, req);
         return res.status(200).json({
           success: true, orderId, status: 'PAID',
-          ticketsGenerated: ticketResult?.success, ticketsCount: ticketResult?.ticketsCount || 0, emailSent: ticketResult?.emailSent || false, smsSent: ticketResult?.smsSent || false, ticketError: ticketResult?.error || null
+          ticketsGenerated: ticketResult?.success, ticketsCount: ticketResult?.ticketsCount || 0, emailSent: ticketResult?.emailSent || false, smsSent: ticketResult?.smsSent || false, ticketError: ticketResult?.error || null,
+          metaTracking,
         });
       } catch (err) {
         console.error('ClicToPay confirm error:', err);

@@ -9,6 +9,12 @@ import { OrderPass } from '@/types/orders';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
 import { getApiBaseUrl } from '@/lib/api-routes';
 import { PublicOrderError } from '@/lib/orders/PublicOrderError';
+import type { TicketMetaTrackingResponse } from '@/lib/meta';
+
+export interface CreateOrderResult {
+  order: Order;
+  metaTracking?: TicketMetaTrackingResponse;
+}
 
 /**
  * Create a new order
@@ -17,7 +23,7 @@ import { PublicOrderError } from '@/lib/orders/PublicOrderError';
 export async function createOrder(
   data: CreateOrderData,
   options?: { signal?: AbortSignal }
-): Promise<Order> {
+): Promise<CreateOrderResult> {
   const {
     customerInfo,
     passes,
@@ -100,7 +106,10 @@ export async function createOrder(
   }
 
   // Return created order (server returns order with order_passes)
-  return result.order as Order;
+  return {
+    order: result.order as Order,
+    ...(result.metaTracking ? { metaTracking: result.metaTracking as TicketMetaTrackingResponse } : {}),
+  };
 }
 
 /**

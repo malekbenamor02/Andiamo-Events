@@ -9,6 +9,7 @@ import {
 export { META_TICKET_CONTENT_CATEGORY };
 
 /**
+ * @deprecated Transitional fallback only — prefer backend metaTracking.pixel.
  * Final amount paid by the customer — matches server resolvePurchaseValue semantics.
  */
 export function resolveMetaPurchaseValue(input: {
@@ -31,6 +32,9 @@ export function resolveMetaPurchaseValue(input: {
   return 0;
 }
 
+/**
+ * @deprecated Transitional fallback only — prefer backend metaTracking.pixel.
+ */
 export function buildConfirmedPurchasePayload(input: {
   eventId: string;
   orderId: string;

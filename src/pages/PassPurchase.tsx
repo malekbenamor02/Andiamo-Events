@@ -46,10 +46,8 @@ import { trackEvent } from '@/lib/ga';
 import {
   createMetaEventId,
   getMetaAttributionContext,
-  buildConfirmedPurchasePayload,
-  resolveMetaPurchaseValue,
-  savePurchaseSnapshot,
-  trackConfirmedPurchase,
+  isValidTicketMetaPixelPayload,
+  trackPurchaseFromBackend,
 } from '@/lib/meta';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -1401,7 +1399,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         ...customerInfo,
         email: normalizeCommonEmailTypos(customerInfo.email),
       };
-      const order = await createOrder(
+      const { order, metaTracking } = await createOrder(
         {
           customerInfo: customerInfoForOrder,
           passes: selectedPassesArray,
@@ -1445,33 +1443,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         };
         trackEvent('order_submit_online', onlineParams);
 
-        const metaPurchaseValue = resolveMetaPurchaseValue({
-          paymentMethod: 'online',
-          subtotal: totalPrice,
-          orderTotalWithFees: order.total_with_fees,
-          orderTotalPrice: order.total_price,
-        });
-        const metaPurchase = buildConfirmedPurchasePayload({
-          eventId: metaEventId,
-          orderId: order.id,
-          value: metaPurchaseValue,
-          paymentMethod: 'online',
-          passes: selectedPassesArray,
-          customer: {
-            email: customerInfoForOrder.email,
-            phone: customerInfoForOrder.phone,
-            fullName: customerInfoForOrder.full_name,
-            city: customerInfoForOrder.city,
-            ville: customerInfoForOrder.ville,
-          },
-          attribution: metaAttribution,
-          contentName: event?.name,
-        });
-        savePurchaseSnapshot(order.id, metaPurchase);
-
         endCheckoutAttempt();
         navigate(`/payment-processing?orderId=${order.id}&init=1`, { replace: true });
       } else if (paymentMethod === PaymentMethod.EXTERNAL_APP) {
+        // TODO: Wire processConfirmedTicketPurchaseTracking when external_app has a confirmed PAID signal.
         const option = paymentOptions.find(o => o.option_type === 'external_app');
         if (option?.external_link) {
           endCheckoutAttempt();
@@ -1505,29 +1480,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         };
         trackEvent('order_submit_ambassador', ambassadorParams);
 
-        const metaPurchaseValue = resolveMetaPurchaseValue({
-          paymentMethod: 'ambassador_cash',
-          subtotal: totalPrice,
-          orderTotalPrice: order.total_price,
-        });
-        trackConfirmedPurchase(
-          buildConfirmedPurchasePayload({
-            eventId: metaEventId,
-            orderId: order.id,
-            value: metaPurchaseValue,
-            paymentMethod: 'ambassador_cash',
-            passes: selectedPassesArray,
-            customer: {
-              email: customerInfoForOrder.email,
-              phone: customerInfoForOrder.phone,
-              fullName: customerInfoForOrder.full_name,
-              city: customerInfoForOrder.city,
-              ville: customerInfoForOrder.ville,
-            },
-            attribution: metaAttribution,
-            contentName: event?.name,
-          })
-        );
+        if (metaTracking?.pixel && isValidTicketMetaPixelPayload(metaTracking.pixel)) {
+          trackPurchaseFromBackend(metaTracking.pixel);
+        }
 
         toast({
           title: t[language].success,
