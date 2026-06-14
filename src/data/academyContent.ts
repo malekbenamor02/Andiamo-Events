@@ -46,7 +46,7 @@ export const ACADEMY_FORMULAS: AcademyFormula[] = [
     seatsRemainingMock: 5,
     features: [
       { en: 'Everything in Essential', fr: 'Tout le contenu de la formule Essentielle' },
-      { en: '3-month international event internship', fr: 'Stage événementiel international de 3 mois' },
+      { en: '3-month event internship', fr: 'Stage événementiel de 3 mois' },
       { en: 'Real event rotation with Andiamo Event', fr: 'Rotation sur événements réels avec Andiamo Event' },
     ],
   },
@@ -97,7 +97,7 @@ export const ACADEMY_COMPARISON_ROWS: AcademyComparisonRow[] = [
     premium: comparisonYes(),
   },
   {
-    label: { en: '3-month international event internship', fr: 'Stage événementiel international 3 mois' },
+    label: { en: '3-month event internship', fr: 'Stage événementiel 3 mois' },
     essentielle: comparisonNo(),
     pro: comparisonYes(),
     premium: comparisonYes(),
