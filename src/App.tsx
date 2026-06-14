@@ -76,7 +76,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import PhoneCapturePopup from "./components/PhoneCapturePopup";
 import { usePhoneCapture } from "./hooks/usePhoneCapture";
 import { trackPageView } from "./lib/ga";
-import { trackMetaPageView } from "./lib/meta";
+import { preserveMetaAttribution, trackMetaPageView } from "./lib/meta";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { useTheme } from "next-themes";
@@ -164,9 +164,10 @@ const AppContent = ({
     }
   }, [shouldShowPhonePopup]);
 
-  // Track SPA page views in Google Analytics and Meta Pixel when the route changes
+  // Track SPA page views and preserve Meta ad attribution (fbclid → _fbc) on route changes
   useEffect(() => {
     const path = location.pathname + location.search;
+    preserveMetaAttribution();
     trackPageView(path);
     trackMetaPageView(path);
   }, [location.pathname, location.search]);

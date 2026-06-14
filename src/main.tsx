@@ -8,7 +8,7 @@ import { mapPublicError } from './lib/userErrors'
 import { initSentry, Sentry } from './lib/sentry'
 import { initClarity } from './lib/clarity'
 import { initGA } from './lib/ga'
-import { initMeta } from './lib/meta'
+import { initMeta, preserveMetaAttribution } from './lib/meta'
 import { logger } from './lib/logger'
 import { sanitizeConsoleArgs, sanitizeObject, sanitizeString } from './lib/sanitize'
 
@@ -24,6 +24,7 @@ if (typeof window !== 'undefined') {
   }
   try {
     initMeta()
+    preserveMetaAttribution()
   } catch {
     // ignore analytics init errors
   }

@@ -15,7 +15,7 @@ export {
 } from './types';
 export { getAcademyFormulaMeta, mapAcademyPaymentMethodForMeta } from './academyCatalog';
 
-export { getMetaAttributionContext, createMetaEventId } from './attribution';
+export { getMetaAttributionContext, createMetaEventId, preserveMetaAttribution, buildFbcFromFbclid, isValidFbc } from './attribution';
 export { buildPixelAdvancedMatching } from './userData';
 export {
   buildConfirmedPurchasePayload,

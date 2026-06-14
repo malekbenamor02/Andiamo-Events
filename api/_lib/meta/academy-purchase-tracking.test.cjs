@@ -138,6 +138,16 @@ test('buildCapiServerEventFromCanonical includes required CAPI fields', () => {
   assert.strictEqual(capi.custom_data.currency, 'TND');
   assert.strictEqual(capi.custom_data.content_type, 'product');
   assert.strictEqual(capi.custom_data.order_id, 'reg-abc');
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(capi.custom_data, 'fbp'), false);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(capi.custom_data, 'fbc'), false);
+});
+
+test('buildPixelPayloadFromCanonical excludes fbc from commerce payload', () => {
+  const canonical = buildCanonicalAcademyPurchaseEvent({ registration: trackableRegistration });
+  const pixel = buildPixelPayloadFromCanonical(canonical);
+  assert.ok(pixel);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(pixel, 'fbc'), false);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(pixel, 'fbp'), false);
 });
 
 test('pixel advancedMatching is separate from commerce fields', () => {
