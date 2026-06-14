@@ -244,8 +244,7 @@ export function JsonLdLocalBusiness(props?: {
     name: "Andiamo Events",
     url: SITE_URL,
     logo: `${SITE_URL}/logo.svg`,
-    description:
-      "Creating innovative and inspiring event experiences in Tunisia. We create memories.",
+    description: DEFAULT_SITE_DESCRIPTION,
     sameAs: [
       "https://www.instagram.com/andiamoevents",
       "https://twitter.com/andiamo_events",

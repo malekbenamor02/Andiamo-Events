@@ -16,43 +16,43 @@ export const BRAND_ALTERNATE_NAMES = [
   "Indiamo",
 ] as const;
 
-/** Default site description (About-style, no nightlife) – used in index.html and JsonLd */
+/** Default site description – index.html, manifest, and site-wide JsonLd only */
 export const DEFAULT_SITE_DESCRIPTION =
-  "Andiamo Events – find local events in Tunis, Sousse and across Tunisia. Concerts, parties, festivals. A youth-driven event label. We create memories.";
+  "Andiamo Events – Tunisia's youth-driven event label by Born To Lead. Innovative, inspiring concerts, festivals and cultural events in Tunis, Sousse and beyond. We create memories.";
 
-/** Per-page meta descriptions (About-style, no nightlife). 150–160 chars recommended for SEO. */
+/** Per-page meta descriptions (SEO only). 150–160 chars recommended. */
 export const PAGE_DESCRIPTIONS = {
   home: {
-    en: "Andiamo Events – find local events in Tunis, Sousse and across Tunisia. Concerts, parties, festivals. A youth-driven event label. We create memories.",
-    fr: "Andiamo Events – événements à Tunis, Sousse et en Tunisie. Concerts, fêtes, festivals. Un label événementiel porté par la jeunesse. We create memories.",
+    en: DEFAULT_SITE_DESCRIPTION,
+    fr: "Andiamo Events – label événementiel porté par la jeunesse (Born To Lead). Concerts, festivals et événements culturels à Tunis, Sousse et en Tunisie. We create memories.",
   },
   events: {
-    en: "Upcoming events in Tunis, Sousse and Tunisia. Concerts, parties, festivals. Innovative, youth-focused experiences by Andiamo Events.",
-    fr: "Prochains événements à Tunis, Sousse et en Tunisie. Concerts, fêtes, festivals. Expériences innovantes par Andiamo Events.",
+    en: "Upcoming concerts, festivals and events in Tunis, Sousse and across Tunisia. Browse dates, venues and secure your tickets with Andiamo Events.",
+    fr: "Concerts, festivals et événements à venir à Tunis, Sousse et en Tunisie. Consultez dates, lieux et réservez vos billets avec Andiamo Events.",
   },
   about: {
-    en: "Andiamo Events is a youth-driven event label by Born To Lead. Creating innovative and inspiring event experiences across Tunisia. We create memories.",
-    fr: "Andiamo Events, label événementiel porté par la jeunesse (Born To Lead). Créer des expériences innovantes et inspirantes en Tunisie. We create memories.",
+    en: "Andiamo Events by Born To Lead — Tunisia's youth-driven event label. Modern production, cultural events and inspiring experiences nationwide. We create memories.",
+    fr: "Andiamo Events par Born To Lead — label événementiel porté par la jeunesse. Production moderne et expériences culturelles à travers la Tunisie. We create memories.",
   },
   contact: {
-    en: "Get in touch with Andiamo Events – customer service, inquiries and support. Events and ticketing in Tunisia.",
-    fr: "Contactez Andiamo Events – service client, demandes et support. Événements et billetterie en Tunisie.",
+    en: "Contact Andiamo Events for tickets, partnerships and customer support. Our team in Tunisia is ready to help with your inquiries.",
+    fr: "Contactez Andiamo Events pour billets, partenariats et assistance. Notre équipe en Tunisie répond à vos demandes.",
   },
   terms: {
-    en: "Andiamo Events terms and conditions of sale. Tickets, payment, QR code access and event rules. Tunisia.",
-    fr: "Conditions générales de vente Andiamo Events. Billets, paiement, accès QR et règles d'événements. Tunisie.",
+    en: "Andiamo Events terms and conditions of sale. Tickets, payment, QR code access and event rules for purchases in Tunisia.",
+    fr: "Conditions générales de vente Andiamo Events. Billets, paiement, accès QR et règles d'événements pour vos achats en Tunisie.",
   },
   ambassador: {
-    en: "Become an Andiamo Events ambassador. Join a youth-driven team creating innovative events and inspiring experiences across Tunisia.",
-    fr: "Devenez ambassadeur Andiamo Events. Rejoignez une équipe jeune qui crée des événements innovants et des expériences inspirantes en Tunisie.",
+    en: "Join the Andiamo Events ambassador program. Represent a youth-driven label, earn commissions and be part of Tunisia's event community.",
+    fr: "Rejoignez le programme ambassadeur Andiamo Events. Représentez un label jeune, gagnez des commissions et intégrez la communauté événementielle.",
   },
   careers: {
-    en: "Join the Andiamo Events team. Careers at a youth-driven event label. Innovative, inspiring experiences across Tunisia. Born To Lead.",
-    fr: "Rejoignez l'équipe Andiamo Events. Carrières dans un label événementiel porté par la jeunesse. Expériences innovantes en Tunisie. Born To Lead.",
+    en: "Build your career with Andiamo Events and Born To Lead. Open roles in events, production and marketing across Tunisia.",
+    fr: "Construisez votre carrière avec Andiamo Events et Born To Lead. Postes ouverts en événementiel, production et marketing en Tunisie.",
   },
   suggestions: {
-    en: "Suggest events, artists or venues to Andiamo Events. Share your ideas – we read every suggestion. Tunisia.",
-    fr: "Suggérez des événements, artistes ou lieux à Andiamo Events. Partagez vos idées – nous lisons chaque suggestion. Tunisie.",
+    en: "Suggest artists, venues or event ideas to Andiamo Events. Share your vision — our team reviews every submission in Tunisia.",
+    fr: "Proposez artistes, lieux ou idées d'événements à Andiamo Events. Partagez votre vision — nous lisons chaque suggestion.",
   },
   academy: {
     en: "Andiamo Academy — certified in-person Event Management training in Tunis, Tunisia. 20 hours, 3 formulas, limited seats. Register now.",

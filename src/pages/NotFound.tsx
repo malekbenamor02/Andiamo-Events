@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { PageMeta } from "@/components/PageMeta";
-import { Home, ArrowLeft, Search, Sparkles, Zap, Star, Heart } from "lucide-react";
+import { Home, ArrowLeft } from "lucide-react";
 
 interface NotFoundContent {
   title?: string;
@@ -72,21 +72,7 @@ const NotFound = () => {
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '4s' }} />
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-primary/20 rounded-full blur-3xl animate-pulse delay-1000" style={{ animationDuration: '5s' }} />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-primary/15 rounded-full blur-3xl animate-pulse delay-2000" style={{ animationDuration: '6s' }} />
-        
-        {/* Floating Icons */}
-        <div className="absolute top-20 left-20 animate-float">
-          <Sparkles className="w-8 h-8 text-primary/30" />
-        </div>
-        <div className="absolute top-40 right-32 animate-float delay-1000">
-          <Star className="w-6 h-6 text-primary/30" />
-        </div>
-        <div className="absolute bottom-32 left-40 animate-float delay-2000">
-          <Zap className="w-7 h-7 text-primary/30" />
-        </div>
-        <div className="absolute bottom-20 right-20 animate-float delay-500">
-          <Heart className="w-5 h-5 text-primary/30" />
-        </div>
-        
+
         {/* Grid Pattern */}
         <div className="absolute inset-0 opacity-[0.03]" style={{
           backgroundImage: `radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)`,
@@ -168,10 +154,6 @@ const NotFound = () => {
               ))}
             </div>
           </div>
-
-          {/* Decorative Elements */}
-          <div className="absolute -top-10 -left-10 w-20 h-20 bg-primary/10 rounded-full blur-xl animate-pulse" />
-          <div className="absolute -bottom-10 -right-10 w-16 h-16 bg-primary/10 rounded-full blur-xl animate-pulse delay-1000" />
         </div>
       </div>
     </main>

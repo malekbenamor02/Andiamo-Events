@@ -87,7 +87,7 @@ const Events = ({ language }: EventsProps) => {
     },
     fr: {
       title: "Événements",
-      subtitle: "Découvrez des expériences nocturnes incroyables à travers la Tunisie",
+      subtitle: "Découvrez des expériences événementielles innovantes et inspirantes à travers la Tunisie. We create memories.",
       upcomingTitle: "Événements à Venir",
       upcomingSubtitle: "Ne manquez pas nos prochains événements incroyables",
       galleryTitle: "Galerie d'Événements",
