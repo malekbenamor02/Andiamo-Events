@@ -333,24 +333,34 @@ export function ApplicationSelectionsPanel({
           </p>
         ) : (
           <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
-            {selections.map((selection) => (
+            {selections.map((selection) => {
+              const isExporting = exportingSelectionId === selection.id;
+              const exportLabel =
+                language === "en" ? "Export to Excel" : "Exporter vers Excel";
+
+              return (
               <div
                 key={selection.id}
                 className={cn(
-                  "group relative shrink-0 w-[200px] rounded-lg border transition-all",
+                  "group relative shrink-0 w-[200px] rounded-lg border overflow-hidden transition-all duration-200",
                   selectedSelectionId === selection.id
                     ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                    : "border-border hover:border-primary/40 hover:bg-muted/30",
+                    : "border-border hover:border-primary/50 hover:bg-muted/40 hover:shadow-md hover:shadow-primary/5",
                 )}
               >
                 <button
                   type="button"
                   onClick={() => setSelectedSelectionId(selection.id)}
-                  className="w-full text-left p-3 pr-10"
+                  className="w-full text-left p-3 pb-11"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="font-medium text-sm line-clamp-2">{selection.name}</span>
-                    <Badge variant="secondary" className="shrink-0 text-xs">
+                  <div className="flex items-start justify-between gap-2 min-h-[2.5rem]">
+                    <span className="font-medium text-sm line-clamp-2 leading-snug">
+                      {selection.name}
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 text-xs bg-primary/15 text-primary border-0"
+                    >
                       {selection.item_count ?? 0}
                     </Badge>
                   </div>
@@ -365,26 +375,49 @@ export function ApplicationSelectionsPanel({
                     {format(new Date(selection.created_at), "dd/MM/yyyy HH:mm")}
                   </p>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void handleExportDraft(selection)}
-                  disabled={exportingSelectionId === selection.id}
-                  title={language === "en" ? "Export to Excel" : "Exporter vers Excel"}
+
+                <div
                   className={cn(
-                    "absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-md",
-                    "opacity-0 group-hover:opacity-100 transition-opacity",
-                    "text-muted-foreground hover:text-primary hover:bg-primary/10",
-                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                    "absolute inset-x-0 bottom-0 px-2 pb-2 pt-6",
+                    "bg-gradient-to-t from-card via-card/95 to-transparent",
+                    "translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100",
+                    "group-focus-within:translate-y-0 group-focus-within:opacity-100",
+                    "transition-all duration-200 ease-out",
+                    isExporting && "translate-y-0 opacity-100",
                   )}
                 >
-                  {exportingSelectionId === selection.id ? (
-                    <Loader size="sm" className="[background:white] shrink-0" />
-                  ) : (
-                    <Download className="w-3.5 h-3.5" />
-                  )}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleExportDraft(selection)}
+                    disabled={isExporting}
+                    title={exportLabel}
+                    aria-label={exportLabel}
+                    className={cn(
+                      "w-full flex items-center justify-center gap-1.5",
+                      "h-7 rounded-md text-xs font-medium",
+                      "bg-primary/10 text-primary border border-primary/20",
+                      "hover:bg-primary hover:text-primary-foreground hover:border-primary",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+                      "disabled:opacity-60 disabled:cursor-not-allowed",
+                      "transition-colors duration-150",
+                    )}
+                  >
+                    {isExporting ? (
+                      <>
+                        <Loader size="sm" className="[background:white] shrink-0" />
+                        <span>{language === "en" ? "Exporting…" : "Export…"}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-3.5 h-3.5 shrink-0" />
+                        <span>{language === "en" ? "Export" : "Exporter"}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </section>
