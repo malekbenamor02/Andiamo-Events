@@ -215,6 +215,17 @@ export function useApplicationSelections() {
     [],
   );
 
+  const fetchSelectionItemsSnapshot = useCallback(async (selectionId: string) => {
+    const { data, error } = await supabase
+      .from('ambassador_application_selection_items')
+      .select(ITEM_COLUMNS)
+      .eq('selection_id', selectionId)
+      .order('added_at', { ascending: false });
+
+    if (error) throw error;
+    return (data ?? []) as AmbassadorApplicationSelectionItem[];
+  }, []);
+
   const clearSelectionItems = useCallback(() => {
     setSelectionItems([]);
     setLoadedSelectionId(null);
@@ -232,6 +243,7 @@ export function useApplicationSelections() {
     archiveSelection,
     addApplicationsToSelection,
     removeApplicationFromSelection,
+    fetchSelectionItemsSnapshot,
     clearSelectionItems,
   };
 }

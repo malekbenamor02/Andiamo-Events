@@ -148,6 +148,7 @@ import type { SuggestionReadFilter, SuggestionTypeFilter } from "./components/Su
 import type { MarketingTabProps } from "./components/MarketingTab";
 import { peekAndConsumeAdminVerifyCache } from "@/lib/admin-verify-cache";
 import { filterAmbassadorApplications } from "./lib/filterApplications";
+import { exportAmbassadorApplicationsListExcel, formatInstagramLink } from "./lib/exportAmbassadorApplicationsExcel";
 
 const LazyReportsAnalytics = React.lazy(() =>
   import("@/components/admin/analytics/ReportsAnalytics").then((m) => ({ default: m.ReportsAnalytics })),
@@ -7089,29 +7090,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   // Function to resend approval email
-  // Helper function to extract Instagram username and format it
-  const formatInstagramLink = (link: string | undefined): { displayText: string; url: string } | null => {
-    if (!link || link === '-') return null;
-    
-    let username = link.trim();
-    
-    // Remove common URL patterns
-    username = username.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '');
-    username = username.replace(/^instagram\.com\//i, '');
-    username = username.replace(/^@/, '');
-    username = username.replace(/\/$/, ''); // Remove trailing slash
-    username = username.split('?')[0]; // Remove query parameters
-    username = username.split('/')[0]; // Take only the first part
-    
-    if (!username) return null;
-    
-    // Format as @username
-    const displayText = username.startsWith('@') ? username : `@${username}`;
-    const url = `https://instagram.com/${username.replace('@', '')}`;
-    
-    return { displayText, url };
-  };
-
   // Export approved ambassadors list to Excel with branded styling
   const exportApprovedAmbassadorsToExcel = async () => {
     try {
@@ -7326,211 +7304,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Export ambassadors list to Excel with branded styling
   const exportAmbassadorsToExcel = async () => {
     try {
-      const workbook = await createExcelWorkbook();
-      const worksheet = workbook.addWorksheet('Ambassadors List');
-
-      // Define colors matching Andiamo Events theme
-      const darkBackground = { argb: 'FF2A2A2A' }; // Grey background (lighter than black)
-      const darkCharcoal = { argb: 'FF3A3A3A' }; // Dark grey for headers
-      const darkGray1 = { argb: 'FF2F2F2F' }; // Zebra stripe 1
-      const darkGray2 = { argb: 'FF353535' }; // Zebra stripe 2
-      const white = { argb: 'FFFFFFFF' }; // White text
-      const lightGray = { argb: 'FFB0B0B0' }; // Light gray text
-      const red = { argb: 'FFE21836' }; // Red accent
-      const green = { argb: 'FF22C55E' }; // Green for approved
-      const redStatus = { argb: 'FFEF4444' }; // Red for rejected/removed
-      const orange = { argb: 'FFF97316' }; // Orange for pending
-      const grey = { argb: 'FF6B7280' }; // Grey for suspended
-
-      // Title row - merged cells with centered title
-      worksheet.mergeCells('A1:I1');
-      const titleRow = worksheet.getRow(1);
-      titleRow.height = 30;
-      const titleCell = worksheet.getCell('A1');
-      titleCell.value = 'ANDIAMO EVENTS – AMBASSADORS LIST';
-      titleCell.font = { name: 'Arial', size: 16, bold: true, color: white };
-      titleCell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: darkBackground
-      };
-      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-      titleRow.getCell(1).border = {
-        top: { style: 'thin', color: { argb: 'FF3A3A3A' } },
-        bottom: { style: 'thin', color: { argb: 'FF3A3A3A' } },
-        left: { style: 'thin', color: { argb: 'FF3A3A3A' } },
-        right: { style: 'thin', color: { argb: 'FF3A3A3A' } }
-      };
-
-      // Empty row for spacing
-      worksheet.getRow(2).height = 10;
-
-      // Headers row
-      const headers = ['Name', 'Age', 'Phone', 'Email', 'City', 'Ville', 'Status', 'Instagram', 'Applied Date'];
-      const headerRow = worksheet.getRow(3);
-      headerRow.height = 25;
-      
-      headers.forEach((header, index) => {
-        const cell = headerRow.getCell(index + 1);
-        cell.value = header;
-        cell.font = { name: 'Arial', size: 11, bold: true, color: white };
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: darkCharcoal
-        };
-        cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FF3A3A3A' } },
-          bottom: { style: 'thin', color: { argb: 'FF3A3A3A' } },
-          left: { style: 'thin', color: { argb: 'FF3A3A3A' } },
-          right: { style: 'thin', color: { argb: 'FF3A3A3A' } }
-        };
+      const count = await exportAmbassadorApplicationsListExcel({
+        applications: filteredApplications,
+        ambassadors,
       });
-
-      // Set column widths
-      worksheet.getColumn(1).width = 25; // Name
-      worksheet.getColumn(2).width = 8;  // Age
-      worksheet.getColumn(3).width = 15; // Phone
-      worksheet.getColumn(4).width = 30; // Email
-      worksheet.getColumn(5).width = 15; // City
-      worksheet.getColumn(6).width = 15; // Ville
-      worksheet.getColumn(7).width = 12; // Status
-      worksheet.getColumn(8).width = 25; // Instagram
-      worksheet.getColumn(9).width = 15; // Applied Date
-
-      // Data rows with alternating colors
-      filteredApplications.forEach((application, index) => {
-        const row = worksheet.getRow(index + 4);
-        row.height = 20;
-        
-        // Alternating row colors (zebra pattern)
-        const rowColor = index % 2 === 0 ? darkGray1 : darkGray2;
-        
-        // Get ville from application or matching ambassador
-        let ville = application.ville || '';
-        if (!ville && (application.city === 'Sousse' || application.city === 'Tunis')) {
-          const matchingAmbassador = ambassadors.find(amb => 
-            amb.phone === application.phone_number || 
-            (application.email && amb.email === application.email)
-          );
-          ville = matchingAmbassador?.ville || '';
-        }
-
-        // Status color
-        let statusColor = lightGray;
-        let statusText = application.status;
-        if (application.status === 'approved') {
-          statusColor = green; // Green
-          statusText = 'Active';
-        } else if (application.status === 'pending') {
-          statusColor = orange; // Orange
-          statusText = 'Pending';
-        } else if (application.status === 'rejected') {
-          statusColor = redStatus; // Red
-          statusText = 'Rejected';
-        } else if (application.status === 'removed') {
-          statusColor = redStatus; // Red
-          statusText = 'Removed';
-        } else if (application.status === 'suspended') {
-          statusColor = grey; // Grey
-          statusText = 'Paused';
-        }
-
-        const instagramInfo = formatInstagramLink(application.social_link);
-        const instagramDisplay = instagramInfo ? instagramInfo.displayText : '-';
-        
-        const cells = [
-          application.full_name,
-          application.age || 0,
-          application.phone_number,
-          application.email || '-',
-          application.city,
-          ville || '-',
-          statusText,
-          instagramDisplay,
-          new Date(application.created_at).toLocaleDateString()
-        ];
-
-        cells.forEach((value, cellIndex) => {
-          const cell = row.getCell(cellIndex + 1);
-          
-          // Instagram column - make it a hyperlink if it's a valid URL
-          if (cellIndex === 7 && instagramInfo) {
-            cell.value = { text: instagramInfo.displayText, hyperlink: instagramInfo.url };
-            cell.font = { name: 'Arial', size: 10, color: { argb: 'FF6B7280' }, underline: true };
-          } else {
-            cell.value = value;
-            // Status column gets special color
-            if (cellIndex === 6) {
-              cell.font = { name: 'Arial', size: 10, bold: true, color: statusColor };
-            } else if (cellIndex === 0 || cellIndex === 2) {
-              // Name and Phone in slightly bolder
-              cell.font = { name: 'Arial', size: 10, bold: true, color: white };
-            } else {
-              cell.font = { name: 'Arial', size: 10, color: lightGray };
-            }
-          }
-          
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: rowColor
-          };
-          cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FF2A2A2A' } },
-            bottom: { style: 'thin', color: { argb: 'FF2A2A2A' } },
-            left: { style: 'thin', color: { argb: 'FF2A2A2A' } },
-            right: { style: 'thin', color: { argb: 'FF2A2A2A' } }
-          };
-        });
-      });
-
-      // Add outer border to entire table
-      const lastRow = filteredApplications.length + 3;
-      for (let row = 1; row <= lastRow; row++) {
-        for (let col = 1; col <= 9; col++) {
-          const cell = worksheet.getCell(row, col);
-          if (row === 1 || row === lastRow || col === 1 || col === 9) {
-            if (!cell.border) cell.border = {};
-            if (row === 1) cell.border.top = { style: 'medium', color: { argb: 'FF3A3A3A' } };
-            if (row === lastRow) cell.border.bottom = { style: 'medium', color: { argb: 'FF3A3A3A' } };
-            if (col === 1) cell.border.left = { style: 'medium', color: { argb: 'FF3A3A3A' } };
-            if (col === 9) cell.border.right = { style: 'medium', color: { argb: 'FF3A3A3A' } };
-          }
-        }
-      }
-
-      // Add export date at bottom
-      const footerRow = worksheet.getRow(lastRow + 2);
-      footerRow.height = 20;
-      const footerCell = worksheet.getCell(`A${lastRow + 2}`);
-      footerCell.value = `Generated by Andiamo Events on ${new Date().toLocaleString()}`;
-      footerCell.font = { name: 'Arial', size: 9, color: lightGray, italic: true };
-      footerCell.alignment = { horizontal: 'right' };
-      worksheet.mergeCells(`A${lastRow + 2}:I${lastRow + 2}`);
-
-      // Generate buffer and download
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      const now = new Date();
-      const dateStr = now.toISOString().split('T')[0];
-      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
-      link.download = `Andiamo_Events_Ambassadors_List_${dateStr}_${timeStr}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
 
       toast({
         title: language === 'en' ? 'Export Successful' : 'Exportation réussie',
         description: language === 'en' 
-          ? `Exported ${filteredApplications.length} ambassadors to Excel`
-          : `${filteredApplications.length} ambassadeurs exportés vers Excel`,
+          ? `Exported ${count} ambassadors to Excel`
+          : `${count} ambassadeurs exportés vers Excel`,
       });
     } catch (error) {
       console.error('Error exporting to Excel:', error);

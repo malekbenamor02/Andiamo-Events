@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { Archive, FolderOpen, Plus, User } from "lucide-react";
+import { Archive, Download, FolderOpen, Plus, User } from "lucide-react";
 import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,9 +21,10 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { filterAmbassadorApplications } from "../../lib/filterApplications";
+import { exportDraftSelectionToExcel } from "../../lib/exportAmbassadorApplicationsExcel";
 import { ApplicationsListCore } from "./ApplicationsListCore";
 import type { useApplicationSelections } from "../../hooks/useApplicationSelections";
-import type { AmbassadorApplication } from "../../types";
+import type { AmbassadorApplication, AmbassadorApplicationSelection } from "../../types";
 import type { ApplicationsTabProps } from "../ApplicationsTab";
 
 export type ApplicationSelectionsPanelProps = Omit<
@@ -83,6 +84,7 @@ export function ApplicationSelectionsPanel({
     createSelection,
     archiveSelection,
     removeApplicationFromSelection,
+    fetchSelectionItemsSnapshot,
     clearSelectionItems,
   } = selectionsApi;
 
@@ -92,6 +94,7 @@ export function ApplicationSelectionsPanel({
   const [creating, setCreating] = useState(false);
   const [archiveTargetId, setArchiveTargetId] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
+  const [exportingSelectionId, setExportingSelectionId] = useState<string | null>(null);
 
   const [selectionSearchTerm, setSelectionSearchTerm] = useState("");
   const [selectionStatusFilter, setSelectionStatusFilter] = useState("pending");
@@ -239,6 +242,47 @@ export function ApplicationSelectionsPanel({
     [selectedSelectionId, removeApplicationFromSelection, language, toast],
   );
 
+  const handleExportDraft = useCallback(
+    async (selection: AmbassadorApplicationSelection) => {
+      setExportingSelectionId(selection.id);
+      try {
+        const items = await fetchSelectionItemsSnapshot(selection.id);
+        const count = await exportDraftSelectionToExcel({
+          selection,
+          selectionItems: items,
+          applications,
+          ambassadors,
+        });
+        toast({
+          title: language === "en" ? "Export Successful" : "Exportation réussie",
+          description:
+            language === "en"
+              ? `Exported ${count} applications to Excel`
+              : `${count} candidatures exportées vers Excel`,
+        });
+      } catch (err) {
+        console.error("Error exporting draft selection:", err);
+        toast({
+          title: language === "en" ? "Export Failed" : "Échec de l'exportation",
+          description:
+            language === "en"
+              ? "Failed to export draft selection. Please try again."
+              : "Échec de l'exportation du brouillon. Veuillez réessayer.",
+          variant: "destructive",
+        });
+      } finally {
+        setExportingSelectionId(null);
+      }
+    },
+    [
+      fetchSelectionItemsSnapshot,
+      applications,
+      ambassadors,
+      language,
+      toast,
+    ],
+  );
+
   const handleArchive = async () => {
     if (!archiveTargetId) return;
     setArchiving(true);
@@ -290,34 +334,56 @@ export function ApplicationSelectionsPanel({
         ) : (
           <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
             {selections.map((selection) => (
-              <button
+              <div
                 key={selection.id}
-                type="button"
-                onClick={() => setSelectedSelectionId(selection.id)}
                 className={cn(
-                  "shrink-0 w-[200px] text-left p-3 rounded-lg border transition-all",
+                  "group relative shrink-0 w-[200px] rounded-lg border transition-all",
                   selectedSelectionId === selection.id
                     ? "border-primary bg-primary/5 ring-1 ring-primary/30"
                     : "border-border hover:border-primary/40 hover:bg-muted/30",
                 )}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="font-medium text-sm line-clamp-2">{selection.name}</span>
-                  <Badge variant="secondary" className="shrink-0 text-xs">
-                    {selection.item_count ?? 0}
-                  </Badge>
-                </div>
-                <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-                  <User className="w-3 h-3 shrink-0" />
-                  <span className="truncate">
-                    {selection.created_by_name?.trim() ||
-                      (language === "en" ? "Unknown" : "Inconnu")}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {format(new Date(selection.created_at), "dd/MM/yyyy HH:mm")}
-                </p>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSelectionId(selection.id)}
+                  className="w-full text-left p-3 pr-10"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-medium text-sm line-clamp-2">{selection.name}</span>
+                    <Badge variant="secondary" className="shrink-0 text-xs">
+                      {selection.item_count ?? 0}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+                    <User className="w-3 h-3 shrink-0" />
+                    <span className="truncate">
+                      {selection.created_by_name?.trim() ||
+                        (language === "en" ? "Unknown" : "Inconnu")}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {format(new Date(selection.created_at), "dd/MM/yyyy HH:mm")}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExportDraft(selection)}
+                  disabled={exportingSelectionId === selection.id}
+                  title={language === "en" ? "Export to Excel" : "Exporter vers Excel"}
+                  className={cn(
+                    "absolute top-2 right-2 h-7 w-7 flex items-center justify-center rounded-md",
+                    "opacity-0 group-hover:opacity-100 transition-opacity",
+                    "text-muted-foreground hover:text-primary hover:bg-primary/10",
+                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                  )}
+                >
+                  {exportingSelectionId === selection.id ? (
+                    <Loader size="sm" className="[background:white] shrink-0" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
             ))}
           </div>
         )}
