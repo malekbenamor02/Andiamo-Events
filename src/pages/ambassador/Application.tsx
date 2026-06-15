@@ -18,7 +18,7 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { PageMeta } from '@/components/PageMeta';
 import { PAGE_DESCRIPTIONS } from '@/lib/seo';
-import { trackMetaEvent, trackMetaLead, createMetaEventId } from '@/lib/meta';
+import { trackAmbassadorLead, createMetaEventId, getMetaAttributionContext } from '@/lib/meta';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
 interface ApplicationProps {
@@ -51,6 +51,7 @@ const Application = ({ language }: ApplicationProps) => {
   
   const heroRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
+  const leadTrackedRef = useRef(false);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -155,17 +156,6 @@ const Application = ({ language }: ApplicationProps) => {
       supabase.removeChannel(channel);
     };
   }, [language]);
-
-  // Track visit to ambassador application page (once applications are open and page is ready)
-  useEffect(() => {
-    if (applicationEnabled === true && !loadingApplicationStatus) {
-      const page_path = typeof window !== 'undefined' ? window.location.pathname + window.location.search : undefined;
-      trackMetaEvent('AmbassadorApplicationVisit', {
-        language,
-        page_path: page_path ?? undefined,
-      });
-    }
-  }, [applicationEnabled, loadingApplicationStatus, language]);
 
   useEffect(() => {
     const isLocalhost =
@@ -472,6 +462,9 @@ const Application = ({ language }: ApplicationProps) => {
         villeValue = DOMPurify.sanitize(formData.ville.trim());
       }
 
+      const metaEventId = createMetaEventId('lead');
+      const metaAttribution = getMetaAttributionContext();
+
       const requestBody = {
         fullName: sanitizedFullName,
         age: formData.age,
@@ -482,6 +475,10 @@ const Application = ({ language }: ApplicationProps) => {
         socialLink: sanitizedSocialLink,
         motivation: sanitizedMotivation,
         recaptchaToken,
+        metaEventId,
+        metaFbp: metaAttribution.fbp,
+        metaFbc: metaAttribution.fbc,
+        metaEventSourceUrl: metaAttribution.eventSourceUrl,
       };
 
       // Submit application via API endpoint (includes all validation and checks)
@@ -494,19 +491,19 @@ const Application = ({ language }: ApplicationProps) => {
       });
 
       if (data.success) {
-        const page_path = typeof window !== 'undefined' ? window.location.pathname + window.location.search : undefined;
-        trackMetaEvent('AmbassadorApplicationSubmitSuccess', {
-          language,
-          page_path: page_path ?? undefined,
-          city: sanitizedCity,
-          ville: villeValue ?? undefined,
-        });
-        trackMetaLead({
-          content_name: 'Ambassador Application',
-          status: 'submitted',
-          city: sanitizedCity,
-          ville: villeValue ?? undefined,
-        }, { eventId: createMetaEventId('lead') });
+        if (!leadTrackedRef.current) {
+          trackAmbassadorLead(
+            {
+              email: sanitizedEmail,
+              phone: formData.phoneNumber,
+              fullName: sanitizedFullName,
+              city: sanitizedCity,
+              ville: villeValue ?? undefined,
+            },
+            metaEventId
+          );
+          leadTrackedRef.current = true;
+        }
 
         logFormSubmission('Ambassador Application', true, {
           fullName: sanitizedFullName,

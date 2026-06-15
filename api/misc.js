@@ -44,6 +44,10 @@ const { uploadTicketQrToR2OrSupabase } = requireFromRoot(path.join(__dirname, '_
 const { sendTransactionalEmail } = requireFromRoot(path.join(__dirname, '_lib', 'transactional-email.cjs'));
 const { canSendTransactionalEmail } = requireFromRoot(path.join(__dirname, '_lib', 'can-send-transactional-email.cjs'));
 const { processConfirmedTicketPurchaseTracking } = requireFromRoot(path.join(__dirname, '_lib', 'meta', 'ticket-purchase-tracking.cjs'));
+const {
+  parseAttributionFromBody,
+  processAmbassadorLeadTracking,
+} = requireFromRoot(path.join(__dirname, '_lib', 'meta', 'ambassador-lead-tracking.cjs'));
 
 async function runTicketMetaTrackingSafe(dbClient, orderId, req) {
   try {
@@ -2028,6 +2032,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           villeValue = sanitizedVille.trim();
         }
 
+        const metaAttribution = parseAttributionFromBody(req, bodyData);
+
         const insertData = {
           full_name: sanitizedFullName,
           age: parseInt(age),
@@ -2037,7 +2043,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           ville: villeValue,
           social_link: sanitizedSocialLink,
           motivation: sanitizedMotivation,
-          status: 'pending'
+          status: 'pending',
+          ...(metaAttribution ? { meta_attribution: metaAttribution } : {}),
         };
 
         const { data: application, error: insertError } = await supabase
@@ -2052,6 +2059,31 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           }
           console.error('Error inserting application:', insertError);
           return res.status(500).json({ error: 'Failed to submit application', details: insertError.message });
+        }
+
+        if (metaAttribution?.eventId) {
+          processAmbassadorLeadTracking(supabase, application.id, { req, attribution: metaAttribution }).catch(
+            (err) =>
+              console.warn(
+                JSON.stringify({
+                  tag: 'META_LEAD_CAPI_FAILED',
+                  application_id: application.id,
+                  event_id: metaAttribution.eventId,
+                  error: err instanceof Error ? err.message : String(err),
+                  reason: 'unhandled_async_rejection',
+                  timestamp: new Date().toISOString(),
+                })
+              )
+          );
+        } else {
+          console.warn(
+            JSON.stringify({
+              tag: 'META_LEAD_CAPI_SKIPPED',
+              application_id: application.id,
+              reason: 'missing_meta_event_id',
+              timestamp: new Date().toISOString(),
+            })
+          );
         }
         
         return res.status(200).json({ 

@@ -36,6 +36,7 @@ export {
   trackMetaPageView,
   trackMetaEvent,
   trackMetaLead,
+  trackAmbassadorLead,
   trackConfirmedPurchase,
   trackPurchaseFromBackend,
   trackAcademyPurchaseFromBackend,

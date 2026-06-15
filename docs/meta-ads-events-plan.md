@@ -15,19 +15,29 @@ This document describes Meta measurement for pass sales: one confirmed **`Purcha
 | Event | When |
 |-------|------|
 | `PageView` | SPA route change |
-| `Lead` | Ambassador application submitted |
-| `AmbassadorApplicationVisit` / `AmbassadorApplicationSubmitSuccess` | Ambassador apply funnel (custom) |
+| **`Lead`** (standard) | Ambassador application submitted — browser Pixel + CAPI, deduped via shared `event_id` |
 
 Pass-purchase funnel events (`PassPurchaseVisit`, `PassSelect`, `InitiateCheckout`, `OrderSubmitOnline`, `OrderSubmitAmbassador`, `ViewContent`) are **removed**.
+
+Ambassador custom events (`AmbassadorApplicationVisit`, `AmbassadorApplicationSubmitSuccess`) are **removed**.
 
 ---
 
 ### 2. Architecture
 
+**Purchase (pass sales):**
+
 - **Browser Pixel:** `src/lib/meta/` — `trackConfirmedPurchase()` with advanced matching (email, phone, name, city) and commerce params.
 - **Conversions API:** `api/_lib/meta/conversions-api.cjs` — primary for online paid orders; deduplicated with browser via shared `event_id`.
 - **Attribution storage:** `orders.meta_attribution` JSON at order create (`eventId`, `fbp`, `fbc`, `eventSourceUrl`, `clientUserAgent`, `clientIp`).
 - **Idempotency:** `orders.meta_purchase_sent_at` prevents duplicate CAPI sends.
+
+**Lead (ambassador application):**
+
+- **Browser Pixel:** `trackAmbassadorLead()` in `src/lib/meta/pixel.ts` — advanced matching + `eventID` after API success.
+- **Conversions API:** `api/_lib/meta/ambassador-lead-tracking.cjs` — fired from `/api/ambassador-application` after DB insert.
+- **Attribution storage:** `ambassador_applications.meta_attribution` JSON at submit.
+- **Idempotency:** `ambassador_applications.meta_lead_sent_at` prevents duplicate CAPI sends; browser uses sessionStorage keyed by `eventId`.
 
 ---
 
@@ -73,6 +83,6 @@ If CAPI env vars are missing, browser Pixel still works; server send is skipped 
 
 | Area | Files |
 |------|-------|
-| Client | `src/lib/meta/*`, `PassPurchase.tsx`, `PaymentProcessing.tsx` |
-| Server | `api/_lib/meta/*`, `api/orders-create.js`, `api/misc.js` (ClicToPay confirm) |
-| DB | `supabase/migrations/20260610120000_orders_meta_attribution.sql` |
+| Client | `src/lib/meta/*`, `PassPurchase.tsx`, `PaymentProcessing.tsx`, `src/pages/ambassador/Application.tsx` |
+| Server | `api/_lib/meta/*`, `api/orders-create.js`, `api/misc.js` (ClicToPay confirm, ambassador application) |
+| DB | `supabase/migrations/20260610120000_orders_meta_attribution.sql`, `supabase/migrations/20260615120000_ambassador_meta_attribution.sql` |

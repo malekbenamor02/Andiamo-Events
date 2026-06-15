@@ -1,5 +1,5 @@
 /**
- * Meta Pixel — init, PageView, confirmed Purchase, and ambassador-app events.
+ * Meta Pixel — init, PageView, confirmed Purchase, and ambassador Lead.
  * Vite env: VITE_META_PIXEL_ID
  */
 
@@ -7,6 +7,7 @@ import { buildPixelAdvancedMatching } from './userData';
 import {
   META_TICKET_CONTENT_CATEGORY,
   type AcademyMetaPixelPayload,
+  type MetaCustomerData,
   type MetaPurchasePayload,
   type TicketMetaPixelPayload,
 } from './types';
@@ -29,6 +30,7 @@ const FB_EVENTS_URL = 'https://connect.facebook.net/en_US/fbevents.js';
 
 const ACADEMY_PIXEL_FIRED_PREFIX = 'andiamo_meta_academy_pixel_fired:';
 const TICKET_PIXEL_FIRED_PREFIX = 'andiamo_meta_ticket_pixel_fired:';
+const AMBASSADOR_LEAD_FIRED_PREFIX = 'andiamo_meta_ambassador_lead_fired:';
 
 function ensureFbqStub(): void {
   if (window.fbq) return;
@@ -123,6 +125,17 @@ export function trackMetaLead(
   } else {
     window.fbq!('track', 'Lead', params || {});
   }
+}
+
+/** Ambassador application Lead — advanced matching + deduped eventID (pairs with server CAPI). */
+export function trackAmbassadorLead(customer: MetaCustomerData, eventId: string): void {
+  if (!canTrack() || !eventId) return;
+  if (hasPixelFired(AMBASSADOR_LEAD_FIRED_PREFIX, eventId)) return;
+
+  const advancedMatching = buildPixelAdvancedMatching(customer);
+  window.fbq!('init', META_PIXEL_ID, advancedMatching);
+  window.fbq!('track', 'Lead', { content_name: 'Ambassador Application' }, { eventID: eventId });
+  markPixelFired(AMBASSADOR_LEAD_FIRED_PREFIX, eventId);
 }
 
 function isValidBackendPixelPayload(
