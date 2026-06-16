@@ -120,6 +120,7 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 const defaultProductionOrigins = [
   'https://www.andiamoevents.com',
   'https://andiamoevents.com',
+  'https://staging.andiamoevents.com',
   'http://localhost:3000',
   'http://localhost:5173',
   'http://127.0.0.1:3000',
@@ -128,7 +129,9 @@ const defaultProductionOrigins = [
   /^http:\/\/localhost:\d+$/,
   /^http:\/\/127\.0\.0\.1:\d+$/,
   /^http:\/\/172\.\d+\.\d+\.\d+:\d+$/,
-  /^http:\/\/192\.168\.\d+\.\d+:\d+$/
+  /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
+  // Vercel Preview deployments (credentials-safe: project-scoped, not *)
+  /^https:\/\/andiamo-events-[a-z0-9-]+(?:-[a-z0-9-]+)*\.vercel\.app$/,
 ];
 
 const allowedOrigins = isDevelopment
