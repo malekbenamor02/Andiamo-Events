@@ -171,10 +171,13 @@ function getCorsOrigin(req) {
     return origin;
   }
   
-  // On Vercel, allow same-origin requests
+  // On Vercel, allow deployment URLs only (never match empty substring)
   const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_URL;
-  if (isVercel && origin && (origin.includes(process.env.VERCEL_URL || '') || origin.includes(process.env.VERCEL_BRANCH_URL || ''))) {
-    return origin;
+  if (isVercel && origin) {
+    const vercelUrl = process.env.VERCEL_URL;
+    const branchUrl = process.env.VERCEL_BRANCH_URL;
+    if (vercelUrl && origin.includes(vercelUrl)) return origin;
+    if (branchUrl && origin.includes(branchUrl)) return origin;
   }
   
   // Default: return null to indicate origin not allowed
@@ -234,11 +237,19 @@ app.use(cors({
       console.log('🌐 CORS: Origin allowed:', origin);
       callback(null, true);
     } else {
-      // On Vercel, allow same-origin requests
+      // On Vercel, allow deployment URLs only (never match empty substring)
       const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_URL;
-      if (isVercel && origin && (origin.includes(process.env.VERCEL_URL || '') || origin.includes(process.env.VERCEL_BRANCH_URL || ''))) {
-        console.log('🌐 CORS: Vercel origin allowed:', origin);
-        return callback(null, true);
+      if (isVercel && origin) {
+        const vercelUrl = process.env.VERCEL_URL;
+        const branchUrl = process.env.VERCEL_BRANCH_URL;
+        if (vercelUrl && origin.includes(vercelUrl)) {
+          console.log('🌐 CORS: Vercel origin allowed:', origin);
+          return callback(null, true);
+        }
+        if (branchUrl && origin.includes(branchUrl)) {
+          console.log('🌐 CORS: Vercel branch origin allowed:', origin);
+          return callback(null, true);
+        }
       }
       // Production fallback
       console.error('❌ CORS: Origin not allowed:', origin);
