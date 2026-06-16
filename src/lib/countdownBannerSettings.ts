@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { upsertSiteContentViaApi } from "@/lib/adminSiteContent";
 
 export const COUNTDOWN_BANNER_SETTINGS_KEY = "countdown_banner_settings" as const;
 
@@ -56,25 +57,9 @@ export async function upsertCountdownBannerSettings(
   settings: CountdownBannerSettings
 ): Promise<void> {
   const normalized = normalizeCountdownBannerContent(settings);
-  const { error } = await supabase.from("site_content").upsert(
-    {
-      key: COUNTDOWN_BANNER_SETTINGS_KEY,
-      content: {
-        enabled: normalized.enabled,
-        label_en: normalized.label_en,
-        label_fr: normalized.label_fr,
-      },
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "key" }
-  );
-
-  if (error) {
-    if (error.code === "42501" || error.message?.includes("policy")) {
-      throw new Error(
-        "Permission denied. Ensure site_content admin policies allow this key."
-      );
-    }
-    throw error;
-  }
+  await upsertSiteContentViaApi(COUNTDOWN_BANNER_SETTINGS_KEY, {
+    enabled: normalized.enabled,
+    label_en: normalized.label_en,
+    label_fr: normalized.label_fr,
+  });
 }

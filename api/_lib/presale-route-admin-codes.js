@@ -3,7 +3,7 @@
  */
 import '../../lib/sentry-server.js';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAdminAuth } from './admin-verify.js';
+import { verifyAdminAuth, hasPermission } from './admin-verify.js';
 import { hashPresaleCode, requirePresalePepperOr503 } from './presale-server.js';
 import { validateAdminPassDiscounts } from './presale-discount.js';
 
@@ -104,6 +104,9 @@ export async function handlePresaleAdminCodes(req, res) {
     const auth = await verifyAdminAuth(req);
     if (!auth.valid) {
       return res.status(auth.statusCode || 401).json({ error: auth.error || 'Unauthorized' });
+    }
+    if (!hasPermission(auth.admin?.role, 'presale:manage')) {
+      return res.status(403).json({ error: 'Forbidden', details: 'Permission required: presale:manage' });
     }
 
     const path = getPathname(req);

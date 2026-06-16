@@ -3,7 +3,7 @@
  */
 import '../../lib/sentry-server.js';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAdminAuth } from './admin-verify.js';
+import { verifyAdminAuth, hasPermission } from './admin-verify.js';
 import { normalizeEventPromoCode, EVENT_PROMO_CODE_MAX_LEN } from './event-promo-code.js';
 import { validateEventPromoPassDiscounts } from './event-promo-discount.js';
 import { pickRandomPromoBadgeColor } from './event-promo-badge-color.js';
@@ -33,8 +33,8 @@ function makeDb() {
 }
 
 function requireSuperAdmin(auth, res) {
-  if (auth.admin?.role !== 'super_admin') {
-    res.status(403).json({ error: 'Super admin required' });
+  if (!hasPermission(auth.admin?.role, 'events:manage')) {
+    res.status(403).json({ error: 'Forbidden', details: 'Permission required: events:manage' });
     return false;
   }
   return true;

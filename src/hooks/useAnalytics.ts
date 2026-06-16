@@ -4,7 +4,6 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { Order, OrderPass } from '@/types/orders';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
 import { getOrderLineRevenue, getOrderTicketsAndRevenue, getOrderReportRevenue } from '@/lib/orders/orderRevenue';
@@ -168,116 +167,50 @@ export function getDateRangeLabel(dateRange: DateRange): string {
   }
 }
 
+async function fetchAnalyticsOrdersViaApi(
+  eventId: string | null,
+  dateRange: DateRange,
+  customDateRange?: { startDate: Date | null; endDate: Date | null }
+) {
+  const { adminOrdersApi } = await import('@/lib/adminOrdersApi');
+  const result = await adminOrdersApi.analyticsOrders(
+    eventId,
+    dateRange,
+    customDateRange?.startDate && customDateRange?.endDate
+      ? {
+          start: customDateRange.startDate.toISOString(),
+          end: customDateRange.endDate.toISOString(),
+        }
+      : undefined
+  );
+  return {
+    paidOrders: result.paidOrders || [],
+    posOrders: result.posOrders || [],
+    pendingOrders: result.pendingOrders || [],
+    allOrders: result.allOrders || [],
+  };
+}
+
 async function fetchAnalyticsData(
   eventId: string | null,
   dateRange: DateRange = 'ALL_TIME',
   previousPeriodData?: AnalyticsData,
   customDateRange?: { startDate: Date | null; endDate: Date | null }
 ): Promise<AnalyticsData> {
-  // Use custom date range if provided (for previous period), otherwise use dateRange filter
   const dateFilter = customDateRange || getDateRangeFilter(dateRange);
   const { startDate, endDate } = dateFilter;
-  // Build query - filter by event_id and date range if provided
-  // Paid online + ambassador cash + POS (point de vente); PAID/COMPLETED — matches Reports KPIs / Excel export
-  // Use a high limit so insights (best day, peak hour, etc.) are computed from real data, not a truncated set (Supabase default is 1000)
-  let query = supabase
-    .from('orders')
-    .select(`
-      *,
-      order_passes (*),
-      ambassadors (
-        id,
-        full_name
-      )
-    `, { count: 'exact' })
-    .in('status', [OrderStatus.PAID, 'COMPLETED'])
-    .in('payment_method', [PaymentMethod.ONLINE, PaymentMethod.AMBASSADOR_CASH])
-    .order('created_at', { ascending: false })
-    .limit(10000);
-  
-  if (eventId) {
-    query = query.eq('event_id', eventId);
-  }
-  
-  if (startDate) {
-    query = query.gte('created_at', startDate.toISOString());
-  }
-  
-  if (endDate) {
-    query = query.lte('created_at', endDate.toISOString());
-  }
-  
-  const { data: orders, error } = await query;
-  
-  if (error) {
-    throw new Error(`Failed to fetch analytics data: ${error.message}`);
-  }
 
-  // Paid POS orders (same event/date scope) — same shape as main query for the processing loop below
-  let posQuery = supabase
-    .from('orders')
-    .select(
-      `
-      *,
-      order_passes (*),
-      ambassadors (
-        id,
-        full_name
-      )
-    `,
-      { count: 'exact' }
-    )
-    .eq('source', 'point_de_vente')
-    .in('status', [OrderStatus.PAID, 'COMPLETED'])
-    .order('created_at', { ascending: false })
-    .limit(10000);
+  const { paidOrders, posOrders, pendingOrders, allOrders } = await fetchAnalyticsOrdersViaApi(
+    eventId,
+    dateRange,
+    customDateRange
+  );
 
-  if (eventId) {
-    posQuery = posQuery.eq('event_id', eventId);
-  }
-  if (startDate) {
-    posQuery = posQuery.gte('created_at', startDate.toISOString());
-  }
-  if (endDate) {
-    posQuery = posQuery.lte('created_at', endDate.toISOString());
-  }
-
-  const { data: posOrders, error: posError } = await posQuery;
-  if (posError) {
-    throw new Error(`Failed to fetch POS analytics data: ${posError.message}`);
-  }
-
+  const orders = paidOrders;
   const ordersList = [
     ...((orders || []) as any[]).filter(isPaidOnlineOrAmbassadorOrder),
     ...((posOrders || []) as any[]),
   ];
-  
-  // Fetch pending cash and approval orders for the new metrics
-  let pendingOrdersQuery = supabase
-    .from('orders')
-    .select(`
-      *,
-      order_passes (*)
-    `)
-    .in('status', ['PENDING_CASH', 'PENDING_ADMIN_APPROVAL']);
-  
-  if (eventId) {
-    pendingOrdersQuery = pendingOrdersQuery.eq('event_id', eventId);
-  }
-  
-  if (startDate) {
-    pendingOrdersQuery = pendingOrdersQuery.gte('created_at', startDate.toISOString());
-  }
-  
-  if (endDate) {
-    pendingOrdersQuery = pendingOrdersQuery.lte('created_at', endDate.toISOString());
-  }
-  
-  const { data: pendingOrders, error: pendingError } = await pendingOrdersQuery;
-  
-  if (pendingError) {
-    throw new Error(`Failed to fetch pending orders data: ${pendingError.message}`);
-  }
   
   const pendingOrdersList = (pendingOrders || []) as any[];
   
@@ -430,24 +363,7 @@ async function fetchAnalyticsData(
   const presalePaidTickets =
     presalePaidBreakdown.online.tickets + presalePaidBreakdown.cod.tickets;
   
-  // Get total orders created (for ambassador conversion) - need to fetch all orders, not just PAID
-  let allOrdersQuery = supabase
-    .from('orders')
-    .select('id, ambassador_id, status, created_at');
-  
-  if (eventId) {
-    allOrdersQuery = allOrdersQuery.eq('event_id', eventId);
-  }
-  
-  if (startDate) {
-    allOrdersQuery = allOrdersQuery.gte('created_at', startDate.toISOString());
-  }
-  
-  if (endDate) {
-    allOrdersQuery = allOrdersQuery.lte('created_at', endDate.toISOString());
-  }
-  
-  const { data: allOrders } = await allOrdersQuery;
+  // Ambassador conversion uses allOrders from admin analytics API (already scoped by event/date on server)
   const totalOrdersPaid = ordersList.length;
   
   // Get all orders per ambassador for conversion rate calculation

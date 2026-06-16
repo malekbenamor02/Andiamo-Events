@@ -50,21 +50,15 @@ export const fetchSalesSettings = async (): Promise<SalesSettings> => {
  * @returns Promise<void>
  */
 export const updateSalesSettings = async (enabled: boolean): Promise<void> => {
-  const { error } = await supabase
-    .from('site_content')
-    .upsert({
-      key: 'sales_settings',
-      content: { enabled },
-      updated_at: new Date().toISOString()
-    }, {
-      onConflict: 'key'
-    });
-
-  if (error) {
-    if (error.code === '42501' || error.message?.includes('policy')) {
-      throw new Error('Permission denied. Please run the sales settings migration in Supabase SQL Editor to enable admin updates.');
-    }
-    throw error;
+  const response = await fetch('/api/update-sales-settings', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || body.details || 'Failed to update sales settings');
   }
 };
 

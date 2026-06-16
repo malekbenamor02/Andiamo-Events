@@ -1,9 +1,10 @@
 // Admin POS API: outlets, users, stock, orders, audit-log
-// All routes require verifyAdminAuth. Audit to pos_audit_log.
+// All routes require verifyAdminAuth + pos:manage. Audit to pos_audit_log.
 
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { verifyAdminAuth, hasPermission } from './_lib/admin-verify.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
@@ -12,32 +13,6 @@ const { sendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/transac
 const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/can-send-transactional-email.cjs'));
 const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./_lib/render-premium-ticket-pdf.cjs');
 const { uploadTicketQrToR2OrSupabase } = requireCjs(path.join(__dirname, '_lib/r2-media.cjs'));
-
-async function verifyAdminAuth(req) {
-  try {
-    const cookies = req.headers.cookie || '';
-    const m = cookies.match(/adminToken=([^;]+)/);
-    const token = m ? m[1] : null;
-    if (!token) return { valid: false, error: 'No authentication token', statusCode: 401 };
-
-    const jwt = await import('jsonwebtoken');
-    const secret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
-    let decoded;
-    try { decoded = jwt.default.verify(token, secret); } catch (e) {
-      return { valid: false, error: 'Invalid or expired token', statusCode: 401 };
-    }
-    if (!decoded.id || !decoded.email || !decoded.role) return { valid: false, error: 'Invalid token', statusCode: 401 };
-    if (decoded.role !== 'admin' && decoded.role !== 'super_admin') return { valid: false, error: 'Invalid role', statusCode: 403 };
-
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-    const { data: admin, error } = await supabase.from('admins').select('id, email, name, role').eq('id', decoded.id).eq('email', decoded.email).eq('is_active', true).single();
-    if (error || !admin) return { valid: false, error: 'Admin not found or inactive', statusCode: 401 };
-    return { valid: true, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role } };
-  } catch (e) {
-    return { valid: false, error: e.message, statusCode: 500 };
-  }
-}
 
 /** PostgREST may return `events` as [{…}]; PDF builder needs one row + poster URL when embed is missing. */
 async function ensureOrderEventsForPdf(sb, order) {
@@ -773,6 +748,9 @@ export default async (req, res) => {
 
   const auth = await verifyAdminAuth(req);
   if (!auth.valid) return res.status(auth.statusCode || 401).json({ error: auth.error });
+  if (!hasPermission(auth.admin?.role, 'pos:manage')) {
+    return res.status(403).json({ error: 'Forbidden', details: 'Permission required: pos:manage' });
+  }
 
   let sb;
   try { sb = await getSupabase(); } catch (e) { return res.status(500).json({ error: 'Supabase not configured' }); }

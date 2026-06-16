@@ -3,7 +3,7 @@
 // This reduces function count from 7 to 1
 
 import '../lib/sentry-server.js';
-import { verifyAdminAuth } from './_lib/admin-verify.js';
+import { verifyAdminAuth, hasPermission } from './_lib/admin-verify.js';
 import { handleVerifyAdmin } from './_lib/verify-admin-http.js';
 import { applyClearAdminTokenCookie } from './_lib/clear-admin-token-cookie.js';
 import { agentDebugLog } from './_lib/agent-debug-log.js';
@@ -1377,6 +1377,30 @@ export default async (req, res) => {
     } catch (err) {
       console.error('Academy app error:', err);
       return res.status(500).json({ error: err.message || 'Academy service unavailable' });
+    }
+  }
+
+  // Marketing / bulk comms admin paths (Vercel) — enforce marketing:manage before handlers
+  const marketingAdminPath =
+    (path.startsWith('/api/marketing/') && !path.startsWith('/api/marketing/cron/')) ||
+    path.startsWith('/api/admin/investor-contacts') ||
+    path.startsWith('/api/admin/email-addresses') ||
+    path.startsWith('/api/admin/phone-numbers');
+  if (marketingAdminPath && method !== 'OPTIONS') {
+    const marketingAuth = await verifyAdminAuth(req);
+    if (!marketingAuth.valid) {
+      return res.status(marketingAuth.statusCode || 401).json({
+        error: marketingAuth.error,
+        valid: false,
+        reason: marketingAuth.reason,
+      });
+    }
+    if (!hasPermission(marketingAuth.admin?.role, 'marketing:manage')) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        details: 'Permission required: marketing:manage',
+        valid: false,
+      });
     }
   }
 

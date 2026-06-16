@@ -255,72 +255,11 @@ function safeStr(v: unknown, max = 500): string {
 }
 
 async function fetchPaidOrdersForExport(eventId: string | null, dateRange: DateRange) {
-  const { startDate, endDate } = getDateRangeFilter(dateRange);
-  let query = supabase
-    .from('orders')
-    .select(
-      `
-      *,
-      order_passes (*),
-      ambassadors ( id, full_name, phone, email ),
-      events ( id, name, date, venue, city )
-    `,
-      { count: 'exact' }
-    )
-    .in('status', [OrderStatus.PAID, 'COMPLETED'])
-    .in('payment_method', [PaymentMethod.ONLINE, PaymentMethod.AMBASSADOR_CASH])
-    .order('created_at', { ascending: false })
-    .limit(15000);
-
-  if (eventId) {
-    query = query.eq('event_id', eventId);
-  }
-  if (startDate) {
-    query = query.gte('created_at', startDate.toISOString());
-  }
-  if (endDate) {
-    query = query.lte('created_at', endDate.toISOString());
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    throw new Error(supabaseErrorMessage(error));
-  }
-  const rows = (data || []) as any[];
+  const { adminOrdersApi } = await import('@/lib/adminOrdersApi');
+  const result = await adminOrdersApi.exportOrders(eventId, dateRange);
+  const rows = (result.data || []) as any[];
   const onlineAndAmb = rows.filter(isPaidOnlineOrAmbassadorOrder);
-
-  let posQuery = supabase
-    .from('orders')
-    .select(
-      `
-      *,
-      order_passes (*),
-      ambassadors ( id, full_name, phone, email ),
-      events ( id, name, date, venue, city )
-    `,
-      { count: 'exact' }
-    )
-    .eq('source', 'point_de_vente')
-    .in('status', [OrderStatus.PAID, 'COMPLETED'])
-    .order('created_at', { ascending: false })
-    .limit(15000);
-
-  if (eventId) {
-    posQuery = posQuery.eq('event_id', eventId);
-  }
-  if (startDate) {
-    posQuery = posQuery.gte('created_at', startDate.toISOString());
-  }
-  if (endDate) {
-    posQuery = posQuery.lte('created_at', endDate.toISOString());
-  }
-
-  const { data: posData, error: posError } = await posQuery;
-  if (posError) {
-    throw new Error(supabaseErrorMessage(posError));
-  }
-  const posRows = ((posData || []) as any[]).filter(isPaidPosOrder);
-
+  const posRows = rows.filter(isPaidPosOrder);
   return [...onlineAndAmb, ...posRows];
 }
 
@@ -535,12 +474,10 @@ async function fetchPassStockBreakdownForEvent(eventId: string): Promise<PassSto
     const ordersRows: any[] = [];
     for (let i = 0; i < orderIds.length; i += ORDERS_BY_ID_CHUNK) {
       const chunk = orderIds.slice(i, i + ORDERS_BY_ID_CHUNK);
-      const { data: chunkRows, error: oErr } = await supabase
-        .from('orders')
-        .select('id, payment_method, status, payment_status, event_id, source')
-        .in('id', chunk);
-      if (oErr) throw new Error(supabaseErrorMessage(oErr));
-      if (chunkRows?.length) ordersRows.push(...chunkRows);
+      const { adminOrdersApi } = await import('@/lib/adminOrdersApi');
+      const summaryRes = await adminOrdersApi.orderSummariesByIds(chunk);
+      const chunkRows = summaryRes.data || [];
+      if (chunkRows.length) ordersRows.push(...chunkRows);
     }
 
     const orderById = new Map(ordersRows.map((o: any) => [o.id, o]));

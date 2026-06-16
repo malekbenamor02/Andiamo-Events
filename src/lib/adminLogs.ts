@@ -1,35 +1,25 @@
 /**
  * Admin activity logging for the Admins > Activity Logs UI.
- * Persists to `admin_logs`; no PII in details.
+ * Persists via POST /api/admin/audit-log (service role); no browser Supabase writes.
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js';
-
 export interface LogAdminActionParams {
-  adminId: string;
-  adminName: string;
-  adminEmail?: string | null;
   action: string;
   targetType?: string | null;
   targetId?: string | null;
   details?: Record<string, unknown> | null;
 }
 
-export async function logAdminAction(
-  supabase: SupabaseClient,
-  params: LogAdminActionParams
-): Promise<void> {
+export async function logAdminAction(params: LogAdminActionParams): Promise<void> {
   try {
-    await (supabase as any).from('admin_logs').insert({
-      admin_id: params.adminId,
-      admin_name: params.adminName,
-      admin_email: params.adminEmail ?? null,
+    const { adminOrdersApi } = await import('@/lib/adminOrdersApi');
+    await adminOrdersApi.writeAuditLog({
       action: params.action,
-      target_type: params.targetType ?? null,
-      target_id: params.targetId ?? null,
-      details: params.details ?? null,
+      targetType: params.targetType,
+      targetId: params.targetId,
+      details: params.details,
     });
   } catch (e) {
-    console.error('[adminLogs] Failed to insert:', e);
+    console.error('[adminLogs] Failed to write audit log:', e);
   }
 }

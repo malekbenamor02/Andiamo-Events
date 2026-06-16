@@ -18,6 +18,14 @@ export const API_ROUTES = {
   ADMIN_LOGIN: '/api/admin-login',
   ADMIN_LOGOUT: '/api/admin-logout',
   VERIFY_ADMIN: '/api/verify-admin',
+  ADMIN_SITE_CONTENT: (key: string) => `/api/admin/site-content/${encodeURIComponent(key)}`,
+  ADMIN_ADMINS: '/api/admin/admins',
+  ADMIN_ADMIN: (id: string) => `/api/admin/admins/${encodeURIComponent(id)}`,
+  ADMIN_SPONSORS: '/api/admin/sponsors',
+  ADMIN_SPONSOR: (id: string) => `/api/admin/sponsors/${encodeURIComponent(id)}`,
+  ADMIN_TEAM_MEMBERS: '/api/admin/team-members',
+  ADMIN_TEAM_MEMBER: (id: string) => `/api/admin/team-members/${encodeURIComponent(id)}`,
+  ADMIN_PASS_DELETE: (id: string) => `/api/admin/passes/${encodeURIComponent(id)}`,
   ADMIN_EVENTS: '/api/admin/events',
   ADMIN_EVENT: (id: string) => `/api/admin/events/${id}`,
 
@@ -132,6 +140,22 @@ export const API_ROUTES = {
   // Admin Order Management
   ADMIN_SKIP_AMBASSADOR_CONFIRMATION: '/api/admin-skip-ambassador-confirmation',
   ADMIN_APPROVE_ORDER: '/api/admin-approve-order',
+  ADMIN_REJECT_ORDER: '/api/admin/reject-order',
+  ADMIN_ORDERS_ONLINE: '/api/admin/orders/online',
+  ADMIN_ORDERS_CHART: '/api/admin/orders/chart',
+  ADMIN_ORDERS_POS_OVERVIEW: '/api/admin/orders/pos-overview',
+  ADMIN_ANALYTICS_ORDERS: '/api/admin/analytics/orders',
+  ADMIN_ANALYTICS_EXPORT_ORDERS: '/api/admin/analytics/export-orders',
+  ADMIN_ANALYTICS_ORDER_SUMMARIES: '/api/admin/analytics/order-summaries',
+  ADMIN_ORDER_LOGS: '/api/admin/order-logs',
+  ADMIN_ORDER_PAYMENT_STATUS: (id: string) =>
+    `/api/admin/orders/${encodeURIComponent(id)}/payment-status`,
+  ADMIN_ORDER_COMPLETE: (id: string) =>
+    `/api/admin/orders/${encodeURIComponent(id)}/complete`,
+  ADMIN_ORDER_APPROVE_EMAIL_SMS: (id: string) =>
+    `/api/admin/orders/${encodeURIComponent(id)}/approve-email-sms`,
+  ADMIN_AUDIT_LOG: '/api/admin/audit-log',
+  ADMIN_AUDIT_LOGS: '/api/admin/audit-logs',
   ADMIN_REMOVE_ORDER: '/api/admin-remove-order',
   ADMIN_RESEND_TICKET_EMAIL: '/api/admin-resend-ticket-email',
   /** Super admin only: QR images and ticket statuses for an order (query param orderId). */

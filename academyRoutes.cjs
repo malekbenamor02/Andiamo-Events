@@ -129,13 +129,6 @@ async function verifyRecaptcha(token) {
   return !!data.success;
 }
 
-function requireSuperAdmin(req, res, next) {
-  if (!req.admin || req.admin.role !== 'super_admin') {
-    return res.status(403).json({ error: 'Super admin access required' });
-  }
-  next();
-}
-
 async function sendAcademyEmail(reg, template) {
   if (!reg?.email) return false;
   let mail;
@@ -336,7 +329,8 @@ async function academyPublicError(res, status, code, message, logDetails) {
   return publicApiError(res, status, code, message, { logDetails });
 }
 
-function registerAcademyRoutes(app, { requireAdminAuth }) {
+function registerAcademyRoutes(app, deps) {
+  const { requireAdminAuth, requireSuperAdmin } = deps;
   const registerLimiter = multerSingle('paymentProof');
 
   async function handleAutoCancelExpiredAcademyRegistrations(req, res) {

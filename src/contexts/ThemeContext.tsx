@@ -183,25 +183,8 @@ export const ThemeProvider = ({ children }: ThemeProviderProps) => {
   }, [currentTheme]); // Removed loading dependency to apply immediately
 
   const setTheme = async (theme: ThemeName) => {
-    try {
-      // Save to database
-      const { error } = await supabase
-        .from('site_content')
-        .upsert({
-          key: 'site_theme',
-          content: { activeTheme: theme },
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'key',
-        });
-
-      if (error) throw error;
-
-      setCurrentTheme(theme);
-    } catch (error) {
-      console.error('Error saving theme:', error);
-      throw error;
-    }
+    // User theme preference is local-only; site-wide theme is updated via admin API.
+    setCurrentTheme(theme);
   };
 
   return (

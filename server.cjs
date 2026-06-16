@@ -103,6 +103,13 @@ if (resolvedSupabaseUrl && resolvedSupabaseAnonKey) {
   // Supabase client not initialized - admin login disabled
 }
 
+const {
+  requireAdminAuth,
+  requireSuperAdmin,
+  requireAdminPermission,
+  requireAdminRole,
+} = require('./api/_lib/admin-authorization-express.cjs');
+
 const app = express();
 
 // CORS configuration - allow all origins in development, specific origins in production
@@ -1075,8 +1082,9 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
       }
     }
     
-    // Fetch admin by email
-    const { data: admin, error } = await supabase
+    // Fetch admin by email (service role — admins table RLS denies anon)
+    const loginDb = supabaseService || supabase;
+    const { data: admin, error } = await loginDb
       .from('admins')
       .select('*')
       .eq('email', email.toLowerCase().trim()) // Normalize email
@@ -1371,9 +1379,10 @@ app.post('/api/audience-suggestions', suggestionsLimiter, async (req, res) => {
 });
 
 // Update sales settings endpoint
-app.post('/api/update-sales-settings', requireAdminAuth, async (req, res) => {
+app.post('/api/update-sales-settings', requireAdminAuth, requireAdminPermission('settings:manage'), async (req, res) => {
   try {
-    if (!supabase) {
+    const dbClient = supabaseService || supabase;
+    if (!dbClient) {
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
@@ -1383,8 +1392,8 @@ app.post('/api/update-sales-settings', requireAdminAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid request: enabled must be a boolean' });
     }
 
-    // Update or insert sales settings
-    const { data, error } = await supabase
+    // Update or insert sales settings (service role — site_content RLS blocks anon writes)
+    const { data, error } = await dbClient
       .from('site_content')
       .upsert({
         key: 'sales_settings',
@@ -1429,81 +1438,31 @@ app.post('/api/admin-logout', adminLogoutLimiter, (req, res) => {
 // Refreshing the page, navigating, or closing/reopening the browser does NOT restart the timer
 // The session countdown continues from the original login time
 app.get('/api/verify-admin', verifyAdminLimiter, requireAdminAuth, async (req, res) => {
-  if (!supabase) {
-    console.error('❌ /api/verify-admin: Supabase not configured');
-    return res.status(500).json({ 
-      valid: false, 
-      error: 'Supabase not configured',
-      details: 'Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables'
-    });
-  }
-  
   try {
-    // Verify admin exists in database and is active
-    // Note: requireAdminAuth middleware already verified the JWT token expiration
-    // If token is expired, this endpoint will never be reached (401 returned by middleware)
-    const { data: admin, error } = await supabase
-      .from('admins')
-      .select('id, email, name, role, is_active')
-      .eq('id', req.admin.id)
-      .eq('email', req.admin.email)
-      .eq('is_active', true)
-      .single();
+    const tokenExpiration = req.admin.exp ? req.admin.exp * 1000 : null;
+    const timeRemaining = tokenExpiration
+      ? Math.max(0, Math.floor((tokenExpiration - Date.now()) / 1000))
+      : 0;
 
-    if (error) {
-      console.error('❌ /api/verify-admin: Database error:', {
-        error: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-        adminId: req.admin?.id,
-        adminEmail: req.admin?.email
-      });
-      return res.status(500).json({ 
-        valid: false, 
-        error: 'Database error',
-        details: error.message || 'Failed to verify admin'
-      });
-    }
-
-    if (!admin) {
-      console.error('❌ /api/verify-admin: Admin not found or inactive:', {
-        adminId: req.admin?.id,
-        adminEmail: req.admin?.email
-      });
-      return res.status(401).json({ 
-        valid: false, 
-        error: 'Invalid admin',
-        details: 'Admin not found or account is inactive'
-      });
-    }
-
-    // Return admin info with token expiration time
-    // req.admin contains the decoded JWT which includes 'exp' (expiration timestamp)
-    // This allows the frontend to calculate remaining session time accurately
-    const tokenExpiration = req.admin.exp ? req.admin.exp * 1000 : null; // Convert to milliseconds
-    const currentTime = Date.now();
-    const timeRemaining = tokenExpiration ? Math.max(0, Math.floor((tokenExpiration - currentTime) / 1000)) : 0; // Remaining seconds
-
-    // Return admin info - NO new token is issued, session continues with original expiration
-    res.json({ 
-      valid: true, 
-      admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role },
-      sessionExpiresAt: tokenExpiration, // Unix timestamp in milliseconds
-      sessionTimeRemaining: timeRemaining // Remaining seconds
+    res.json({
+      valid: true,
+      admin: {
+        id: req.admin.id,
+        email: req.admin.email,
+        name: req.admin.name,
+        role: req.admin.role,
+      },
+      permissions: req.adminPermissions || [],
+      allowedTabs: req.adminAllowedTabs || [],
+      sessionExpiresAt: tokenExpiration,
+      sessionTimeRemaining: timeRemaining,
     });
   } catch (error) {
-    console.error('❌ /api/verify-admin: Unexpected error:', {
-      error: error.message,
-      stack: error.stack,
-      name: error.name,
-      adminId: req.admin?.id,
-      adminEmail: req.admin?.email
-    });
-    res.status(500).json({ 
-      valid: false, 
+    console.error('❌ /api/verify-admin: Unexpected error:', error);
+    res.status(500).json({
+      valid: false,
       error: 'Server error',
-      details: error.message || 'An unexpected error occurred'
+      details: error.message || 'An unexpected error occurred',
     });
   }
 });
@@ -2118,7 +2077,7 @@ app.get('/api/admin/scan-statistics', requireAdminAuth, requireSuperAdmin, async
 
 // Admin logs endpoint - Read-only, admin-only access
 // Aggregates logs from site_logs, security_audit_logs, sms_logs, and email_delivery_logs
-app.get('/api/admin/consultation-inquiries', requireAdminAuth, async (req, res) => {
+app.get('/api/admin/consultation-inquiries', requireAdminAuth, requireAdminPermission('consultation_inquiries:view'), async (req, res) => {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return res.status(500).json({
       error: 'Server misconfiguration',
@@ -2155,7 +2114,7 @@ app.get('/api/admin/consultation-inquiries', requireAdminAuth, async (req, res) 
   }
 });
 
-app.get('/api/admin/logs', requireAdminAuth, async (req, res) => {
+app.get('/api/admin/logs', requireAdminAuth, requireAdminPermission('logs:view'), async (req, res) => {
   if (!supabase) {
     return res.status(500).json({ 
       error: 'Supabase not configured',
@@ -2527,26 +2486,6 @@ app.get('/api/admin/logs', requireAdminAuth, async (req, res) => {
 // ============================================
 // OFFICIAL INVITATIONS API ENDPOINTS (Super Admin Only)
 // ============================================
-
-// Middleware to verify super admin
-function requireSuperAdmin(req, res, next) {
-  if (!req.admin) {
-    return res.status(401).json({ 
-      error: 'Not authenticated', 
-      valid: false
-    });
-  }
-  
-  if (req.admin.role !== 'super_admin') {
-    return res.status(403).json({ 
-      error: 'Forbidden', 
-      details: 'This endpoint requires super admin privileges',
-      valid: false
-    });
-  }
-  
-  next();
-}
 
 // Scanner auth: NEVER trust frontend. scannerId only from verified JWT.
 function requireScannerAuth(req, res, next) {
@@ -3278,7 +3217,7 @@ app.delete('/api/admin/official-invitations/:id', requireAdminAuth, requireSuper
 });
 
 // GET /api/admin/aio-events-submissions - Get AIO Events submissions (admin only)
-app.get('/api/admin/aio-events-submissions', requireAdminAuth, async (req, res) => {
+app.get('/api/admin/aio-events-submissions', requireAdminAuth, requireAdminPermission('aio_events:view'), async (req, res) => {
   if (!supabase) {
     return res.status(500).json({ 
       error: 'Supabase not configured',
@@ -3423,7 +3362,7 @@ app.get('/api/admin-update-application', (req, res) => {
 });
 
 // POST handler for actual updates
-app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => {
+app.post('/api/admin-update-application', requireAdminAuth, requireAdminPermission('applications:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -3517,93 +3456,33 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
   }
 });
 
-// JWT middleware for protected admin routes
-// Verifies the HttpOnly JWT cookie and checks expiration
-// The JWT contains a 1-hour expiration that cannot be extended
-function requireAdminAuth(req, res, next) {
-  try {
-    const token = req.cookies?.adminToken;
-    if (!token) {
-      return res.status(401).json({ 
-        error: 'Not authenticated', 
-        reason: 'No token provided',
-        valid: false
-      });
-    }
-    
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      console.error('⚠️ WARNING: JWT_SECRET is not set! Using fallback secret. This is insecure in production.');
-      if (process.env.NODE_ENV === 'production') {
-        return res.status(500).json({ 
-          error: 'Server configuration error', 
-          details: 'JWT_SECRET is required in production.',
-          valid: false
-        });
-      }
-    }
-    
-    // jwt.verify automatically checks expiration - throws error if expired
-    let decoded;
-    try {
-      decoded = jwt.verify(token, jwtSecret || 'fallback-secret-dev-only');
-    } catch (jwtError) {
-      // Token is invalid, expired, or malformed
-      console.error('❌ requireAdminAuth: JWT verification failed:', {
-        error: jwtError.message,
-        name: jwtError.name,
-        path: req.path
-      });
-      // Clear the cookie to prevent reuse
-      res.clearCookie('adminToken', { path: '/' });
-      return res.status(401).json({ 
-        error: 'Invalid or expired token', 
-        reason: jwtError.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token',
-        valid: false
-      });
-    }
-    
-    // Validate decoded token has required fields
-    if (!decoded.id || !decoded.email || !decoded.role) {
-      console.error('❌ requireAdminAuth: Invalid token payload:', {
-        hasId: !!decoded.id,
-        hasEmail: !!decoded.email,
-        hasRole: !!decoded.role,
-        path: req.path
-      });
-      res.clearCookie('adminToken', { path: '/' });
-      return res.status(401).json({ 
-        error: 'Invalid token', 
-        reason: 'Token payload is invalid',
-        valid: false
-      });
-    }
-    
-    req.admin = decoded;
-    next();
-  } catch (error) {
-    // Catch any unexpected errors in the middleware
-    console.error('❌ requireAdminAuth: Unexpected error:', {
-      error: error.message,
-      stack: error.stack,
-      name: error.name,
-      path: req.path
-    });
-    res.clearCookie('adminToken', { path: '/' });
-    return res.status(500).json({ 
-      error: 'Authentication error', 
-      details: 'An unexpected error occurred during authentication',
-      valid: false
-    });
-  }
-}
-
 // R2 + WebP/AVIF media upload (same handlers as api/media.js on Vercel)
 try {
   const { registerMediaRoutes } = require('./api/_lib/register-media-routes.cjs');
   registerMediaRoutes(app, { requireAdminAuth });
 } catch (mediaRegErr) {
   console.error('Media routes registration failed:', mediaRegErr.message);
+}
+
+const adminRouteDeps = {
+  supabaseService,
+  requireAdminAuth,
+  requireAdminPermission,
+  requireSuperAdmin,
+};
+try {
+  const { registerAdminSiteContentRoutes } = require('./api/_lib/admin-site-content-routes.cjs');
+  const { registerAdminAdminsRoutes } = require('./api/_lib/admin-admins-routes.cjs');
+  const { registerAdminSponsorsRoutes } = require('./api/_lib/admin-sponsors-routes.cjs');
+  const { registerAdminTeamRoutes } = require('./api/_lib/admin-team-routes.cjs');
+  registerAdminSiteContentRoutes(app, adminRouteDeps);
+  registerAdminAdminsRoutes(app, adminRouteDeps);
+  registerAdminSponsorsRoutes(app, adminRouteDeps);
+  registerAdminTeamRoutes(app, adminRouteDeps);
+  const { registerAdminAuditLogsRoutes } = require('./api/_lib/admin-audit-logs-routes.cjs');
+  registerAdminAuditLogsRoutes(app, adminRouteDeps);
+} catch (adminRoutesErr) {
+  console.error('Admin privileged routes registration failed:', adminRoutesErr.message);
 }
 
 // Optional admin auth: sets req.admin if valid cookie, otherwise req.admin = null (does not 401).
@@ -3629,6 +3508,7 @@ try {
     supabase,
     supabaseService,
     requireAdminAuth,
+    requireAdminPermission,
     careerApplicationLimiter,
     getEmailTransporter: () => getEmailTransporter ? getEmailTransporter() : transporter,
   });
@@ -3640,7 +3520,7 @@ try {
 
 try {
   const { registerAcademyRoutes } = require('./academyRoutes.cjs');
-  registerAcademyRoutes(app, { requireAdminAuth });
+  registerAcademyRoutes(app, { requireAdminAuth, requireSuperAdmin, requireAdminPermission });
   console.log('Academy routes registered at /api/academy/* and /api/admin/academy/*');
 } catch (e) {
   console.error('Academy routes not loaded:', e.message);
@@ -4001,7 +3881,7 @@ async function checkSmsBalance() {
 // ============================================
 // POST /api/send-sms - Send SMS Broadcast
 // ============================================
-app.post('/api/send-sms', requireAdminAuth, async (req, res) => {
+app.post('/api/send-sms', requireAdminAuth, requireAdminPermission('marketing:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
@@ -4468,7 +4348,7 @@ app.post('/api/send-ambassador-order-sms', smsLimiter, async (req, res) => {
 // ============================================
 // GET /api/admin/phone-numbers/sources - Get phone numbers from selected sources with filters
 // ============================================
-app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) => {
+app.get('/api/admin/phone-numbers/sources', requireAdminAuth, requireAdminPermission('marketing:manage'), async (req, res) => {
   try {
     const mod = await import('./api/misc.js');
     return await mod.default(req, res);
@@ -4479,7 +4359,7 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
 });
 
 /* Legacy inline handler removed – use api/misc.js
-app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) => {
+app.get('/api/admin/phone-numbers/sources', requireAdminAuth, requireAdminPermission('marketing:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
@@ -4806,27 +4686,27 @@ async function forwardToMisc(req, res) {
   }
 }
 
-app.get('/api/admin/email-addresses/counts', requireAdminAuth, (req, res) => forwardToMisc(req, res));
-app.get('/api/admin/email-addresses/sources', requireAdminAuth, (req, res) => forwardToMisc(req, res));
-app.get('/api/admin/investor-contacts', requireAdminAuth, (req, res) => forwardToMisc(req, res));
-app.put('/api/admin/investor-contacts', requireAdminAuth, (req, res) => forwardToMisc(req, res));
-app.get('/api/admin/order-qr-tickets', requireAdminAuth, (req, res) => {
+app.get('/api/admin/email-addresses/counts', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
+app.get('/api/admin/email-addresses/sources', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
+app.get('/api/admin/investor-contacts', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
+app.put('/api/admin/investor-contacts', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
+app.get('/api/admin/order-qr-tickets', requireAdminAuth, requireSuperAdmin, (req, res) => {
   req.url = req.originalUrl || req.url;
   return forwardToMisc(req, res);
 });
 app.get('/api/marketing/cron/email-campaigns', (req, res) => forwardToMisc(req, res));
 app.post('/api/marketing/cron/email-campaigns', (req, res) => forwardToMisc(req, res));
-app.post('/api/marketing/campaigns/:id/launch', requireAdminAuth, (req, res) => forwardToMisc(req, res));
-app.post('/api/marketing/campaigns', requireAdminAuth, (req, res) => forwardToMisc(req, res));
-app.get('/api/marketing/campaigns', requireAdminAuth, (req, res) => forwardToMisc(req, res));
-app.get('/api/marketing/campaigns/:id', requireAdminAuth, (req, res) => forwardToMisc(req, res));
-app.post('/api/marketing/campaigns/:id/send-batch', requireAdminAuth, (req, res) => forwardToMisc(req, res));
-app.patch('/api/marketing/campaigns/:id', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.post('/api/marketing/campaigns/:id/launch', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
+app.post('/api/marketing/campaigns', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
+app.get('/api/marketing/campaigns', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
+app.get('/api/marketing/campaigns/:id', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
+app.post('/api/marketing/campaigns/:id/send-batch', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
+app.patch('/api/marketing/campaigns/:id', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
 
 // ============================================
 // GET /api/admin/phone-numbers/counts - Get quick counts per source
 // ============================================
-app.get('/api/admin/phone-numbers/counts', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.get('/api/admin/phone-numbers/counts', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
 
 /* Legacy inline counts handler – use api/misc.js
 app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) => {
@@ -4976,7 +4856,7 @@ app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) =>
 // ============================================
 // POST /api/admin/bulk-sms/send - Send bulk SMS to selected phone numbers
 // ============================================
-app.post('/api/admin/bulk-sms/send', requireAdminAuth, async (req, res) => {
+app.post('/api/admin/bulk-sms/send', requireAdminAuth, requireAdminPermission('marketing:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
@@ -5155,7 +5035,7 @@ app.post('/api/admin/bulk-sms/send', requireAdminAuth, async (req, res) => {
 });
 
 // POST /api/bulk-phones - Add bulk phone numbers
-app.post('/api/bulk-phones', requireAdminAuth, async (req, res) => {
+app.post('/api/bulk-phones', requireAdminAuth, requireAdminPermission('marketing:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
@@ -5286,7 +5166,7 @@ app.get('/api/admin/payment-options', requireAdminAuth, async (req, res) => {
 });
 
 // PUT /api/admin/payment-options/:type - Update payment option configuration (admin)
-app.put('/api/admin/payment-options/:type', requireAdminAuth, async (req, res) => {
+app.put('/api/admin/payment-options/:type', requireAdminAuth, requireAdminPermission('settings:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -5664,7 +5544,7 @@ app.get('/api/ambassador/performance', async (req, res) => {
 });
 
 // POST /api/admin/cancel-order - Cancel order by admin
-app.post('/api/admin/cancel-order', requireAdminAuth, async (req, res) => {
+app.post('/api/admin/cancel-order', requireAdminAuth, requireAdminPermission('orders:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -5766,7 +5646,7 @@ app.post('/api/admin/cancel-order', requireAdminAuth, async (req, res) => {
 
 // POST /api/admin/reject-order - Reject COD order (admin reject pending order)
 // POST /api/admin-remove-order - Admin-only endpoint to soft-delete orders (set status to REMOVED_BY_ADMIN)
-app.post('/api/admin-remove-order', requireAdminAuth, async (req, res) => {
+app.post('/api/admin-remove-order', requireAdminAuth, requireAdminPermission('orders:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -5969,7 +5849,7 @@ app.post('/api/admin-remove-order', requireAdminAuth, async (req, res) => {
   }
 });
 
-app.post('/api/admin/reject-order', requireAdminAuth, async (req, res) => {
+app.post('/api/admin/reject-order', requireAdminAuth, requireAdminPermission('orders:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -5982,7 +5862,13 @@ app.post('/api/admin/reject-order', requireAdminAuth, async (req, res) => {
       return res.status(400).json({ error: 'Order ID is required' });
     }
 
-    const dbClient = supabaseService || supabase;
+    const dbClient = supabaseService;
+    if (!dbClient) {
+      return res.status(503).json({
+        error: 'Server configuration error',
+        details: 'SUPABASE_SERVICE_ROLE_KEY is required',
+      });
+    }
 
     // Verify order exists and is in valid status for rejection
     const { data: order, error: orderError } = await dbClient
@@ -6003,10 +5889,17 @@ app.post('/api/admin/reject-order', requireAdminAuth, async (req, res) => {
     }
 
     // Update order status
+    const rejectedByNameSnapshot =
+      (req.admin?.name && String(req.admin.name).trim()) ||
+      (req.admin?.email && String(req.admin.email).trim()) ||
+      null;
+
     const updateData = {
       status: 'REJECTED',
       rejected_at: new Date().toISOString(),
       rejection_reason: reason || null,
+      rejected_by: adminId || null,
+      rejected_by_name: rejectedByNameSnapshot,
       updated_at: new Date().toISOString()
     };
 
@@ -6040,6 +5933,8 @@ app.post('/api/admin/reject-order', requireAdminAuth, async (req, res) => {
           old_status: order.status,
           new_status: 'REJECTED',
           rejection_reason: reason || null,
+          rejected_by_name: rejectedByNameSnapshot,
+          rejected_by_id: adminId || null,
           admin_action: true
         }
       });
@@ -6163,7 +6058,7 @@ app.get('/api/passes/:eventId', async (req, res) => {
 // ============================================
 
 // GET /api/admin/passes/:eventId - Get all passes (including inactive) with stock info
-app.get('/api/admin/passes/:eventId', requireAdminAuth, async (req, res) => {
+app.get('/api/admin/passes/:eventId', requireAdminAuth, requireAdminPermission('events:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -6286,7 +6181,7 @@ app.get('/api/admin/passes/:eventId', requireAdminAuth, async (req, res) => {
 });
 
 // POST /api/admin/passes/create — service role (presale events: anon cannot SELECT new rows under RLS)
-app.post('/api/admin/passes/create', requireAdminAuth, async (req, res) => {
+app.post('/api/admin/passes/create', requireAdminAuth, requireAdminPermission('events:manage'), async (req, res) => {
   try {
     if (!supabaseService) {
       return res.status(500).json({ error: 'Supabase service client not configured' });
@@ -6357,7 +6252,7 @@ app.post('/api/admin/passes/create', requireAdminAuth, async (req, res) => {
 });
 
 // Admin Events CRUD (cookie-admin-auth + service role)
-app.post('/api/admin/events', requireAdminAuth, async (req, res) => {
+app.post('/api/admin/events', requireAdminAuth, requireAdminPermission('events:manage'), async (req, res) => {
   try {
     if (!supabaseService) {
       return res.status(500).json({ error: 'Supabase service client not configured' });
@@ -6430,7 +6325,7 @@ app.post('/api/admin/events', requireAdminAuth, async (req, res) => {
   }
 });
 
-app.patch('/api/admin/events/:id', requireAdminAuth, async (req, res) => {
+app.patch('/api/admin/events/:id', requireAdminAuth, requireAdminPermission('events:manage'), async (req, res) => {
   try {
     if (!supabaseService) {
       return res.status(500).json({ error: 'Supabase service client not configured' });
@@ -6504,7 +6399,7 @@ app.patch('/api/admin/events/:id', requireAdminAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/admin/events/:id', requireAdminAuth, async (req, res) => {
+app.delete('/api/admin/events/:id', requireAdminAuth, requireAdminPermission('events:manage'), async (req, res) => {
   try {
     if (!supabaseService) {
       return res.status(500).json({ error: 'Supabase service client not configured' });
@@ -6522,7 +6417,7 @@ app.delete('/api/admin/events/:id', requireAdminAuth, async (req, res) => {
 });
 
 // POST /api/admin/passes/:id/stock - Update pass stock (max_quantity)
-app.post('/api/admin/passes/:id/stock', requireAdminAuth, async (req, res) => {
+app.post('/api/admin/passes/:id/stock', requireAdminAuth, requireAdminPermission('events:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -6636,7 +6531,7 @@ app.post('/api/admin/passes/:id/stock', requireAdminAuth, async (req, res) => {
 });
 
 // PUT /api/admin/passes/:id/payment-methods - Update pass payment method restrictions
-app.put('/api/admin/passes/:id/payment-methods', requireAdminAuth, async (req, res) => {
+app.put('/api/admin/passes/:id/payment-methods', requireAdminAuth, requireAdminPermission('events:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -6762,7 +6657,7 @@ app.put('/api/admin/passes/:id/payment-methods', requireAdminAuth, async (req, r
 });
 
 // PUT /api/admin/passes/:id/description - Update pass description
-app.put('/api/admin/passes/:id/description', requireAdminAuth, async (req, res) => {
+app.put('/api/admin/passes/:id/description', requireAdminAuth, requireAdminPermission('events:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -6842,7 +6737,7 @@ app.put('/api/admin/passes/:id/description', requireAdminAuth, async (req, res) 
 });
 
 // POST /api/admin/passes/:id/activate - Activate/deactivate pass
-app.post('/api/admin/passes/:id/activate', requireAdminAuth, async (req, res) => {
+app.post('/api/admin/passes/:id/activate', requireAdminAuth, requireAdminPermission('events:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -6942,6 +6837,25 @@ app.post('/api/admin/passes/:id/activate', requireAdminAuth, async (req, res) =>
   }
 });
 
+// DELETE /api/admin/passes/:id — super_admin events:manage, service role
+app.delete('/api/admin/passes/:id', requireAdminAuth, requireAdminPermission('events:manage'), async (req, res) => {
+  try {
+    const dbClient = supabaseService || supabase;
+    if (!dbClient) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+    const { id } = req.params;
+    const { error } = await dbClient.from('event_passes').delete().eq('id', id);
+    if (error) {
+      return res.status(400).json({ error: 'Failed to delete pass', details: error.message });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Error in DELETE /api/admin/passes/:id:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
 // ============================================
 // Active Ambassadors Endpoint
 // ============================================
@@ -7011,7 +6925,7 @@ app.get('/api/ambassadors/active', async (req, res) => {
 // ============================================
 
 // GET /api/admin/ambassador-sales/overview - Get performance metrics and analytics (admin)
-app.get('/api/admin/ambassador-sales/overview', requireAdminAuth, async (req, res) => {
+app.get('/api/admin/ambassador-sales/overview', requireAdminAuth, requireAdminPermission('ambassador_sales:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -7103,7 +7017,7 @@ app.get('/api/admin/ambassador-sales/overview', requireAdminAuth, async (req, re
 });
 
 // GET /api/admin/ambassador-sales/orders - Get COD ambassador orders with filters (admin)
-app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res) => {
+app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, requireAdminPermission('ambassador_sales:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -7170,27 +7084,17 @@ app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res)
   }
 });
 
-// GET /api/admin/ambassador-sales/logs - Get order logs (super admin only)
-app.get('/api/admin/ambassador-sales/logs', requireAdminAuth, async (req, res) => {
+// GET /api/admin/ambassador-sales/logs - reports (super_admin via reports:view permission)
+app.get('/api/admin/ambassador-sales/logs', requireAdminAuth, requireAdminPermission('reports:view'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    // Check if user is super admin
-    const { data: adminData } = await supabase
-      .from('admins')
-      .select('role')
-      .eq('id', req.admin.id)
-      .single();
-
-    if (!adminData || adminData.role !== 'super_admin') {
-      return res.status(403).json({ error: 'Super admin access required' });
-    }
-
+    const dbClient = supabaseService || supabase;
     const { date_from, date_to, action, ambassador_id, order_id, limit = 100, offset = 0 } = req.query;
 
-    let query = supabase
+    let query = dbClient
       .from('order_logs')
       .select('*, orders!inner(payment_method)', { count: 'exact' })
       .eq('orders.payment_method', 'ambassador_cash')
@@ -7225,8 +7129,26 @@ app.get('/api/admin/ambassador-sales/logs', requireAdminAuth, async (req, res) =
 // Order Expiration Management Endpoints
 // ============================================
 
-// GET/POST /api/auto-reject-expired-orders - Manual trigger for external cron services
-app.get('/api/auto-reject-expired-orders', async (req, res) => {
+function requireCronSecret(req, res, next) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    return res.status(503).json({ success: false, error: 'CRON_SECRET is not configured' });
+  }
+  const authHdr = req.headers.authorization || req.headers.Authorization || '';
+  const bearer = typeof authHdr === 'string' && authHdr.startsWith('Bearer ') ? authHdr.slice(7).trim() : null;
+  const providedSecret =
+    req.headers['x-cron-secret'] ||
+    bearer ||
+    req.query?.secret ||
+    req.body?.secret;
+  if (providedSecret !== cronSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  next();
+}
+
+// GET/POST /api/auto-reject-expired-orders - cron or CRON_SECRET only
+app.get('/api/auto-reject-expired-orders', requireCronSecret, async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -7261,13 +7183,13 @@ app.get('/api/auto-reject-expired-orders', async (req, res) => {
   }
 });
 
-app.post('/api/auto-reject-expired-orders', async (req, res) => {
+app.post('/api/auto-reject-expired-orders', requireCronSecret, async (req, res) => {
   // Same handler as GET
   return app._router.handle({ ...req, method: 'GET' }, res);
 });
 
 // GET /api/admin/order-expiration-settings - Get global expiration settings
-app.get('/api/admin/order-expiration-settings', requireAdminAuth, async (req, res) => {
+app.get('/api/admin/order-expiration-settings', requireAdminAuth, requireAdminPermission('settings:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -7307,7 +7229,7 @@ app.get('/api/admin/order-expiration-settings', requireAdminAuth, async (req, re
 });
 
 // POST /api/admin/order-expiration-settings - Update global expiration settings
-app.post('/api/admin/order-expiration-settings', requireAdminAuth, async (req, res) => {
+app.post('/api/admin/order-expiration-settings', requireAdminAuth, requireAdminPermission('settings:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -7427,7 +7349,7 @@ app.post('/api/admin/order-expiration-settings', requireAdminAuth, async (req, r
 });
 
 // POST /api/admin/set-order-expiration - Set expiration for specific order
-app.post('/api/admin/set-order-expiration', requireAdminAuth, async (req, res) => {
+app.post('/api/admin/set-order-expiration', requireAdminAuth, requireAdminPermission('settings:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -7515,7 +7437,7 @@ app.post('/api/admin/set-order-expiration', requireAdminAuth, async (req, res) =
 });
 
 // DELETE /api/admin/clear-order-expiration - Clear expiration for specific order
-app.delete('/api/admin/clear-order-expiration', requireAdminAuth, async (req, res) => {
+app.delete('/api/admin/clear-order-expiration', requireAdminAuth, requireAdminPermission('settings:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -10670,7 +10592,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
 // ============================================
 // POST /api/admin-skip-ambassador-confirmation - Admin-only endpoint to approve order without ambassador confirmation
 // This bypasses the normal flow where ambassador must confirm cash before admin can approve
-app.post('/api/admin-skip-ambassador-confirmation', requireAdminAuth, logSecurityRequest, async (req, res) => {
+app.post('/api/admin-skip-ambassador-confirmation', requireAdminAuth, requireAdminPermission('orders:manage'), logSecurityRequest, async (req, res) => {
   console.log('\n🔐 ============================================');
   console.log('🔐 ADMIN: Skip Ambassador Confirmation');
   console.log('🔐 ============================================');
@@ -10909,7 +10831,7 @@ app.post('/api/admin-skip-ambassador-confirmation', requireAdminAuth, logSecurit
 // ============================================
 // POST /api/admin-approve-order - Admin-only endpoint to approve order after ambassador confirms cash
 // This is the normal approval flow: PENDING_ADMIN_APPROVAL → PAID
-app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async (req, res) => {
+app.post('/api/admin-approve-order', requireAdminAuth, requireAdminPermission('orders:manage'), logSecurityRequest, async (req, res) => {
   console.log('\n✅ ============================================');
   console.log('✅ ADMIN: Approve Order (After Ambassador Confirmation)');
   console.log('✅ ============================================');
@@ -11185,7 +11107,7 @@ const resendTicketEmailLimiter = createRateLimiter({
   }
 });
 
-app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLimiter, logSecurityRequest, async (req, res) => {
+app.post('/api/admin-resend-ticket-email', requireAdminAuth, requireAdminPermission('orders:manage'), resendTicketEmailLimiter, logSecurityRequest, async (req, res) => {
   console.log('\n📧 ============================================');
   console.log('📧 ADMIN: Resend Ticket Email');
   console.log('📧 ============================================');
@@ -12886,6 +12808,17 @@ if (require.main === module) {
       process.exit(1);
     }
   });
+}
+
+// Admin order routes (needs generateTicketsAndSendEmail defined above)
+try {
+  const { registerAdminOrdersRoutes } = require('./api/_lib/admin-orders-routes.cjs');
+  registerAdminOrdersRoutes(app, {
+    ...adminRouteDeps,
+    generateTicketsAndSendEmail,
+  });
+} catch (adminOrdersErr) {
+  console.error('Admin orders routes registration failed:', adminOrdersErr.message);
 }
 
 // Export app for use in serverless functions

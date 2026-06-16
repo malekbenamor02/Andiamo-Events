@@ -405,11 +405,16 @@ function registerCareerRoutes(app, deps) {
     supabase,
     supabaseService,
     requireAdminAuth,
+    requireAdminPermission,
     careerApplicationLimiter,
     getEmailTransporter,
   } = deps;
 
   const db = supabaseService || supabase;
+  const careersAdmin = [
+    requireAdminAuth,
+    requireAdminPermission('careers:manage'),
+  ];
 
   // —— Public: career page content (Why join us / benefits) ———————————————
   app.get('/api/careers/page-content', async (req, res) => {
@@ -704,7 +709,7 @@ function registerCareerRoutes(app, deps) {
   });
 
   // —— Admin: settings ————————————————————————————————————————————————————
-  app.get('/api/admin/careers/settings', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/settings', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const settings = await getCareerSettings(db);
@@ -715,7 +720,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.put('/api/admin/careers/settings', requireAdminAuth, async (req, res) => {
+  app.put('/api/admin/careers/settings', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { enabled, admin_notification_emails } = req.body || {};
@@ -749,7 +754,7 @@ function registerCareerRoutes(app, deps) {
   });
 
   // —— Admin: domains list with counts ——————————————————————————————————————
-  app.get('/api/admin/careers/domains', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/domains', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: domains, error } = await db.from('career_domains').select('*').order('sort_order', { ascending: true });
@@ -765,7 +770,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.post('/api/admin/careers/domains', requireAdminAuth, async (req, res) => {
+  app.post('/api/admin/careers/domains', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { name, description, benefits, job_type, salary, job_details, applications_open, document_upload_enabled, sort_order } = req.body || {};
@@ -791,7 +796,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.get('/api/admin/careers/domains/:id', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/domains/:id', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: domain, error: de } = await db.from('career_domains').select('*').eq('id', req.params.id).maybeSingle();
@@ -813,7 +818,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.put('/api/admin/careers/domains/:id', requireAdminAuth, async (req, res) => {
+  app.put('/api/admin/careers/domains/:id', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { name, slug, description, benefits, job_type, salary, job_details, applications_open, document_upload_enabled, sort_order } = req.body || {};
@@ -837,7 +842,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.delete('/api/admin/careers/domains/:id', requireAdminAuth, async (req, res) => {
+  app.delete('/api/admin/careers/domains/:id', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       // career_applications.career_domain_id has ON DELETE SET NULL: applications are kept, domain_id set to null
@@ -852,7 +857,7 @@ function registerCareerRoutes(app, deps) {
   });
 
   // —— Admin: form templates ————————————————————————————————————————————————
-  app.get('/api/admin/careers/templates', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/templates', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: templates, error } = await db
@@ -883,7 +888,7 @@ function registerCareerRoutes(app, deps) {
   });
 
   // Create template from an existing domain's fields
-  app.post('/api/admin/careers/templates/from-domain', requireAdminAuth, async (req, res) => {
+  app.post('/api/admin/careers/templates/from-domain', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { domainId, name, description } = req.body || {};
@@ -930,7 +935,7 @@ function registerCareerRoutes(app, deps) {
   });
 
   // Apply template to a domain (replace existing fields with template fields)
-  app.post('/api/admin/careers/domains/:id/apply-template', requireAdminAuth, async (req, res) => {
+  app.post('/api/admin/careers/domains/:id/apply-template', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { templateId } = req.body || {};
@@ -997,7 +1002,7 @@ function registerCareerRoutes(app, deps) {
   });
 
   // —— Admin: global city options (shared across all jobs) ———————————————————
-  app.get('/api/admin/careers/city-options', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/city-options', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const data = await getCareerCityOptions(db);
@@ -1008,7 +1013,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.put('/api/admin/careers/city-options', requireAdminAuth, async (req, res) => {
+  app.put('/api/admin/careers/city-options', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { options, disabledOptions } = req.body || {};
@@ -1047,7 +1052,7 @@ function registerCareerRoutes(app, deps) {
   });
 
   // —— Admin: global gender options (shared across all jobs) ——————————————
-  app.get('/api/admin/careers/gender-options', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/gender-options', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const data = await getCareerGenderOptions(db);
@@ -1058,7 +1063,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.put('/api/admin/careers/gender-options', requireAdminAuth, async (req, res) => {
+  app.put('/api/admin/careers/gender-options', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { options, disabledOptions } = req.body || {};
@@ -1084,7 +1089,7 @@ function registerCareerRoutes(app, deps) {
   });
 
   // —— Admin: fields ———————————————————————————————————————————————————————
-  app.get('/api/admin/careers/domains/:id/fields', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/domains/:id/fields', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: fields, error } = await db
@@ -1108,7 +1113,7 @@ function registerCareerRoutes(app, deps) {
     return String(label || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || 'field';
   }
 
-  app.post('/api/admin/careers/domains/:id/fields', requireAdminAuth, async (req, res) => {
+  app.post('/api/admin/careers/domains/:id/fields', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { field_key, label, field_type, required, sort_order, options, validation } = req.body || {};
@@ -1137,7 +1142,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.post('/api/admin/careers/domains/:id/fields/bulk', requireAdminAuth, async (req, res) => {
+  app.post('/api/admin/careers/domains/:id/fields/bulk', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { fields: fieldsPayload } = req.body || {};
@@ -1191,7 +1196,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.put('/api/admin/careers/domains/:id/fields/reorder', requireAdminAuth, async (req, res) => {
+  app.put('/api/admin/careers/domains/:id/fields/reorder', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { order } = req.body || {};
@@ -1217,7 +1222,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.put('/api/admin/careers/domains/:domainId/fields/:fieldId', requireAdminAuth, async (req, res) => {
+  app.put('/api/admin/careers/domains/:domainId/fields/:fieldId', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: existing } = await db.from('career_application_fields').select('field_key, label, field_type').eq('id', req.params.fieldId).eq('career_domain_id', req.params.domainId).single();
@@ -1249,7 +1254,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.delete('/api/admin/careers/domains/:domainId/fields/:fieldId', requireAdminAuth, async (req, res) => {
+  app.delete('/api/admin/careers/domains/:domainId/fields/:fieldId', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
 
@@ -1289,7 +1294,7 @@ function registerCareerRoutes(app, deps) {
   });
 
   // —— Admin: applications list —————————————————————————————————────────————
-  app.get('/api/admin/careers/applications', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/applications', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { domainId, status, from, to, genderKey, gender, ageKey, ageMin, ageMax, cityKey, city, nameKey, name, phoneKey, phone, page = 1, limit = 50 } = req.query;
@@ -1403,7 +1408,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.patch('/api/admin/careers/applications/:id', requireAdminAuth, async (req, res) => {
+  app.patch('/api/admin/careers/applications/:id', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db || !getEmailTransporter) return careerServiceError(res, 500, 'Not configured');
       const { status } = req.body || {};
@@ -1447,7 +1452,7 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
-  app.get('/api/admin/careers/applications/:id/logs', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/applications/:id/logs', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { data: logs, error } = await db.from('career_application_logs').select('*').eq('career_application_id', req.params.id).order('created_at', { ascending: false });
@@ -1467,7 +1472,7 @@ function registerCareerRoutes(app, deps) {
   });
 
   // —— Admin: compare ———————————————————————————————————————————————————————
-  app.get('/api/admin/careers/applications/compare', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/applications/compare', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const ids = (req.query.ids || '').split(',').filter(Boolean).slice(0, 3);
@@ -1486,7 +1491,7 @@ function registerCareerRoutes(app, deps) {
   });
 
   // —— Admin: export Excel/CSV —————————————————————————————————────────————
-  app.get('/api/admin/careers/applications/export', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/applications/export', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res) => {
     try {
       if (!db) return careerServiceError(res, 500, 'Not configured');
       const { domainId, status, from, to, genderKey, gender, ageKey, ageMin, ageMax, cityKey, city, nameKey, name, phoneKey, phone, format = 'xlsx' } = req.query;

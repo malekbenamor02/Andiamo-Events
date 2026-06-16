@@ -1,7 +1,7 @@
 /**
  * Admin logs (served via api/misc.js — keeps Vercel serverless count ≤ 11).
  */
-import { verifyAdminAuth } from './admin-verify.js';
+import { verifyAdminAuth, hasPermission } from './admin-verify.js';
 
 let corsUtils = null;
 async function getCorsUtils() {
@@ -37,6 +37,13 @@ export async function handleAdminLogs(req, res) {
     return res.status(authResult.statusCode || 401).json({
       error: authResult.error,
       details: authResult.details || authResult.reason
+    });
+  }
+
+  if (!hasPermission(authResult.admin?.role, 'logs:view')) {
+    return res.status(403).json({
+      error: 'Forbidden',
+      details: 'Permission required: logs:view',
     });
   }
 

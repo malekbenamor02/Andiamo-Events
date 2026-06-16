@@ -36,7 +36,7 @@ export type AdminDesktopSidebarRailProps = {
   currentAdminRole: string | null;
   language: "en" | "fr";
   t: Record<string, string>;
-  isAdminTabAllowedForRole: (tab: string, role: string | null) => boolean;
+  canAccessTab: (tab: string) => boolean;
   onlineOrdersCount: number;
   fetchOnlineOrders: () => void | Promise<void>;
   codAmbassadorOrdersCount: number;
@@ -60,7 +60,7 @@ export function AdminDesktopSidebarRail({
   currentAdminRole,
   language,
   t,
-  isAdminTabAllowedForRole,
+  canAccessTab,
   onlineOrdersCount,
   fetchOnlineOrders,
   codAmbassadorOrdersCount,
@@ -156,7 +156,7 @@ export function AdminDesktopSidebarRail({
           <div className="space-y-1">
             <button
               onClick={() => {
-                if (!isAdminTabAllowedForRole("overview", currentAdminRole)) return;
+                if (!canAccessTab("overview")) return;
                 setActiveTab("overview");
               }}
               type="button"
@@ -171,7 +171,7 @@ export function AdminDesktopSidebarRail({
               <BarChart3 className={`w-4 h-4 shrink-0 ${activeTab === "overview" ? "animate-pulse" : ""}`} />
               <span>{t.overview}</span>
             </button>
-            {isAdminTabAllowedForRole("events", currentAdminRole) && (
+            {canAccessTab("events") && (
               <button
                 type="button"
                 data-active={activeTab === "events"}
@@ -215,7 +215,7 @@ export function AdminDesktopSidebarRail({
               <FileText className={`w-4 h-4 shrink-0 ${activeTab === "applications" ? "animate-pulse" : ""}`} />
               <span>{t.applications}</span>
             </button>
-            {isAdminTabAllowedForRole("careers", currentAdminRole) && (
+            {canAccessTab("careers") && (
               <button
                 type="button"
                 data-active={activeTab === "careers"}
@@ -231,7 +231,7 @@ export function AdminDesktopSidebarRail({
                 <span>{language === "en" ? "Careers" : "Carrières"}</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("academy", currentAdminRole) && (
+            {canAccessTab("academy") && (
               <button
                 type="button"
                 data-active={activeTab === "academy"}
@@ -299,7 +299,7 @@ export function AdminDesktopSidebarRail({
               <Store className={`w-4 h-4 shrink-0 ${activeTab === "pos" ? "animate-pulse" : ""}`} />
               <span>{language === "en" ? "Point de Vente" : "Point de Vente"}</span>
             </button>
-            {isAdminTabAllowedForRole("official-invitations", currentAdminRole) && (
+            {canAccessTab("official-invitations") && (
               <button
                 type="button"
                 data-active={activeTab === "official-invitations"}
@@ -315,7 +315,7 @@ export function AdminDesktopSidebarRail({
                 <span>{language === "en" ? "Official Invitations" : "Invitations Officielles"}</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("tickets", currentAdminRole) && (
+            {canAccessTab("tickets") && (
               <button
                 type="button"
                 data-active={activeTab === "tickets"}
@@ -331,7 +331,7 @@ export function AdminDesktopSidebarRail({
                 <span>{language === "en" ? "Reports" : "Rapports"}</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("scanners", currentAdminRole) && (
+            {canAccessTab("scanners") && (
               <button
                 type="button"
                 data-active={activeTab === "scanners"}
@@ -347,7 +347,7 @@ export function AdminDesktopSidebarRail({
                 <span>{language === "en" ? "Scanners" : "Scanners"}</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("admins", currentAdminRole) && (
+            {canAccessTab("admins") && (
               <button
                 type="button"
                 data-active={activeTab === "admins"}
@@ -363,7 +363,7 @@ export function AdminDesktopSidebarRail({
                 <span>{language === "en" ? "Admins" : "Administrateurs"}</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("sponsors", currentAdminRole) && (
+            {canAccessTab("sponsors") && (
               <button
                 type="button"
                 data-active={activeTab === "sponsors"}
@@ -379,7 +379,7 @@ export function AdminDesktopSidebarRail({
                 <span>Sponsors</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("team", currentAdminRole) && (
+            {canAccessTab("team") && (
               <button
                 type="button"
                 data-active={activeTab === "team"}
@@ -400,7 +400,7 @@ export function AdminDesktopSidebarRail({
                 Role: {currentAdminRole || "loading..."}
               </div>
             )}
-            {isAdminTabAllowedForRole("marketing", currentAdminRole) && (
+            {canAccessTab("marketing") && (
               <button
                 type="button"
                 data-active={activeTab === "marketing"}
@@ -424,7 +424,7 @@ export function AdminDesktopSidebarRail({
                 <span>{language === "en" ? "SMS - E-mail" : "SMS - E-mail"}</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("contact", currentAdminRole) && (
+            {canAccessTab("contact") && (
               <button
                 type="button"
                 data-active={activeTab === "contact"}
@@ -440,7 +440,7 @@ export function AdminDesktopSidebarRail({
                 <span>Contact Messages</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("consultation-inquiries", currentAdminRole) && (
+            {canAccessTab("consultation-inquiries") && (
               <button
                 type="button"
                 data-active={activeTab === "consultation-inquiries"}
@@ -461,7 +461,7 @@ export function AdminDesktopSidebarRail({
                 <span>B2B Leads</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("suggestions", currentAdminRole) && (
+            {canAccessTab("suggestions") && (
               <button
                 type="button"
                 data-active={activeTab === "suggestions"}
@@ -477,7 +477,7 @@ export function AdminDesktopSidebarRail({
                 <span>Suggestions</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("aio-events", currentAdminRole) && (
+            {canAccessTab("aio-events") && (
               <button
                 type="button"
                 data-active={activeTab === "aio-events"}
@@ -498,7 +498,7 @@ export function AdminDesktopSidebarRail({
                 <span>AIO Events</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("logs", currentAdminRole) && (
+            {canAccessTab("logs") && (
               <button
                 type="button"
                 data-active={activeTab === "logs"}
@@ -519,7 +519,7 @@ export function AdminDesktopSidebarRail({
                 <span>{language === "en" ? "Logs & Analytics" : "Journaux et Analytiques"}</span>
               </button>
             )}
-            {isAdminTabAllowedForRole("settings", currentAdminRole) && (
+            {canAccessTab("settings") && (
               <button
                 type="button"
                 data-active={activeTab === "settings"}

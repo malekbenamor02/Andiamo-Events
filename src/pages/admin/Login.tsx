@@ -289,7 +289,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         });
 
         if (data.admin?.id) {
-          logAdminAction(supabase, { adminId: data.admin.id, adminName: adminName, adminEmail: adminEmail, action: 'admin.login' }).catch(() => {});
+          logAdminAction({ action: 'admin.login' }).catch(() => {});
         }
 
         // No localStorage cleanup needed - session is managed by server token only

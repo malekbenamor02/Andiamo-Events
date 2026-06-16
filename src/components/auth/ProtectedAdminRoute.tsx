@@ -77,6 +77,8 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
             if (admin?.id) {
               writeAdminVerifyCache({
                 admin,
+                permissions: Array.isArray(data.permissions) ? data.permissions : undefined,
+                allowedTabs: Array.isArray(data.allowedTabs) ? data.allowedTabs : undefined,
                 sessionExpiresAt: data.sessionExpiresAt as number | undefined,
                 sessionTimeRemaining: data.sessionTimeRemaining as number | null | undefined,
               });
@@ -109,6 +111,8 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
               if (admin?.id) {
                 writeAdminVerifyCache({
                   admin,
+                  permissions: Array.isArray(data.permissions) ? data.permissions : undefined,
+                  allowedTabs: Array.isArray(data.allowedTabs) ? data.allowedTabs : undefined,
                   sessionExpiresAt: data.sessionExpiresAt as number | undefined,
                   sessionTimeRemaining: data.sessionTimeRemaining as number | null | undefined,
                 });

@@ -15,6 +15,8 @@ export type AdminVerifyCacheAdmin = {
 export type AdminVerifyCachePayload = {
   t: number;
   admin: AdminVerifyCacheAdmin;
+  permissions?: string[];
+  allowedTabs?: string[];
   sessionExpiresAt?: number | null;
   sessionTimeRemaining?: number | null;
 };
@@ -26,6 +28,8 @@ export function writeAdminVerifyCache(
     const entry: AdminVerifyCachePayload = {
       t: typeof payload.t === "number" ? payload.t : Date.now(),
       admin: payload.admin,
+      permissions: payload.permissions,
+      allowedTabs: payload.allowedTabs,
       sessionExpiresAt: payload.sessionExpiresAt,
       sessionTimeRemaining: payload.sessionTimeRemaining,
     };

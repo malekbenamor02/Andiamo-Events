@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { sanitizeObject } from './sanitize';
 import { getApiBaseUrl } from '@/lib/api-routes';
+import { upsertSiteContentViaApi } from '@/lib/adminSiteContent';
 
 export interface FaviconSettings {
   favicon_ico?: string;
@@ -137,24 +138,7 @@ export const uploadFavicon = async (
       updated_at: settingsTimestamp,
     };
 
-    const { error: updateError, data: updateData } = await supabase.from('site_content').upsert(
-      {
-        key: 'favicon_settings',
-        content: updatedSettings,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'key' }
-    );
-
-    if (updateError) {
-      console.error('Error updating favicon settings:', sanitizeObject(updateError));
-      console.error('Update data:', sanitizeObject(updateData));
-      return {
-        url: urlDataPublicUrl,
-        path: filePath,
-        error: updateError.message || 'Failed to save favicon settings to database',
-      };
-    }
+    await upsertSiteContentViaApi('favicon_settings', updatedSettings as Record<string, unknown>);
 
     const { data: verifyData, error: verifyError } = await supabase
       .from('site_content')
@@ -236,18 +220,7 @@ export const deleteFavicon = async (
     };
     delete updatedSettings[type];
 
-    const { error: updateError } = await supabase.from('site_content').upsert(
-      {
-        key: 'favicon_settings',
-        content: updatedSettings,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'key' }
-    );
-
-    if (updateError) {
-      throw new Error(`Database update failed: ${updateError.message || JSON.stringify(updateError)}`);
-    }
+    await upsertSiteContentViaApi('favicon_settings', updatedSettings as Record<string, unknown>);
 
     return { success: true };
   } catch (error) {
