@@ -2,6 +2,9 @@
 
 const express = require('express');
 const cookieParser = require('cookie-parser');
+const { ensureSupabaseServerEnv } = require('./supabase-env.cjs');
+
+ensureSupabaseServerEnv();
 
 /**
  * Lazy Express app for privileged admin APIs on Vercel (misc.js dispatch).
@@ -19,9 +22,7 @@ async function getAdminPrivilegedApp() {
     app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
     const { createClient } = await import('@supabase/supabase-js');
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const anonKey = process.env.SUPABASE_ANON_KEY;
+    const { url: supabaseUrl, anonKey, serviceRoleKey: serviceKey } = ensureSupabaseServerEnv();
 
     const supabase =
       supabaseUrl && anonKey

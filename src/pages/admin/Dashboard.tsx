@@ -333,6 +333,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [passesForManagement, setPassesForManagement] = useState<EventPass[]>([]);
   const [selectedPassForSettings, setSelectedPassForSettings] = useState<EventPass | null>(null);
   const [isPassManagementLoading, setIsPassManagementLoading] = useState(false);
+  /** Avoid repeated /api/admin/passes/:eventId calls when API errors or effects re-run. */
+  const adminPassesFetchAttemptRef = React.useRef<string | null>(null);
+  const passManagementFetchAttemptRef = React.useRef<string | null>(null);
   const [newPassForm, setNewPassForm] = useState<{ name: string; price: number; description: string; is_primary: boolean; max_quantity: number; allowed_payment_methods: string[] } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteTarget | null>(null);
   const [isAmbassadorDialogOpen, setIsAmbassadorDialogOpen] = useState(false);
@@ -5530,9 +5533,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Load passes when editing dialog opens for an existing event
   useEffect(() => {
+    if (!isEventDialogOpen) {
+      adminPassesFetchAttemptRef.current = null;
+      return;
+    }
     const loadPassesForEditing = async () => {
       // Only run if dialog is open, we're editing (has id), and passes are missing or empty
       if (isEventDialogOpen && editingEvent?.id && (!editingEvent.passes || editingEvent.passes.length === 0)) {
+        if (adminPassesFetchAttemptRef.current === editingEvent.id) return;
+        adminPassesFetchAttemptRef.current = editingEvent.id;
         
         const { data: passesData, error: passesError } = await supabase
           .from('event_passes')
@@ -5601,8 +5610,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Load passes when pass management dialog opens
   useEffect(() => {
+    if (!isPassManagementDialogOpen) {
+      passManagementFetchAttemptRef.current = null;
+      return;
+    }
     const loadPassesForManagement = async () => {
       if (isPassManagementDialogOpen && eventForPassManagement?.id) {
+        if (passManagementFetchAttemptRef.current === eventForPassManagement.id) return;
+        passManagementFetchAttemptRef.current = eventForPassManagement.id;
         try {
           setIsPassManagementLoading(true);
           const apiBase = getApiBaseUrl();

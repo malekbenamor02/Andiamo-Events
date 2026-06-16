@@ -6,7 +6,12 @@ import {
   checkAdminLoginEmailRateLimit,
   getAdminLoginClientIp,
 } from './_lib/admin-login-rate-limit.js';
+import { createRequire } from 'module';
 import { checkAdminLoginDistributedLimits } from './_lib/admin-login-upstash.js';
+
+const requireCjs = createRequire(import.meta.url);
+const { ensureSupabaseServerEnv } = requireCjs('./_lib/supabase-env.cjs');
+ensureSupabaseServerEnv();
 
 let corsUtils = null;
 async function getCorsUtils() {

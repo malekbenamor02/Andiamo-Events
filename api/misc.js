@@ -12,6 +12,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireFromRoot = createRequire(import.meta.url);
+const { ensureSupabaseServerEnv } = requireFromRoot(
+  path.join(__dirname, '_lib', 'supabase-env.cjs')
+);
+ensureSupabaseServerEnv();
+
 const { fetchAmbassadorSocialLinkFromApplications } = requireFromRoot(
   path.join(__dirname, '_lib', 'ambassador-social-link.cjs')
 );
@@ -316,9 +321,10 @@ async function getAcademyApp() {
     const express = expressModule.default || expressModule;
     const cookieParserModule = await import('cookie-parser');
     const cookieParser = cookieParserModule.default || cookieParserModule;
-    const { requireAdminAuth } = requireFromRoot(
-      path.join(__dirname, '_lib', 'admin-auth-express.cjs')
-    );
+    const {
+      requireAdminAuth,
+      requireSuperAdmin,
+    } = requireFromRoot(path.join(__dirname, '_lib', 'admin-auth-express.cjs'));
     const { registerAcademyRoutes } = requireFromRoot(
       path.join(__dirname, '..', 'academyRoutes.cjs')
     );
@@ -326,7 +332,7 @@ async function getAcademyApp() {
     app.use(cookieParser());
     app.use(express.json({ limit: '256kb' }));
     app.use(express.urlencoded({ extended: true, limit: '256kb' }));
-    registerAcademyRoutes(app, { requireAdminAuth });
+    registerAcademyRoutes(app, { requireAdminAuth, requireSuperAdmin });
     return app;
   })();
   return academyAppPromise;

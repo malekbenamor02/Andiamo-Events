@@ -15,11 +15,12 @@ function randomAcademyRegistrationSuffix() {
   return crypto.randomInt(ACA_REG_NUM_MIN, ACA_REG_NUM_MAX + 1);
 }
 
+const { ensureSupabaseServerEnv } = require('./supabase-env.cjs');
+
 function getServiceDb() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key);
+  const { url, serviceRoleKey } = ensureSupabaseServerEnv();
+  if (!url || !serviceRoleKey) return null;
+  return createClient(url, serviceRoleKey);
 }
 
 async function getAcademySettings(db) {

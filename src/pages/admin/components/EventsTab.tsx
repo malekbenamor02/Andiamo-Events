@@ -277,6 +277,8 @@ export function EventsTab(p: EventsTabProps) {
   const presaleLabelHintByIdRef = React.useRef<Record<string, string>>({});
   /** Event id for which full pass stock is already in `passesForManagement` (skip refetch on tab re-entry). */
   const passStockLoadedEventIdRef = React.useRef<string | null>(null);
+  /** Prevent presale-tab refetch loop when pass API fails (empty list + !loading re-triggers effect). */
+  const passLoadAttemptedEventIdRef = React.useRef<string | null>(null);
   const newPassFormScrollRef = React.useRef<HTMLDivElement | null>(null);
   const [newPresale, setNewPresale] = React.useState({
     code: "",
@@ -559,6 +561,7 @@ export function EventsTab(p: EventsTabProps) {
         return;
       }
       p.setIsPassManagementLoading(true);
+      passLoadAttemptedEventIdRef.current = eventId;
       try {
         const apiBase = getApiBaseUrl();
         const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventId}`, {
@@ -620,6 +623,7 @@ export function EventsTab(p: EventsTabProps) {
     if (!p.editingEvent?.presale_enabled) return;
     if (p.isPassManagementLoading) return;
     if (p.passesForManagement.length > 0) return;
+    if (passLoadAttemptedEventIdRef.current === p.editingEvent.id) return;
     void loadPassStockForEvent(p.editingEvent.id);
   }, [
     p.isEventDialogOpen,

@@ -189,6 +189,98 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/site-content/:path*",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/admins",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/admins/:path*",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/sponsors",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/sponsors/:path*",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/team-members",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/team-members/:path*",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/audit-log",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/audit-logs",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/orders/online",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/orders/chart",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/orders/pos-overview",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/orders/:path*",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/analytics/orders",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/analytics/export-orders",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/analytics/order-summaries",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/order-logs",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/ambassador-sales/overview",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/ambassador-sales/logs",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/reject-order",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/cancel-order",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/payment-options/:path*",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/payment-options",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/career-application",
       "destination": "/api/misc.js"
     },
@@ -628,7 +720,7 @@
     "api/misc.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{api/_lib/**,academyRoutes.cjs,node_modules/multer/**,node_modules/@sparticuz/chromium/**}"
+      "includeFiles": "{api/_lib/**,academyRoutes.cjs,shared/admin/**,node_modules/multer/**,node_modules/@sparticuz/chromium/**}"
     },
     "api/media.js": {
       "maxDuration": 60,

@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
 import { Separator } from '@/components/ui/separator';
@@ -224,6 +225,7 @@ export function AcademyTab({ language }: AcademyTabProps) {
     revenue_dt: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AcademyRegistration | null>(null);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [search, setSearch] = useState('');
@@ -238,6 +240,7 @@ export function AcademyTab({ language }: AcademyTabProps) {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [regs, sett, promos, rep] = await Promise.all([
         adminFetch(API_ROUTES.ADMIN_ACADEMY_REGISTRATIONS),
@@ -250,10 +253,12 @@ export function AcademyTab({ language }: AcademyTabProps) {
       setPromoCodes(promos.promoCodes || []);
       setReports(rep);
     } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : isEn ? 'Unknown error' : 'Erreur inconnue';
+      setLoadError(message);
       toast({
         variant: 'destructive',
-        title: isEn ? 'Failed to load' : 'Échec du chargement',
-        description: e instanceof Error ? e.message : undefined,
+        title: isEn ? 'Failed to load Academy data' : 'Échec du chargement Academy',
+        description: message,
       });
     } finally {
       setLoading(false);
@@ -367,6 +372,13 @@ export function AcademyTab({ language }: AcademyTabProps) {
           {isEn ? 'Refresh' : 'Actualiser'}
         </Button>
       </div>
+
+      {loadError && (
+        <Alert variant="destructive">
+          <AlertTitle>{isEn ? 'Could not load Academy data' : 'Impossible de charger les données Academy'}</AlertTitle>
+          <AlertDescription>{loadError}</AlertDescription>
+        </Alert>
+      )}
 
       <Tabs value={subTab} onValueChange={setSubTab}>
         <TabsList>
