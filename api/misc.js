@@ -1380,6 +1380,34 @@ export default async (req, res) => {
     }
   }
 
+  // Privileged admin routes (site content, admins, orders, audit logs) — Vercel + local parity
+  try {
+    const { getAdminPrivilegedApp, isAdminPrivilegedPath } = requireFromRoot(
+      path.join(__dirname, '_lib', 'admin-privileged-app.cjs')
+    );
+    if (isAdminPrivilegedPath(path)) {
+      const adminApp = await getAdminPrivilegedApp();
+      await new Promise((resolve) => {
+        const onFinish = () => resolve();
+        res.on('finish', onFinish);
+        res.on('close', onFinish);
+        adminApp(req, res, (err) => {
+          if (err) {
+            console.error('Admin privileged route error:', err);
+            if (!res.headersSent) {
+              res.status(500).json({ error: err.message || 'Server error' });
+            }
+          }
+          resolve();
+        });
+      });
+      return;
+    }
+  } catch (adminPrivErr) {
+    console.error('Admin privileged app dispatch error:', adminPrivErr);
+    return res.status(500).json({ error: adminPrivErr.message || 'Admin service unavailable' });
+  }
+
   // Marketing / bulk comms admin paths (Vercel) — enforce marketing:manage before handlers
   const marketingAdminPath =
     (path.startsWith('/api/marketing/') && !path.startsWith('/api/marketing/cron/')) ||

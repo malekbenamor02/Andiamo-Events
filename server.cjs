@@ -3481,6 +3481,11 @@ try {
   registerAdminTeamRoutes(app, adminRouteDeps);
   const { registerAdminAuditLogsRoutes } = require('./api/_lib/admin-audit-logs-routes.cjs');
   registerAdminAuditLogsRoutes(app, adminRouteDeps);
+  const { registerAdminOrdersRoutes } = require('./api/_lib/admin-orders-routes.cjs');
+  registerAdminOrdersRoutes(app, {
+    ...adminRouteDeps,
+    generateTicketsAndSendEmail: null,
+  });
 } catch (adminRoutesErr) {
   console.error('Admin privileged routes registration failed:', adminRoutesErr.message);
 }
@@ -12810,17 +12815,5 @@ if (require.main === module) {
   });
 }
 
-// Admin order routes (needs generateTicketsAndSendEmail defined above)
-try {
-  const { registerAdminOrdersRoutes } = require('./api/_lib/admin-orders-routes.cjs');
-  registerAdminOrdersRoutes(app, {
-    ...adminRouteDeps,
-    generateTicketsAndSendEmail,
-  });
-} catch (adminOrdersErr) {
-  console.error('Admin orders routes registration failed:', adminOrdersErr.message);
-}
-
-// Export app for use in serverless functions
-module.exports = app;
+// Catch-all 404 handler for undefined API routes
 
