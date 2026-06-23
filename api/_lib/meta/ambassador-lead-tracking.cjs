@@ -1,8 +1,13 @@
 'use strict';
 
 const { buildHashedUserData } = require('./user-data.cjs');
+const {
+  getClientIp,
+  parseAttributionFromBody,
+} = require('./attribution.cjs');
 
 const LEAD_CONTENT_NAME = 'Ambassador Application';
+const LEAD_TYPE = 'ambassador_application';
 
 function isLeadDebugEnabled() {
   return process.env.META_DEBUG_LEAD === 'true' || process.env.META_DEBUG_LEAD === '1';
@@ -63,50 +68,6 @@ function validateLeadConsistency(canonical) {
     warnings.push('missing_email_and_phone');
   }
   return warnings;
-}
-
-/**
- * @param {import('http').IncomingMessage} req
- */
-function getClientIp(req) {
-  const xf = req.headers['x-forwarded-for'];
-  if (xf) return String(xf).split(',')[0].trim();
-  return req.ip || req.socket?.remoteAddress || 'unknown';
-}
-
-/**
- * @param {import('http').IncomingMessage} req
- * @param {Record<string, unknown>|null|undefined} body
- */
-function parseAttributionFromBody(req, body) {
-  const metaEventId = body?.metaEventId || body?.meta_event_id;
-  const metaFbp = body?.metaFbp || body?.meta_fbp;
-  const metaFbc = body?.metaFbc || body?.meta_fbc;
-  const metaEventSourceUrl = body?.metaEventSourceUrl || body?.meta_event_source_url;
-  const clientIp = getClientIp(req);
-  const clientUserAgent = (req.get?.('user-agent') || req.headers?.['user-agent'] || '')
-    .toString()
-    .slice(0, 512);
-
-  if (
-    !metaEventId &&
-    !metaFbp &&
-    !metaFbc &&
-    !metaEventSourceUrl &&
-    !clientUserAgent &&
-    !clientIp
-  ) {
-    return null;
-  }
-
-  return {
-    ...(metaEventId ? { eventId: String(metaEventId).slice(0, 128) } : {}),
-    ...(metaFbp ? { fbp: String(metaFbp).slice(0, 256) } : {}),
-    ...(metaFbc ? { fbc: String(metaFbc).slice(0, 256) } : {}),
-    ...(metaEventSourceUrl ? { eventSourceUrl: String(metaEventSourceUrl).slice(0, 2048) } : {}),
-    ...(clientUserAgent ? { clientUserAgent } : {}),
-    ...(clientIp ? { clientIp } : {}),
-  };
 }
 
 /**
@@ -215,7 +176,10 @@ function buildCapiLeadServerEvent(canonical) {
     event_id: canonical.eventId,
     action_source: 'website',
     user_data: userData,
-    custom_data: { content_name: LEAD_CONTENT_NAME },
+    custom_data: {
+      content_name: LEAD_CONTENT_NAME,
+      lead_type: LEAD_TYPE,
+    },
   };
 
   if (canonical.eventSourceUrl) {

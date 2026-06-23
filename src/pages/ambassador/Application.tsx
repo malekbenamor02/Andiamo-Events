@@ -52,6 +52,8 @@ const Application = ({ language }: ApplicationProps) => {
   const heroRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const leadTrackedRef = useRef(false);
+  const submitInFlightRef = useRef(false);
+  const pendingMetaEventIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -292,6 +294,8 @@ const Application = ({ language }: ApplicationProps) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitInFlightRef.current || leadTrackedRef.current) return;
+    submitInFlightRef.current = true;
     setIsSubmitting(true);
     try {
       // Validate full name (letters only, no numbers or special characters)
@@ -462,7 +466,8 @@ const Application = ({ language }: ApplicationProps) => {
         villeValue = DOMPurify.sanitize(formData.ville.trim());
       }
 
-      const metaEventId = createMetaEventId('lead');
+      const metaEventId = pendingMetaEventIdRef.current ?? createMetaEventId('lead');
+      pendingMetaEventIdRef.current = metaEventId;
       const metaAttribution = getMetaAttributionContext();
 
       const requestBody = {
@@ -478,6 +483,7 @@ const Application = ({ language }: ApplicationProps) => {
         metaEventId,
         metaFbp: metaAttribution.fbp,
         metaFbc: metaAttribution.fbc,
+        metaFbclid: metaAttribution.fbclid,
         metaEventSourceUrl: metaAttribution.eventSourceUrl,
       };
 
@@ -503,6 +509,15 @@ const Application = ({ language }: ApplicationProps) => {
             metaEventId
           );
           leadTrackedRef.current = true;
+          pendingMetaEventIdRef.current = null;
+
+          if (import.meta.env.DEV) {
+            console.debug('[Meta Lead] submission tracked', {
+              eventId: metaEventId,
+              fbpPresent: Boolean(metaAttribution.fbp),
+              fbcPresent: Boolean(metaAttribution.fbc),
+            });
+          }
         }
 
         logFormSubmission('Ambassador Application', true, {
@@ -548,6 +563,7 @@ const Application = ({ language }: ApplicationProps) => {
         variant: 'destructive' 
       });
     } finally {
+      submitInFlightRef.current = false;
       setIsSubmitting(false);
     }
   };

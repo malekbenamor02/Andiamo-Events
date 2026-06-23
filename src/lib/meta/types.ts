@@ -1,6 +1,7 @@
 export interface MetaAttributionContext {
   fbp?: string;
   fbc?: string;
+  fbclid?: string;
   eventSourceUrl?: string;
 }
 

@@ -2,6 +2,7 @@ import type { MetaAttributionContext } from './types';
 
 const FBC_COOKIE = '_fbc';
 const FBC_FALLBACK_KEY = 'andiamo_meta_fbc';
+const FBP_FALLBACK_KEY = 'andiamo_meta_fbp';
 const LANDING_URL_KEY = 'andiamo_meta_academy_landing_url';
 /** Meta recommends ~90 days for _fbc */
 const FBC_MAX_AGE_SEC = 90 * 24 * 60 * 60;
@@ -63,6 +64,15 @@ export function buildFbcFromFbclid(fbclid: string, timestampMs = Date.now()): st
   return `fb.1.${timestampMs}.${id}`;
 }
 
+function persistFbpIfPresent(): void {
+  const fbp = readCookie('_fbp');
+  if (fbp) writeSessionItem(FBP_FALLBACK_KEY, fbp);
+}
+
+function readFbp(): string | undefined {
+  return readCookie('_fbp') || readSessionItem(FBP_FALLBACK_KEY);
+}
+
 function readFbc(): string | undefined {
   const fromCookie = readCookie(FBC_COOKIE);
   if (fromCookie && isValidFbc(fromCookie)) return fromCookie;
@@ -110,6 +120,8 @@ export function preserveMetaAttribution(): void {
   if (fbclid) {
     persistFbcFromFbclid(fbclid);
   }
+
+  persistFbpIfPresent();
 }
 
 export function getMetaAttributionContext(): MetaAttributionContext {
@@ -118,8 +130,9 @@ export function getMetaAttributionContext(): MetaAttributionContext {
   preserveMetaAttribution();
 
   return {
-    fbp: readCookie('_fbp'),
+    fbp: readFbp(),
     fbc: readFbc(),
+    fbclid: readFbclidFromUrl(),
     eventSourceUrl: window.location.href,
   };
 }

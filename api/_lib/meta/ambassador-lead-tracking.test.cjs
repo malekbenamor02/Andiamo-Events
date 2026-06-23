@@ -27,25 +27,38 @@ const sampleApplication = {
   },
 };
 
-test('parseAttributionFromBody reads meta fields and request context', () => {
+test('parseAttributionFromBody reads _fbp from request cookies when body omits it', () => {
   const req = {
-    headers: { 'x-forwarded-for': '203.0.113.10', 'user-agent': 'Mozilla/5.0 Test' },
+    headers: {
+      cookie: '_fbp=fb.1.cookie-only',
+      'x-forwarded-for': '203.0.113.10',
+      'user-agent': 'Mozilla/5.0 Test',
+    },
     get: (name) => (name === 'user-agent' ? 'Mozilla/5.0 Test' : undefined),
   };
   const attr = parseAttributionFromBody(req, {
     metaEventId: 'lead_123',
-    metaFbp: 'fb.1.x',
-    metaFbc: 'fb.2.y',
+    metaFbc: 'fb.1.1700000000000.testy',
     metaEventSourceUrl: 'https://example.com/ambassador',
   });
 
   assert.ok(attr);
   assert.strictEqual(attr.eventId, 'lead_123');
-  assert.strictEqual(attr.fbp, 'fb.1.x');
-  assert.strictEqual(attr.fbc, 'fb.2.y');
+  assert.strictEqual(attr.fbp, 'fb.1.cookie-only');
+  assert.strictEqual(attr.fbc, 'fb.1.1700000000000.testy');
   assert.strictEqual(attr.eventSourceUrl, 'https://example.com/ambassador');
   assert.strictEqual(attr.clientIp, '203.0.113.10');
   assert.strictEqual(attr.clientUserAgent, 'Mozilla/5.0 Test');
+});
+
+test('parseAttributionFromBody constructs fbc from metaFbclid when fbc missing', () => {
+  const req = { headers: { 'user-agent': 'Mozilla/5.0' }, get: () => undefined };
+  const attr = parseAttributionFromBody(req, {
+    metaEventId: 'lead_456',
+    metaFbclid: 'AD_CLICK_99',
+  });
+  assert.ok(attr);
+  assert.ok(attr.fbc?.endsWith('.AD_CLICK_99'));
 });
 
 test('buildCanonicalAmbassadorLeadEvent requires eventId', () => {
@@ -67,6 +80,7 @@ test('buildCapiLeadServerEvent uses stored eventId and hashed user_data', () => 
   assert.strictEqual(capi.action_source, 'website');
   assert.strictEqual(capi.event_source_url, 'https://andiamoevents.com/ambassador');
   assert.strictEqual(capi.custom_data.content_name, 'Ambassador Application');
+  assert.strictEqual(capi.custom_data.lead_type, 'ambassador_application');
   assert.strictEqual(capi.user_data.fbp, 'fb.1.test');
   assert.strictEqual(capi.user_data.fbc, 'fb.2.test');
   assert.strictEqual(capi.user_data.client_ip_address, '203.0.113.1');

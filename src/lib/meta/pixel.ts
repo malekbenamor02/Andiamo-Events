@@ -134,8 +134,20 @@ export function trackAmbassadorLead(customer: MetaCustomerData, eventId: string)
 
   const advancedMatching = buildPixelAdvancedMatching(customer);
   window.fbq!('init', META_PIXEL_ID, advancedMatching);
-  window.fbq!('track', 'Lead', { content_name: 'Ambassador Application' }, { eventID: eventId });
+  window.fbq!(
+    'track',
+    'Lead',
+    { content_name: 'Ambassador Application', lead_type: 'ambassador_application' },
+    { eventID: eventId }
+  );
   markPixelFired(AMBASSADOR_LEAD_FIRED_PREFIX, eventId);
+
+  if (import.meta.env.DEV) {
+    console.debug('[Meta Lead] browser pixel fired', {
+      eventId,
+      hasAdvancedMatching: Object.keys(advancedMatching).length > 0,
+    });
+  }
 }
 
 function isValidBackendPixelPayload(
