@@ -36,6 +36,7 @@ import { cn } from '@/lib/utils';
 import { normalizeAcademyPromoCodeInput } from '@/lib/academy/promoCode';
 import Loader from '@/components/ui/Loader';
 import { ExternalLink, GraduationCap, Mail, RefreshCw } from 'lucide-react';
+import { AcademyInfluencersSection } from './AcademyInfluencersSection';
 
 type AcademyLanguage = 'en' | 'fr';
 
@@ -79,6 +80,7 @@ interface PromoCode {
   used_count: number;
   remaining?: number;
   active: boolean;
+  influencer_id?: string | null;
 }
 
 async function adminFetch(path: string, init?: RequestInit) {
@@ -384,6 +386,7 @@ export function AcademyTab({ language }: AcademyTabProps) {
         <TabsList>
           <TabsTrigger value="registrations">{isEn ? 'Registrations' : 'Inscriptions'}</TabsTrigger>
           <TabsTrigger value="promo">{isEn ? 'Promo codes' : 'Codes promo'}</TabsTrigger>
+          <TabsTrigger value="influencers">{isEn ? 'Influencers' : 'Influenceurs'}</TabsTrigger>
           <TabsTrigger value="reports">{isEn ? 'Reports' : 'Rapports'}</TabsTrigger>
           <TabsTrigger value="settings">{isEn ? 'Settings' : 'Paramètres'}</TabsTrigger>
         </TabsList>
@@ -591,6 +594,14 @@ export function AcademyTab({ language }: AcademyTabProps) {
             </TableBody>
           </Table>
           )}
+        </TabsContent>
+
+        <TabsContent value="influencers">
+          <AcademyInfluencersSection
+            language={language}
+            promoCodes={promoCodes}
+            onPromoCodesChanged={loadAll}
+          />
         </TabsContent>
 
         <TabsContent value="reports">

@@ -46,6 +46,10 @@ const {
   insertAcademyRegistration,
   updateAcademyRegistration,
 } = require('./api/_lib/academy-meta-db.cjs');
+const {
+  registerAcademyInfluencerRoutes,
+  resolvePromoInfluencerId,
+} = require('./api/_lib/academy-influencer-routes.cjs');
 
 const ACADEMY_EMAIL_FROM = '"Andiamo Events" <contact@andiamoevents.com>';
 
@@ -475,6 +479,7 @@ function registerAcademyRoutes(app, deps) {
       }
 
       let promoId = null;
+      let influencerIdAtRegistration = null;
       let discountAmount = 0;
       if (vData.promoCode) {
         const promoResult = await resolvePromoCode(db, vData.promoCode);
@@ -484,6 +489,7 @@ function registerAcademyRoutes(app, deps) {
         const base = getFormulaBasePrice(vData.formule);
         discountAmount = computePromoDiscount(promoResult.promo, base);
         promoId = promoResult.promo.id;
+        influencerIdAtRegistration = promoResult.promo.influencer_id || null;
       }
 
       const amounts = computeRegistrationAmounts({
@@ -518,6 +524,7 @@ function registerAcademyRoutes(app, deps) {
         formule: vData.formule,
         payment_method: vData.paymentMethod,
         promo_code_id: promoId,
+        influencer_id_at_registration: influencerIdAtRegistration,
         base_amount_dt: amounts.base_amount_dt,
         discount_amount_dt: amounts.discount_amount_dt,
         fee_amount_dt: amounts.fee_amount_dt,
@@ -1141,6 +1148,9 @@ function registerAcademyRoutes(app, deps) {
       if (!Number.isFinite(discount_value) || discount_value < 0) return res.status(400).json({ error: 'Invalid discount value' });
       if (!Number.isFinite(max_uses) || max_uses < 1) return res.status(400).json({ error: 'Invalid max uses' });
 
+      const influencerCheck = await resolvePromoInfluencerId(db, req.body.influencer_id);
+      if (!influencerCheck.ok) return res.status(400).json({ error: influencerCheck.error });
+
       const { data, error } = await db
         .from('academy_promo_codes')
         .insert({
@@ -1149,6 +1159,7 @@ function registerAcademyRoutes(app, deps) {
           discount_value,
           max_uses,
           created_by: req.admin.id,
+          ...(influencerCheck.value !== undefined ? { influencer_id: influencerCheck.value } : {}),
         })
         .select('*')
         .single();
@@ -1173,6 +1184,18 @@ function registerAcademyRoutes(app, deps) {
       }
       if (req.body.active != null) patch.active = !!req.body.active;
       if (req.body.discount_value != null) patch.discount_value = Number(req.body.discount_value);
+      if (req.body.influencer_id !== undefined) {
+        const { data: existingPromo } = await db
+          .from('academy_promo_codes')
+          .select('influencer_id')
+          .eq('id', req.params.id)
+          .maybeSingle();
+        const influencerCheck = await resolvePromoInfluencerId(db, req.body.influencer_id, {
+          existingPromoInfluencerId: existingPromo?.influencer_id,
+        });
+        if (!influencerCheck.ok) return res.status(400).json({ error: influencerCheck.error });
+        patch.influencer_id = influencerCheck.value;
+      }
       const { data, error } = await db
         .from('academy_promo_codes')
         .update(patch)
@@ -1205,6 +1228,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
+  registerAcademyInfluencerRoutes(app, deps);
 }
 
 module.exports = { registerAcademyRoutes };

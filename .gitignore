@@ -56,3 +56,12 @@ email-templates/previews/13-premium-desktop-ticket-poster.pdf
 
 # Supabase CLI local state (linked project, versions)
 supabase/.temp/
+
+# Agent-generated Supabase staging migration batch tooling (local only)
+scripts/.staging-*
+scripts/.tmp-*
+scripts/.apply-*
+scripts/.batch*
+scripts/.staging-orders-remainder.sql
+scripts/.staging-schema-dump.sql
+scripts/.staging-migration-order.json

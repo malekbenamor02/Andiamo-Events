@@ -136,6 +136,20 @@ export const API_ROUTES = {
   ADMIN_ACADEMY_REPORTS: '/api/admin/academy/reports',
   ADMIN_ACADEMY_PROMO_CODES: '/api/admin/academy/promo-codes',
   ADMIN_ACADEMY_PROMO_CODE: (id: string) => `/api/admin/academy/promo-codes/${encodeURIComponent(id)}`,
+  ADMIN_ACADEMY_INFLUENCERS: '/api/admin/academy/influencers',
+  ADMIN_ACADEMY_INFLUENCER: (id: string) => `/api/admin/academy/influencers/${encodeURIComponent(id)}`,
+  ADMIN_ACADEMY_INFLUENCER_RESET_PASSWORD: (id: string) =>
+    `/api/admin/academy/influencers/${encodeURIComponent(id)}/reset-password`,
+  ADMIN_ACADEMY_INFLUENCER_RESEND_INVITE: (id: string) =>
+    `/api/admin/academy/influencers/${encodeURIComponent(id)}/resend-invite`,
+  ADMIN_ACADEMY_INFLUENCER_SALES: (id: string) =>
+    `/api/admin/academy/influencers/${encodeURIComponent(id)}/sales`,
+
+  ACADEMY_INFLUENCER_LOGIN: '/api/academy-influencer/login',
+  ACADEMY_INFLUENCER_LOGOUT: '/api/academy-influencer/logout',
+  ACADEMY_INFLUENCER_SESSION: '/api/academy-influencer/session',
+  ACADEMY_INFLUENCER_CHANGE_PASSWORD: '/api/academy-influencer/change-password',
+  ACADEMY_INFLUENCER_SALES: '/api/academy-influencer/sales',
 
   // Admin Order Management
   ADMIN_SKIP_AMBASSADOR_CONFIRMATION: '/api/admin-skip-ambassador-confirmation',

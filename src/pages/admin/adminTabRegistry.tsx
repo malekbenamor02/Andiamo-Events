@@ -20,8 +20,13 @@ import {
   UserCheck,
   Users,
 } from 'lucide-react';
-import { ADMIN_TAB_DEFINITIONS } from '@shared/admin/tabDefinitions.cjs';
-import { getDefaultTabKey } from '@shared/admin/permissions.cjs';
+import ADMIN_TAB_DEFINITIONS from '@shared/admin/tabDefinitions.data.json';
+
+function getDefaultTabKey(allowedTabs: string[]): string {
+  if (!allowedTabs.length) return 'overview';
+  if (allowedTabs.includes('overview')) return 'overview';
+  return allowedTabs[0];
+}
 
 export type AdminTabKey =
   | 'overview'

@@ -62,6 +62,9 @@ const AmbassadorDashboard = lazyWithChunkRecovery(() => import("./pages/ambassad
 import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute";
 
 const AmbassadorApplication = lazyWithChunkRecovery(() => import("./pages/ambassador/Application"));
+const InfluencerAuth = lazyWithChunkRecovery(() => import("./pages/influencer/Auth"));
+const InfluencerChangePassword = lazyWithChunkRecovery(() => import("./pages/influencer/ChangePassword"));
+const InfluencerDashboard = lazyWithChunkRecovery(() => import("./pages/influencer/Dashboard"));
 const Suggestions = lazyWithChunkRecovery(() => import("./pages/Suggestions"));
 const Careers = lazyWithChunkRecovery(() => import("./pages/Careers"));
 const PassPurchase = lazyWithChunkRecovery(() => import("./pages/PassPurchase"));
@@ -154,6 +157,8 @@ const AppContent = ({
   const [isPhonePopupOpen, setIsPhonePopupOpen] = useState(false);
   const isScanner = location.pathname.startsWith("/scanner");
   const isPos = location.pathname.startsWith("/pos");
+  const isInfluencer = location.pathname.startsWith("/influencer");
+  const isMinimalChrome = isScanner || isPos || isInfluencer;
 
   // Sync hook state with popup state
   useEffect(() => {
@@ -181,7 +186,7 @@ const AppContent = ({
       </Helmet>
       <DisableInspect />
       <ScrollToTop />
-      {!isScanner && !isPos && (
+      {!isMinimalChrome && (
           <>
             <JsonLdWebSite />
             <JsonLdOrganization />
@@ -190,7 +195,7 @@ const AppContent = ({
         )}
       <MaintenanceMode language={language}>
         <div className="min-h-screen bg-background flex flex-col">
-          {!isScanner && !isPos && (
+          {!isMinimalChrome && (
             <Navigation
               language={language}
               toggleLanguage={toggleLanguage}
@@ -242,13 +247,16 @@ const AppContent = ({
               <Route path="/academy/register/confirmation" element={<AcademyRegistrationConfirmation language={language} />} />
               <Route path="/academy/payment-processing" element={<AcademyPaymentProcessing language={language} />} />
               <Route path="/academy/terms" element={<AcademyTerms language={language} />} />
+              <Route path="/influencer/auth" element={<InfluencerAuth language={language} />} />
+              <Route path="/influencer/change-password" element={<InfluencerChangePassword language={language} />} />
+              <Route path="/influencer/dashboard" element={<InfluencerDashboard language={language} />} />
               {/* Friendly URL route for event pass purchase: /event-slug */}
               <Route path="/:eventSlug" element={<PassPurchase language={language} />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
           </ErrorBoundary>
-          {!isScanner && !isPos && <Footer language={language} />}
+          {!isMinimalChrome && <Footer language={language} />}
         </div>
       </MaintenanceMode>
       <PhoneCapturePopup

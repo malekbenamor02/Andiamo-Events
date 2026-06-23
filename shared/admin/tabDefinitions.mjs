@@ -1,6 +1,3 @@
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const { ADMIN_TAB_DEFINITIONS } = require('./tabDefinitions.cjs');
+import ADMIN_TAB_DEFINITIONS from './tabDefinitions.data.json' with { type: 'json' };
 
 export { ADMIN_TAB_DEFINITIONS };

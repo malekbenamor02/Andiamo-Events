@@ -5,6 +5,8 @@ import type {
   AcademyFormula,
   AcademyFormulaId,
   AcademyLanguage,
+  AcademyProgramModule,
+  AcademyTrainerProfile,
   LocalizedText,
 } from '@/types/academy';
 
@@ -201,6 +203,68 @@ export const ACADEMY_FAQ: AcademyFaqItem[] = [
   },
 ];
 
+export const ACADEMY_PROGRAM: {
+  title: LocalizedText;
+  curriculumTitle: LocalizedText;
+  modules: AcademyProgramModule[];
+  trainer: AcademyTrainerProfile;
+} = {
+  title: { en: 'Program & curriculum', fr: 'Programme & contenu' },
+  curriculumTitle: { en: 'What you will learn', fr: 'Ce que vous apprenez' },
+  modules: [
+    {
+      id: 'legal',
+      title: { en: 'Legal authorizations', fr: 'Autorisations légales' },
+    },
+    {
+      id: 'artist',
+      title: { en: 'Artist liaison', fr: 'Contact artistique' },
+    },
+    {
+      id: 'technical',
+      title: { en: 'Technical equipment', fr: 'Matériel technique' },
+    },
+    {
+      id: 'sponsoring',
+      title: { en: 'Sponsorship', fr: 'Sponsoring' },
+    },
+    {
+      id: 'marketing',
+      title: { en: 'Event marketing', fr: 'Marketing événementiel' },
+    },
+    {
+      id: 'team',
+      title: { en: 'Team management & protocol', fr: 'Gestion et protocole d\'équipe' },
+    },
+    {
+      id: 'd-day',
+      title: { en: 'D-day operations', fr: 'Organisation du Jour J' },
+    },
+  ],
+  trainer: {
+    sectionTitle: { en: 'Your trainer', fr: 'Votre formateur' },
+    jobTitle: {
+      en: 'CEO & Founder — Andiamo Event & W9yet Event',
+      fr: 'CEO & Fondateur — Andiamo Event & W9yet Event',
+    },
+    experienceLabel: { en: 'Experience', fr: 'Expérience' },
+    experience: {
+      en: '+20 events managed in commercial management • 4 years in event management and marketing.',
+      fr: '+20 événements gérés en management commercial • 4 ans d\'expérience en event management et marketing.',
+    },
+    specialtiesLabel: { en: 'Specialties', fr: 'Spécialités' },
+    specialties: {
+      en: 'Concerts • Festivals • Corporate events • Team management • Event marketing',
+      fr: 'Concerts • Festivals • Événements corporate • Gestion d\'équipes • Marketing événementiel',
+    },
+    approachLabel: { en: 'Approach', fr: 'Approche' },
+    approach: {
+      en: 'Hands-on training + real case studies • Personalized mentoring • Post-training coaching',
+      fr: 'Formation terrain + cas pratiques réels • Mentoring personnalisé • Coaching post-formation',
+    },
+  },
+};
+
 export const ACADEMY_UI = {
   assets: {
     trainerPhoto: '/assets/trainer.png',
@@ -225,12 +289,12 @@ export const ACADEMY_UI = {
     cta: { en: 'Register now', fr: 'Je m\'inscris maintenant' },
     instructorName: 'Mouayed Chakir',
     instructorRole: {
-      en: 'Founder Andiamo Event & Wkayet Event',
-      fr: 'Fondateur Andiamo Event & Wkayet Event',
+      en: 'CEO & Founder — Andiamo Event & W9yet Event',
+      fr: 'CEO & Fondateur — Andiamo Event & W9yet Event',
     },
     instructorNote: {
-      en: '+20 events organized',
-      fr: '+20 événements organisés',
+      en: '+20 events managed in commercial management',
+      fr: '+20 événements gérés en management commercial',
     },
     academyBrand: { en: 'Andiamo Academy', fr: 'Andiamo Academy' },
   },
@@ -239,9 +303,6 @@ export const ACADEMY_UI = {
     recommended: { en: 'Recommended', fr: 'Recommandée' },
     chooseCta: { en: 'Choose this formula', fr: 'Choisir cette formule' },
     compareTitle: { en: 'Compare formulas', fr: 'Comparer les formules' },
-  },
-  trainer: {
-    instructorTitle: { en: 'Your trainer', fr: 'Votre formateur' },
   },
   faq: {
     title: { en: 'FAQ & Important notices', fr: 'FAQ & Mentions importantes' },

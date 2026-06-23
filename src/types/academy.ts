@@ -39,6 +39,22 @@ export interface AcademyFaqItem {
   answer: LocalizedText;
 }
 
+export interface AcademyProgramModule {
+  id: string;
+  title: LocalizedText;
+}
+
+export interface AcademyTrainerProfile {
+  sectionTitle: LocalizedText;
+  jobTitle: LocalizedText;
+  experienceLabel: LocalizedText;
+  experience: LocalizedText;
+  specialtiesLabel: LocalizedText;
+  specialties: LocalizedText;
+  approachLabel: LocalizedText;
+  approach: LocalizedText;
+}
+
 export interface AcademyRegistrationFormData {
   fullName: string;
   email: string;

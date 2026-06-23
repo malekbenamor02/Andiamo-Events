@@ -1362,6 +1362,7 @@ export default async (req, res) => {
   // Academy routes (public + admin + cron) — handled by Express app from academyRoutes.cjs
   if (
     path.startsWith('/api/academy') ||
+    path.startsWith('/api/academy-influencer') ||
     path.startsWith('/api/admin/academy') ||
     path === '/api/auto-cancel-expired-academy-registrations'
   ) {

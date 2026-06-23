@@ -254,6 +254,7 @@ module.exports = {
   PREVIEW_FIXTURE,
   getAcademyEmailLogoUrl,
   academyEmailLogoHeaderHtml,
+  wrapAcademyEmail,
   buildAcademyOnlineConfirmedEmailHtml,
   buildAcademyManualPaymentReceivedEmailHtml,
   buildAcademyApprovedEmailHtml,

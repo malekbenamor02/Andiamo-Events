@@ -16,7 +16,7 @@ const DISMISSAL_DURATION = 4 * 24 * 60 * 60 * 1000; // 4 days in milliseconds
  * - Trigger conditions:
  *   1. Visitor stays on site for 10-20 seconds (random)
  *   2. Visitor scrolls 50% or more of the page
- * - Don't show on: admin login/dashboard, ambassador application/login/dashboard, contact page, purchase pages
+ * - Don't show on: admin login/dashboard, ambassador application/login/dashboard, influencer pages, contact page, purchase pages
  * - Show on all other pages
  */
 export const usePhoneCapture = (pathname: string) => {
@@ -47,6 +47,9 @@ export const usePhoneCapture = (pathname: string) => {
       '/ambassador',
       '/ambassador/auth',
       '/ambassador/dashboard',
+      '/influencer/auth',
+      '/influencer/change-password',
+      '/influencer/dashboard',
       '/contact',
       '/pass-purchase',
       '/pos',
@@ -55,7 +58,7 @@ export const usePhoneCapture = (pathname: string) => {
       '/gallery'
     ];
 
-    const pathsWithPrefix = ['/admin', '/ambassador', '/pos', '/scanner', '/event', '/gallery'];
+    const pathsWithPrefix = ['/admin', '/ambassador', '/influencer', '/pos', '/scanner', '/event', '/gallery'];
     const isExcluded = excludedPaths.some(path => {
       if (pathsWithPrefix.includes(path)) {
         return pathname.startsWith(path);
@@ -64,7 +67,7 @@ export const usePhoneCapture = (pathname: string) => {
     });
 
     // Also exclude pass booking by event slug (e.g. /el-daheeh-live-show-in-tunis)
-    const reservedSegments = ['events', 'about', 'contact', 'terms', 'ambassador', 'pass-purchase', 'admin', 'gallery'];
+    const reservedSegments = ['events', 'about', 'contact', 'terms', 'ambassador', 'influencer', 'pass-purchase', 'admin', 'gallery'];
     if (pathname.match(/^\/[^/]+$/)) {
       const segment = pathname.slice(1);
       if (segment && !reservedSegments.includes(segment)) {

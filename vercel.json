@@ -189,6 +189,26 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/academy-influencer/login",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/academy-influencer/logout",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/academy-influencer/session",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/academy-influencer/change-password",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/academy-influencer/sales",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/site-content/:path*",
       "destination": "/api/misc.js"
     },

@@ -187,9 +187,7 @@ ${emailLogoHeaderHtml()}
 );
 
 // --- Academy registration emails (English only) ---
-// Relative path so previews work when opened from email-templates/previews/
-process.env.ACADEMY_EMAIL_LOGO_URL = '../../public/assets/andiamo-academy-cropped.svg';
-
+process.env.ACADEMY_EMAIL_LOGO_URL = 'https://www.andiamoevents.com/assets/andiamo-academy-cropped.svg';
 const {
   PREVIEW_FIXTURE,
   buildAcademyOnlineConfirmedEmailHtml,
