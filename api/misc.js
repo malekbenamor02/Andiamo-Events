@@ -8,24 +8,24 @@ import { handleVerifyAdmin } from './_lib/verify-admin-http.js';
 import { applyClearAdminTokenCookie } from './_lib/clear-admin-token-cookie.js';
 import { agentDebugLog } from './_lib/agent-debug-log.js';
 import { createRequire } from 'module';
-import path from 'path';
+import nodePath from 'path';
 import { fileURLToPath } from 'url';
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = nodePath.dirname(fileURLToPath(import.meta.url));
 const requireFromRoot = createRequire(import.meta.url);
 const { ensureSupabaseServerEnv } = requireFromRoot(
-  path.join(__dirname, '_lib', 'supabase-env.cjs')
+  nodePath.join(__dirname, '_lib', 'supabase-env.cjs')
 );
 ensureSupabaseServerEnv();
 
 const { fetchAmbassadorSocialLinkFromApplications } = requireFromRoot(
-  path.join(__dirname, '_lib', 'ambassador-social-link.cjs')
+  nodePath.join(__dirname, '_lib', 'ambassador-social-link.cjs')
 );
 
 // Lazy-load ticket email builder so ambassador-sales/orders and other routes don't crash if this file is missing
 let _buildOnlineTicketEmailHtml = null;
 function getBuildOnlineTicketEmailHtml() {
   if (_buildOnlineTicketEmailHtml) return _buildOnlineTicketEmailHtml;
-  const mod = requireFromRoot(path.join(__dirname, '_lib', 'online-ticket-email-html.cjs'));
+  const mod = requireFromRoot(nodePath.join(__dirname, '_lib', 'online-ticket-email-html.cjs'));
   _buildOnlineTicketEmailHtml = mod.buildOnlineTicketEmailHtml;
   return _buildOnlineTicketEmailHtml;
 }
@@ -34,25 +34,25 @@ const {
   buildCampaignEmailHtml,
   normalizeMarketingHeaderImageUrl,
   sanitizeCampaignCtaLabel,
-} = requireFromRoot(path.join(__dirname, '_lib', 'campaign-email-html.cjs'));
+} = requireFromRoot(nodePath.join(__dirname, '_lib', 'campaign-email-html.cjs'));
 
 const {
   buildInvestorVanguardEmailHtml,
   buildInvestorVanguardEmailPlainText,
-} = requireFromRoot(path.join(__dirname, '_lib', 'investor-campaign-email-html.cjs'));
+} = requireFromRoot(nodePath.join(__dirname, '_lib', 'investor-campaign-email-html.cjs'));
 
 const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot(
-  path.join(__dirname, '_lib', 'online-payment-fee.cjs')
+  nodePath.join(__dirname, '_lib', 'online-payment-fee.cjs')
 );
 
-const { uploadTicketQrToR2OrSupabase } = requireFromRoot(path.join(__dirname, '_lib', 'r2-media.cjs'));
-const { sendTransactionalEmail } = requireFromRoot(path.join(__dirname, '_lib', 'transactional-email.cjs'));
-const { canSendTransactionalEmail } = requireFromRoot(path.join(__dirname, '_lib', 'can-send-transactional-email.cjs'));
-const { processConfirmedTicketPurchaseTracking } = requireFromRoot(path.join(__dirname, '_lib', 'meta', 'ticket-purchase-tracking.cjs'));
+const { uploadTicketQrToR2OrSupabase } = requireFromRoot(nodePath.join(__dirname, '_lib', 'r2-media.cjs'));
+const { sendTransactionalEmail } = requireFromRoot(nodePath.join(__dirname, '_lib', 'transactional-email.cjs'));
+const { canSendTransactionalEmail } = requireFromRoot(nodePath.join(__dirname, '_lib', 'can-send-transactional-email.cjs'));
+const { processConfirmedTicketPurchaseTracking } = requireFromRoot(nodePath.join(__dirname, '_lib', 'meta', 'ticket-purchase-tracking.cjs'));
 const {
   parseAttributionFromBody,
   processAmbassadorLeadTracking,
-} = requireFromRoot(path.join(__dirname, '_lib', 'meta', 'ambassador-lead-tracking.cjs'));
+} = requireFromRoot(nodePath.join(__dirname, '_lib', 'meta', 'ambassador-lead-tracking.cjs'));
 
 async function runTicketMetaTrackingSafe(dbClient, orderId, req) {
   try {
@@ -78,7 +78,7 @@ function getRenderPremiumTicketPdf() {
 let _createOfficialInvitationEmailHTML = null;
 function getCreateOfficialInvitationEmailHTML() {
   if (_createOfficialInvitationEmailHTML) return _createOfficialInvitationEmailHTML;
-  const mod = requireFromRoot(path.join(__dirname, '_lib', 'official-invitation-email-html.cjs'));
+  const mod = requireFromRoot(nodePath.join(__dirname, '_lib', 'official-invitation-email-html.cjs'));
   _createOfficialInvitationEmailHTML = mod.createOfficialInvitationEmailHTML;
   return _createOfficialInvitationEmailHTML;
 }
@@ -324,9 +324,9 @@ async function getAcademyApp() {
     const {
       requireAdminAuth,
       requireSuperAdmin,
-    } = requireFromRoot(path.join(__dirname, '_lib', 'admin-auth-express.cjs'));
+    } = requireFromRoot(nodePath.join(__dirname, '_lib', 'admin-auth-express.cjs'));
     const { registerAcademyRoutes } = requireFromRoot(
-      path.join(__dirname, '..', 'academyRoutes.cjs')
+      nodePath.join(__dirname, '..', 'academyRoutes.cjs')
     );
     const app = express();
     app.use(cookieParser());
@@ -1390,7 +1390,7 @@ export default async (req, res) => {
   // Privileged admin routes (site content, admins, orders, audit logs) — Vercel + local parity
   try {
     const { getAdminPrivilegedApp, isAdminPrivilegedPath } = requireFromRoot(
-      path.join(__dirname, '_lib', 'admin-privileged-app.cjs')
+      nodePath.join(__dirname, '_lib', 'admin-privileged-app.cjs')
     );
     if (isAdminPrivilegedPath(path)) {
       const adminApp = await getAdminPrivilegedApp();
