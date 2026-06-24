@@ -3,18 +3,17 @@
  * Displays available payment options for selection
  */
 
-import { Card, CardContent } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { PaymentOption } from '@/types/orders';
 import { CreditCard, ExternalLink, Wallet } from 'lucide-react';
 import { PaymentMethod } from '@/lib/constants/orderStatuses';
 import { CustomerInfo } from '@/types/orders';
-import { SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
-
-/** Shown under EN/FR copy for ambassador cash payment */
-const AMBASSADOR_CASH_AR_HINT =
-  'أختار Ambassadeur يكلمك و تخلصو';
+import { cn } from '@/lib/utils';
+import {
+  selectableOptionCardClass,
+  selectableOptionRowClass,
+} from '@/components/orders/selectableOptionStyles';
 
 interface EventPass {
   id: string;
@@ -29,8 +28,8 @@ interface PaymentOptionSelectorProps {
   customerInfo?: CustomerInfo;
   onExternalAppClick?: () => void;
   language?: 'en' | 'fr';
-  selectedPasses?: Record<string, number>; // passId -> quantity
-  eventPasses?: EventPass[]; // All available passes with their restrictions
+  selectedPasses?: Record<string, number>;
+  eventPasses?: EventPass[];
 }
 
 export function PaymentOptionSelector({
@@ -41,94 +40,83 @@ export function PaymentOptionSelector({
   onExternalAppClick,
   language = 'en',
   selectedPasses = {},
-  eventPasses = []
+  eventPasses = [],
 }: PaymentOptionSelectorProps) {
-  // Check if all customer information is complete
   const isCustomerInfoComplete = (): boolean => {
     if (!customerInfo) return false;
-    
+
     const hasName = customerInfo.full_name.trim().length >= 2;
     const hasEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerInfo.email.trim());
     const hasPhone = /^[2594][0-9]{7}$/.test(customerInfo.phone.trim());
     const hasCity = !!customerInfo.city.trim();
-    
-    // Check ville requirement for Sousse and Tunis
+
     let hasVille = true;
     if (customerInfo.city === 'Sousse' || customerInfo.city === 'Tunis') {
       hasVille = !!customerInfo.ville;
     }
-    
+
     return hasName && hasEmail && hasPhone && hasCity && hasVille;
   };
 
   const customerInfoComplete = isCustomerInfoComplete();
 
-  // Check if a payment method is compatible with all selected passes
   const isPaymentMethodCompatible = (method: PaymentMethod): { compatible: boolean; incompatiblePasses: string[] } => {
-    const selectedPassIds = Object.keys(selectedPasses).filter(id => selectedPasses[id] > 0);
-    
-    // If no passes selected, all payment methods are available
+    const selectedPassIds = Object.keys(selectedPasses).filter((id) => selectedPasses[id] > 0);
+
     if (selectedPassIds.length === 0) {
       return { compatible: true, incompatiblePasses: [] };
     }
 
     const incompatiblePasses: string[] = [];
-    
+
     for (const passId of selectedPassIds) {
-      const pass = eventPasses.find(p => p.id === passId);
+      const pass = eventPasses.find((p) => p.id === passId);
       if (!pass) continue;
-      
-      // If pass has no restrictions (NULL or empty), it's compatible with all methods
+
       if (!pass.allowed_payment_methods || pass.allowed_payment_methods.length === 0) {
         continue;
       }
-      
-      // Check if the payment method is in the allowed list
+
       if (!pass.allowed_payment_methods.includes(method)) {
         incompatiblePasses.push(pass.name);
       }
     }
-    
+
     return {
       compatible: incompatiblePasses.length === 0,
-      incompatiblePasses
+      incompatiblePasses,
     };
   };
 
-  // Get payment method display name
-  const getPaymentMethodDisplayName = (method: PaymentMethod): string => {
-    const names: Record<PaymentMethod, { en: string; fr: string }> = {
-      'online': { en: 'Online Payment', fr: 'Paiement en ligne' },
-      'external_app': { en: 'External App', fr: 'Application externe' },
-      'ambassador_cash': { en: 'Cash on Delivery', fr: 'Paiement à la livraison' }
-    };
-    return names[method]?.[language] || method;
-  };
-
-  const t = language === 'en' ? {
-    selectPayment: 'Select Payment Method',
-    online: 'Online Payment',
-    externalApp: 'External App Payment',
-    ambassadorCash: 'Cash Payment (Ambassador)',
-    payOnline: 'Pay securely online with credit/debit card',
-    payExternal: 'Pay through external payment app'
-  } : {
-    selectPayment: 'Sélectionner le Mode de Paiement',
-    online: 'Paiement en Ligne',
-    externalApp: 'Paiement via Application Externe',
-    ambassadorCash: 'Paiement Espèces (Ambassadeur)',
-    payOnline: 'Payer en ligne en toute sécurité avec carte de crédit/débit',
-    payExternal: 'Payer via une application de paiement externe'
-  };
+  const t =
+    language === 'en'
+      ? {
+          selectPayment: 'Select payment method',
+          online: 'Online payment',
+          externalApp: 'External app payment',
+          ambassadorCash: 'Cash payment (ambassador)',
+          payOnline: 'Pay securely with credit or debit card',
+          payExternal: 'Pay through an external payment app',
+          payAmbassador: 'An ambassador will contact you to collect payment',
+        }
+      : {
+          selectPayment: 'Mode de paiement',
+          online: 'Paiement en ligne',
+          externalApp: 'Application externe',
+          ambassadorCash: 'Paiement en espèces (ambassadeur)',
+          payOnline: 'Payer en toute sécurité par carte',
+          payExternal: 'Payer via une application externe',
+          payAmbassador: 'Un ambassadeur vous contactera pour le paiement',
+        };
 
   const getOptionIcon = (type: PaymentOption['option_type']) => {
     switch (type) {
       case 'online':
-        return <CreditCard className="w-5 h-5" />;
+        return <CreditCard className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />;
       case 'external_app':
-        return <ExternalLink className="w-5 h-5 text-primary" />;
+        return <ExternalLink className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />;
       case 'ambassador_cash':
-        return <Wallet className="w-5 h-5" />;
+        return <Wallet className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />;
       default:
         return null;
     }
@@ -153,6 +141,8 @@ export function PaymentOptionSelector({
         return t.payOnline;
       case 'external_app':
         return t.payExternal;
+      case 'ambassador_cash':
+        return t.payAmbassador;
       default:
         return '';
     }
@@ -160,89 +150,79 @@ export function PaymentOptionSelector({
 
   if (options.length === 0) {
     return (
-      <div className="text-center text-muted-foreground py-8">
-        {language === 'en' 
-          ? 'No payment options available' 
-          : 'Aucune option de paiement disponible'}
+      <div className="py-8 text-center text-muted-foreground">
+        {language === 'en' ? 'No payment options available' : 'Aucune option de paiement disponible'}
       </div>
     );
   }
 
-  // Separate external_app from other options
-  const externalAppOption = options.find(o => o.option_type === 'external_app');
-  const radioOptions = options.filter(o => o.option_type !== 'external_app');
+  const externalAppOption = options.find((o) => o.option_type === 'external_app');
+  const radioOptions = options.filter((o) => o.option_type !== 'external_app');
 
-  // Sort radio options: online → ambassador
   const sortedOptions = [...radioOptions].sort((a, b) => {
     const order: Record<string, number> = {
-      'online': 1,
-      'ambassador_cash': 2
+      online: 1,
+      ambassador_cash: 2,
     };
     return (order[a.option_type] || 999) - (order[b.option_type] || 999);
   });
 
   const handleOptionSelect = (optionType: PaymentMethod) => {
-    // Check compatibility before allowing selection
     const compatibility = isPaymentMethodCompatible(optionType);
-    if (!compatibility.compatible) {
-      // Don't allow selection of incompatible payment methods
-      return;
-    }
-    // Always allow changing payment method if customer info is complete
+    if (!compatibility.compatible) return;
     onSelect(optionType);
   };
 
   return (
-    <div className="space-y-4">
-      <Label className="text-base font-semibold">{t.selectPayment}</Label>
-      
-      {/* External App Payment - Card without radio button (rendered first) */}
-      {externalAppOption && (() => {
-        const compatibility = isPaymentMethodCompatible('external_app');
-        const isDisabled = !customerInfoComplete || !compatibility.compatible;
-        
-        return (
-          <Card
-            className={`transition-all ${
-              isDisabled
-                ? 'opacity-50 cursor-not-allowed bg-muted/30'
-                : 'cursor-pointer hover:bg-accent'
-            }`}
-            onClick={() => {
-              if (!isDisabled && onExternalAppClick) {
-                onExternalAppClick();
-              }
-            }}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-start space-x-3">
-                <div className="mt-1">
-                  <ExternalLink className={`w-5 h-5 ${isDisabled ? 'text-muted-foreground' : 'text-primary'}`} />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2">
-                    <Label
-                      className={`font-semibold ${
-                        isDisabled ? 'text-muted-foreground' : 'cursor-pointer'
-                      }`}
-                    >
-                      {getOptionLabel(externalAppOption)}
-                    </Label>
-                  </div>
+    <div className="space-y-3">
+      <Label className="text-base font-semibold text-foreground">{t.selectPayment}</Label>
+
+      {externalAppOption &&
+        (() => {
+          const compatibility = isPaymentMethodCompatible('external_app');
+          const isDisabled = !customerInfoComplete || !compatibility.compatible;
+
+          return (
+            <div
+              role="button"
+              tabIndex={isDisabled ? -1 : 0}
+              className={selectableOptionCardClass(false, isDisabled)}
+              onClick={() => {
+                if (!isDisabled && onExternalAppClick) onExternalAppClick();
+              }}
+              onKeyDown={(e) => {
+                if (!isDisabled && onExternalAppClick && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  onExternalAppClick();
+                }
+              }}
+            >
+              <div className={selectableOptionRowClass()}>
+                <ExternalLink
+                  className={cn(
+                    'mt-0.5 h-5 w-5 shrink-0',
+                    isDisabled ? 'text-muted-foreground/60' : 'text-muted-foreground'
+                  )}
+                  aria-hidden
+                />
+                <div className="min-w-0 flex-1">
+                  <p className={cn('font-medium', isDisabled && 'text-muted-foreground')}>
+                    {getOptionLabel(externalAppOption)}
+                  </p>
                   {!customerInfoComplete ? (
-                    <p className="text-sm mt-1 text-muted-foreground/70">
+                    <p className="mt-1 text-sm text-muted-foreground">
                       {language === 'en'
-                        ? 'Complete your contact details to access the external payment link'
-                        : 'Complétez vos coordonnées pour accéder au lien de paiement externe'}
+                        ? 'Complete your contact details first'
+                        : 'Complétez vos coordonnées d’abord'}
                     </p>
                   ) : !compatibility.compatible ? (
-                    <p className="text-sm mt-1 text-amber-500 font-medium">
+                    <p className="mt-1 text-sm text-amber-600 dark:text-amber-400">
                       {language === 'en'
-                        ? `This payment method is not available for: ${compatibility.incompatiblePasses.join(', ')}`
-                        : `Cette méthode de paiement n'est pas disponible pour : ${compatibility.incompatiblePasses.join(', ')}`}
+                        ? `Not available for: ${compatibility.incompatiblePasses.join(', ')}`
+                        : `Indisponible pour : ${compatibility.incompatiblePasses.join(', ')}`}
                     </p>
                   ) : (
-                    <p className="text-sm mt-1 text-muted-foreground">
+                    <p className="mt-1 text-sm text-muted-foreground">
                       {getOptionDescription(externalAppOption)}
                     </p>
                   )}
@@ -250,95 +230,73 @@ export function PaymentOptionSelector({
                     <img
                       src={externalAppOption.app_image}
                       alt={externalAppOption.app_name || 'App'}
-                      className={`h-8 mt-2 ${isDisabled ? 'opacity-50' : ''}`}
+                      className={cn('mt-2 h-8', isDisabled && 'opacity-50')}
                     />
                   )}
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        );
-      })()}
+            </div>
+          );
+        })()}
 
       <RadioGroup
         value={selectedMethod || undefined}
         onValueChange={(value) => {
-          // Allow changing payment method anytime if customer info is complete
           if (customerInfoComplete) {
             handleOptionSelect(value as PaymentMethod);
           }
         }}
+        className="gap-3"
       >
         {sortedOptions.map((option) => {
           const compatibility = isPaymentMethodCompatible(option.option_type);
           const isDisabled = !customerInfoComplete || !compatibility.compatible;
-          
+          const isSelected = selectedMethod === option.option_type;
+
           return (
             <label
               key={option.id}
               htmlFor={option.id}
-              className={`block transition-all ${
-                isDisabled
-                  ? 'opacity-50 cursor-not-allowed bg-muted/30 rounded-lg'
-                  : `cursor-pointer ${
-                      selectedMethod === option.option_type
-                        ? 'ring-2 ring-primary rounded-lg'
-                        : 'hover:bg-accent rounded-lg'
-                    }`
-              }`}
+              className={selectableOptionCardClass(isSelected, isDisabled)}
             >
-              <Card className="border-0 shadow-none">
-                <CardContent className="p-4">
-                  <div className="flex items-start space-x-3">
-                    <RadioGroupItem
-                      value={option.option_type}
-                      id={option.id}
-                      className="mt-1"
-                      disabled={isDisabled}
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2">
-                        {getOptionIcon(option.option_type)}
-                        <Label
-                          htmlFor={option.id}
-                          className={`font-semibold ${
-                            isDisabled ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'
-                          }`}
-                        >
-                          {getOptionLabel(option)}
-                        </Label>
-                      </div>
-                      {!customerInfoComplete ? (
-                        <p className="text-sm mt-1 text-muted-foreground/70">
-                          {language === 'en'
-                            ? 'Complete your contact details to select this payment method'
-                            : 'Complétez vos coordonnées pour sélectionner ce mode de paiement'}
-                        </p>
-                      ) : !compatibility.compatible ? (
-                        <p className="text-sm mt-1 text-amber-500 font-medium">
-                          {language === 'en'
-                            ? `This payment method is not available for: ${compatibility.incompatiblePasses.join(', ')}`
-                            : `Cette méthode de paiement n'est pas disponible pour : ${compatibility.incompatiblePasses.join(', ')}`}
-                        </p>
-                      ) : option.option_type === 'ambassador_cash' ? (
-                        <div className="mt-1 overflow-x-auto [-webkit-overflow-scrolling:touch] max-w-full">
-                          <p
-                            lang="ar"
-                            dir="rtl"
-                            className="text-sm text-muted-foreground text-right leading-relaxed whitespace-nowrap min-w-min"
-                          >
-                            {AMBASSADOR_CASH_AR_HINT}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="text-sm mt-1 text-muted-foreground">
-                          {getOptionDescription(option)}
-                        </p>
+              <div className={selectableOptionRowClass()}>
+                <RadioGroupItem
+                  value={option.option_type}
+                  id={option.id}
+                  className="mt-0.5"
+                  disabled={isDisabled}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    {getOptionIcon(option.option_type)}
+                    <span
+                      className={cn(
+                        'font-medium',
+                        isDisabled ? 'text-muted-foreground' : 'text-foreground'
                       )}
-                    </div>
+                    >
+                      {getOptionLabel(option)}
+                    </span>
                   </div>
-                </CardContent>
-              </Card>
+                  {!customerInfoComplete ? (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {language === 'en'
+                        ? 'Complete your contact details first'
+                        : 'Complétez vos coordonnées d’abord'}
+                    </p>
+                  ) : !compatibility.compatible ? (
+                    <p className="mt-1 text-sm text-amber-600 dark:text-amber-400">
+                      {language === 'en'
+                        ? `Not available for: ${compatibility.incompatiblePasses.join(', ')}`
+                        : `Indisponible pour : ${compatibility.incompatiblePasses.join(', ')}`}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                      {getOptionDescription(option)}
+                    </p>
+                  )}
+                </div>
+              </div>
             </label>
           );
         })}
@@ -346,4 +304,3 @@ export function PaymentOptionSelector({
     </div>
   );
 }
-

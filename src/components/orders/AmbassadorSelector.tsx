@@ -3,17 +3,17 @@
  * Allows user to select an active ambassador for cash payment
  */
 
-import { Card, CardContent } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Ambassador } from '@/types/orders';
-import { User, MapPin, AlertCircle } from 'lucide-react';
+import { MapPin, AlertCircle, User } from 'lucide-react';
 import { useActiveAmbassadors } from '@/hooks/useActiveAmbassadors';
+import {
+  selectableOptionCardClass,
+  selectableOptionRowClass,
+} from '@/components/orders/selectableOptionStyles';
 
-/** Replaces EN/FR subtitle under “Choose your ambassador” */
-const SELECT_AMBASSADOR_AR_DESC =
-  'أختار أقرب Ambassadeur يكلمك و تخلصو';
+const SELECT_AMBASSADOR_AR_DESC = 'أختار أقرب Ambassadeur يكلمك و تخلصو';
 
 interface AmbassadorSelectorProps {
   city: string;
@@ -30,55 +30,52 @@ export function AmbassadorSelector({
   cityWide = false,
   selectedAmbassadorId,
   onSelect,
-  language = 'en'
+  language = 'en',
 }: AmbassadorSelectorProps) {
   const { data: ambassadors, isLoading, error } = useActiveAmbassadors(city, ville, { cityWide });
 
-  const t = language === 'en' ? {
-    selectAmbassador: 'Choose Your Ambassador',
-    noAmbassadors: 'No active ambassadors available in this area',
-    noAmbassadorsDesc: 'Please select a different city or ville, or choose a different payment method',
-    loading: 'Loading ambassadors...',
-    error: 'Error loading ambassadors',
-    enterInfoFirst: 'Please enter your information above to see available ambassadors in your area'
-  } : {
-    selectAmbassador: 'Choisissez Votre Ambassadeur',
-    noAmbassadors: 'Aucun ambassadeur actif disponible dans cette zone',
-    noAmbassadorsDesc: 'Veuillez sélectionner une autre ville ou quartier, ou choisir un autre mode de paiement',
-    loading: 'Chargement des ambassadeurs...',
-    error: 'Erreur lors du chargement des ambassadeurs',
-    enterInfoFirst: 'Veuillez entrer vos informations ci-dessus pour voir les ambassadeurs disponibles dans votre région'
-  };
+  const t =
+    language === 'en'
+      ? {
+          selectAmbassador: 'Choose your ambassador',
+          noAmbassadors: 'No ambassadors available in this area',
+          noAmbassadorsDesc: 'Try another city or payment method',
+          loading: 'Loading ambassadors…',
+          error: 'Could not load ambassadors',
+          enterInfoFirst: 'Enter your location above to see available ambassadors',
+        }
+      : {
+          selectAmbassador: 'Choisissez votre ambassadeur',
+          noAmbassadors: 'Aucun ambassadeur disponible dans cette zone',
+          noAmbassadorsDesc: 'Essayez une autre ville ou un autre mode de paiement',
+          loading: 'Chargement des ambassadeurs…',
+          error: 'Impossible de charger les ambassadeurs',
+          enterInfoFirst: 'Indiquez votre localisation pour voir les ambassadeurs disponibles',
+        };
 
   if (!city) {
     return (
       <Alert>
         <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          {t.enterInfoFirst}
-        </AlertDescription>
+        <AlertDescription>{t.enterInfoFirst}</AlertDescription>
       </Alert>
     );
   }
 
   if (isLoading) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        {t.loading}
-      </div>
-    );
+    return <div className="py-6 text-center text-sm text-muted-foreground">{t.loading}</div>;
   }
 
   if (error) {
-    // Provide more helpful error messages based on error type
-    const errorMessage = error instanceof Error 
-      ? error.message.includes('Unable to connect') || error.message.includes('connection failed')
-        ? language === 'en' 
-          ? 'Unable to connect to server. Please ensure the backend server is running.'
-          : 'Impossible de se connecter au serveur. Veuillez vous assurer que le serveur backend est en cours d\'exécution.'
-        : error.message
-      : t.error;
-    
+    const errorMessage =
+      error instanceof Error
+        ? error.message.includes('Unable to connect') || error.message.includes('connection failed')
+          ? language === 'en'
+            ? 'Unable to connect to the server. Please try again.'
+            : 'Impossible de se connecter au serveur. Veuillez réessayer.'
+          : error.message
+        : t.error;
+
     return (
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
@@ -92,80 +89,61 @@ export function AmbassadorSelector({
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          <div className="space-y-2">
-            <p className="font-semibold">{t.noAmbassadors}</p>
-            <p className="text-sm">{t.noAmbassadorsDesc}</p>
-          </div>
+          <p className="font-medium">{t.noAmbassadors}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t.noAmbassadorsDesc}</p>
         </AlertDescription>
       </Alert>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div>
-        <Label className="text-base font-semibold text-primary">{t.selectAmbassador}</Label>
-        <div className="mt-1 overflow-x-auto [-webkit-overflow-scrolling:touch] max-w-full">
-          <p
-            lang="ar"
-            dir="rtl"
-            className="text-sm text-muted-foreground text-right leading-relaxed whitespace-nowrap min-w-min"
-          >
-            {SELECT_AMBASSADOR_AR_DESC}
-          </p>
-        </div>
+        <Label className="text-base font-semibold text-foreground">{t.selectAmbassador}</Label>
+        <p lang="ar" dir="rtl" className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          {SELECT_AMBASSADOR_AR_DESC}
+        </p>
       </div>
-      
+
       <RadioGroup
         value={selectedAmbassadorId || undefined}
         onValueChange={onSelect}
+        className="gap-3"
       >
-        <div className="space-y-3">
-          {ambassadors.map((ambassador) => {
-            const displayVille = cityWide ? ambassador.ville : (ville || ambassador.ville);
-            return (
-            <Card
+        {ambassadors.map((ambassador) => {
+          const displayVille = cityWide ? ambassador.ville : ville || ambassador.ville;
+          const isSelected = selectedAmbassadorId === ambassador.id;
+
+          return (
+            <label
               key={ambassador.id}
-              className={`cursor-pointer transition-all ${
-                selectedAmbassadorId === ambassador.id
-                  ? 'ring-2 ring-primary'
-                  : 'hover:bg-muted/40'
-              }`}
-              onClick={() => onSelect(ambassador.id)}
+              htmlFor={`ambassador-${ambassador.id}`}
+              className={selectableOptionCardClass(isSelected)}
             >
-              <CardContent className="p-4">
-                <div className="flex items-start space-x-3">
-                  <RadioGroupItem
-                    value={ambassador.id}
-                    id={`ambassador-${ambassador.id}`}
-                    className="mt-1"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2">
-                      <User className="w-4 h-4 text-muted-foreground" />
-                      <Label
-                        htmlFor={`ambassador-${ambassador.id}`}
-                        className="font-semibold cursor-pointer"
-                      >
-                        {ambassador.full_name}
-                      </Label>
-                    </div>
-                    <div className="mt-2 flex items-center space-x-2 text-sm text-muted-foreground">
-                      <MapPin className="w-3 h-3 shrink-0" />
-                      <span>
-                        {ambassador.city}
-                        {displayVille && `, ${displayVille}`}
-                      </span>
-                    </div>
+              <div className={selectableOptionRowClass()}>
+                <RadioGroupItem
+                  value={ambassador.id}
+                  id={`ambassador-${ambassador.id}`}
+                  className="mt-0.5"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="font-medium text-foreground">{ambassador.full_name}</span>
                   </div>
+                  <p className="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <span>
+                      {ambassador.city}
+                      {displayVille ? `, ${displayVille}` : ''}
+                    </span>
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-            );
-          })}
-        </div>
+              </div>
+            </label>
+          );
+        })}
       </RadioGroup>
     </div>
   );
 }
-

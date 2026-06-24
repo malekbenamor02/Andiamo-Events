@@ -26,7 +26,14 @@ interface CustomerInfoFormProps {
 }
 
 function FieldError({ message }: { message: string }) {
-  return <p className="mt-1 text-sm text-red-500">{message}</p>;
+  return <p className="mt-1 text-sm text-destructive">{message}</p>;
+}
+
+function fieldInputClass(hasError?: boolean) {
+  return cn(
+    hasError &&
+      "border-destructive/50 focus-visible:border-destructive focus-visible:ring-0"
+  );
 }
 
 export function CustomerInfoForm({
@@ -118,7 +125,7 @@ export function CustomerInfoForm({
               id="full_name"
               value={customerInfo.full_name}
               onChange={(e) => handleChange('full_name', e.target.value)}
-              className={errors.full_name || errors.fullName ? 'border-red-500' : ''}
+              className={fieldInputClass(!!(errors.full_name || errors.fullName))}
             />
             {(errors.full_name || errors.fullName) && (
               <FieldError message={errors.full_name || errors.fullName || ''} />
@@ -139,7 +146,7 @@ export function CustomerInfoForm({
                 inputMode="numeric"
                 value={customerInfo.phone}
                 onChange={(e) => handleChange('phone', e.target.value)}
-                className={cn('pl-14', errors.phone ? 'border-red-500' : '')}
+                className={cn('pl-14', fieldInputClass(!!errors.phone))}
               />
             </div>
             {errors.phone && <FieldError message={errors.phone} />}
@@ -159,7 +166,7 @@ export function CustomerInfoForm({
               value={customerInfo.email}
               onChange={(e) => handleChange('email', e.target.value)}
               onBlur={commitEmailTypoFix}
-              className={errors.email ? 'border-red-500' : ''}
+              className={fieldInputClass(!!errors.email)}
             />
             {errors.email && <FieldError message={errors.email} />}
           </div>
@@ -176,7 +183,7 @@ export function CustomerInfoForm({
                 value={emailConfirm}
                 onChange={(e) => onEmailConfirmChange(e.target.value)}
                 onBlur={commitConfirmEmailTypoFix}
-                className={errors.email_confirm ? 'border-red-500' : ''}
+                className={fieldInputClass(!!errors.email_confirm)}
               />
               {errors.email_confirm && (
                 <FieldError message={errors.email_confirm} />
@@ -193,7 +200,7 @@ export function CustomerInfoForm({
               {t.city} *
             </Label>
             <Select value={customerInfo.city} onValueChange={(value) => handleChange('city', value)}>
-              <SelectTrigger className={errors.city ? 'border-red-500' : ''}>
+              <SelectTrigger className={fieldInputClass(!!errors.city)}>
                 <SelectValue placeholder={t.selectCity} />
               </SelectTrigger>
               <SelectContent>
@@ -204,7 +211,7 @@ export function CustomerInfoForm({
                 ))}
               </SelectContent>
             </Select>
-            {errors.city && <p className="text-sm text-red-500 mt-1">{errors.city}</p>}
+            {errors.city && <FieldError message={errors.city} />}
           </div>
 
           {villes.length > 0 && (
@@ -213,7 +220,7 @@ export function CustomerInfoForm({
                 {t.ville} *
               </Label>
               <Select value={customerInfo.ville || ''} onValueChange={(value) => handleChange('ville', value)}>
-                <SelectTrigger className={errors.ville ? 'border-red-500' : ''}>
+                <SelectTrigger className={fieldInputClass(!!errors.ville)}>
                   <SelectValue placeholder={t.selectVille} />
                 </SelectTrigger>
                 <SelectContent>
@@ -224,7 +231,7 @@ export function CustomerInfoForm({
                   ))}
                 </SelectContent>
               </Select>
-              {errors.ville && <p className="text-sm text-red-500 mt-1">{errors.ville}</p>}
+              {errors.ville && <FieldError message={errors.ville} />}
             </div>
           )}
         </>

@@ -58,6 +58,19 @@
   border-color: hsl(var(--muted-foreground) / 0.25) !important;
 }
 
+/* Pass purchase: border-only focus — no red ring fragments on rounded fields */
+.pass-purchase-fields input:focus-visible,
+.pass-purchase-fields textarea:focus-visible,
+.pass-purchase-fields [role="combobox"]:focus-visible,
+.pass-purchase-fields button[role="radio"]:focus-visible {
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-width: 0 !important;
+  --tw-ring-width: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 /* Admin dashboard: navigation list scrollbar (brand red) */
 .admin-nav-scrollbar {
   scrollbar-width: thin;

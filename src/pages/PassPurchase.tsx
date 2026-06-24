@@ -1812,7 +1812,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
               <Card
                 ref={wizardFieldsBoxRef}
                 className={cn(
-                  'glass scroll-mt-24',
+                  'pass-purchase-fields glass scroll-mt-24',
                   wizardStep === 5 && 'border-2 border-primary/30'
                 )}
               >
