@@ -760,7 +760,7 @@
     "api/misc.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{api/_lib/**,academyRoutes.cjs,shared/admin/**,node_modules/multer/**,node_modules/@sparticuz/chromium/**}"
+      "includeFiles": "{api/_lib/**,academyRoutes.cjs,shared/admin/**,node_modules/multer/**,node_modules/bcryptjs/**,node_modules/@sparticuz/chromium/**}"
     },
     "api/media.js": {
       "maxDuration": 60,
