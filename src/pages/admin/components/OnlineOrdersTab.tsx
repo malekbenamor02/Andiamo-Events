@@ -3,7 +3,7 @@
  * Extracted from Dashboard.tsx for maintainability.
  */
 
-import React, { useRef, useCallback, useEffect, useState } from "react";
+import React, { useRef, useCallback, useEffect } from "react";
 import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,13 +30,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TabsContent } from "@/components/ui/tabs";
 import { RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { AdminOnlineOrderMobileList } from "./AdminMobileOrderList";
 import { OrderPromoCornerRibbon } from "@/components/admin/OrderPromoCornerRibbon";
-import { orderHasPromoAttribution, parsePromoFromOrder, resolvePromoBadgeColor } from "@/lib/eventPromo/promoOrder";
+import { parsePromoFromOrder, resolvePromoBadgeColor } from "@/lib/eventPromo/promoOrder";
 import type { OnlineOrder, OnlineOrderFilters } from "../types";
 
 function promoColorForOrder(order: OnlineOrder): string {
@@ -46,10 +46,6 @@ function promoColorForOrder(order: OnlineOrder): string {
 function promoCodeLabelForOrder(order: OnlineOrder): string | null {
   const promo = parsePromoFromOrder(order);
   return promo?.code?.trim() || null;
-}
-
-function orderHasAttributionRibbon(order: OnlineOrder): boolean {
-  return !!(order.presale_code_id || orderHasPromoAttribution(order));
 }
 
 export interface OnlineOrdersTabProps {
@@ -92,10 +88,6 @@ export function OnlineOrdersTab({
   const fetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const DEBOUNCE_MS = 350;
 
-  // Mobile UX: Radix Tooltip is hover/focus oriented and can vanish instantly on tap.
-  // Use a controlled Popover for the "FAILED" dot so it stays open until scroll/outside press.
-  const [mobileFailedPopoverOrderId, setMobileFailedPopoverOrderId] = useState<string | null>(null);
-
   const debouncedFetch = useCallback(
     (filters: OnlineOrderFilters) => {
       if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
@@ -112,24 +104,6 @@ export function OnlineOrdersTab({
       if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    if (!mobileFailedPopoverOrderId) return;
-
-    let loggedClose = false;
-    const close = () => {
-      setMobileFailedPopoverOrderId(null);
-      if (loggedClose) return;
-      loggedClose = true;
-    };
-
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("touchmove", close, { passive: true, capture: true } as any);
-    return () => {
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("touchmove", close, { passive: true, capture: true } as any);
-    };
-  }, [mobileFailedPopoverOrderId]);
 
   const handleCopyEmail = async (email: string) => {
     if (email === "N/A") return;
@@ -543,325 +517,14 @@ export function OnlineOrdersTab({
                 </div>
               </div>
 
-              {/* Mobile: cards view */}
-              <div className="md:hidden space-y-4">
-              {onlineOrders.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground font-heading">
-                  {language === "en" ? "No online orders found" : "Aucune commande en ligne trouvée"}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {onlineOrders.map((order) => {
-                    const orderPasses = order.order_passes as { pass_type?: string; quantity?: number; price?: number }[] | undefined;
-                    let passItems: { name: string; quantity: number }[] = [];
-
-                    if (orderPasses && orderPasses.length > 0) {
-                      passItems = orderPasses.map((p) => ({
-                        name: p.pass_type ?? "—",
-                        quantity: p.quantity ?? 0,
-                      }));
-                    } else {
-                      passItems = [];
-                    }
-
-                    const email = order.user_email ?? order.email ?? "N/A";
-
-                    // Optional: parse fee breakdown to show a tooltip on total price.
-                    let subtotalWithoutFees: number | null = null;
-                    let feeAmount: number | null = null;
-
-                    try {
-                      if (typeof order.total_with_fees === "number") {
-                        if (typeof order.fee_amount === "number") {
-                          feeAmount = order.fee_amount;
-                          subtotalWithoutFees = Number((order.total_with_fees - order.fee_amount).toFixed(3));
-                        }
-                      }
-                      if (subtotalWithoutFees === null || feeAmount === null) {
-                        if (order.notes) {
-                          const notesData = typeof order.notes === "string" ? JSON.parse(order.notes) : order.notes;
-                          const fees = (notesData as any)?.payment_fees;
-                          if (fees && typeof fees.subtotal === "number" && typeof fees.fee_amount === "number") {
-                            subtotalWithoutFees = fees.subtotal;
-                            feeAmount = fees.fee_amount;
-                          }
-                        }
-                      }
-                    } catch {
-                      // ignore parse errors - fallback to showing total_price only
-                    }
-
-                    const statusMap: Record<string, string> = {
-                      PENDING_PAYMENT: language === "en" ? "Pending Payment" : "Paiement en Attente",
-                      PAID: language === "en" ? "Paid" : "Payé",
-                      FAILED: language === "en" ? "Failed" : "Échoué",
-                      EXPIRED: language === "en" ? "Expired" : "Expiré",
-                      REFUNDED: language === "en" ? "Refunded" : "Remboursé",
-                    };
-
-                    const status = order.payment_status ?? "PENDING_PAYMENT";
-
-                    // Used by the FAILED tooltip (and our instrumentation) to understand why the message is/doesn't show.
-                    const paymentConfirm = (order as any)?.payment_confirm_response;
-                    const actionCodeDescription =
-                      paymentConfirm?.actionCodeDescription ??
-                      paymentConfirm?.action_code_description ??
-                      null;
-
-                    const getStatusColor = () => {
-                      if (status === "PAID") return "bg-green-500";
-                      if (status === "EXPIRED") return "bg-blue-500";
-                      if (status === "FAILED" || status === "REFUNDED") return "bg-red-500";
-                      if (status === "PENDING_PAYMENT") return "bg-yellow-500";
-                      return "bg-gray-500";
-                    };
-
-                    const createdText = (() => {
-                      const d = new Date(order.created_at);
-                      const day = String(d.getDate()).padStart(2, "0");
-                      const month = String(d.getMonth() + 1).padStart(2, "0");
-                      return `${day}/${month}/${d.getFullYear()}`;
-                    })();
-
-                    const mobilePaymentStatus = (
-                      <>
-                        {status === "FAILED" ? (
-                          <Popover
-                            open={mobileFailedPopoverOrderId === String(order.id)}
-                            onOpenChange={(open) => {
-                              if (open) {
-                                setMobileFailedPopoverOrderId(String(order.id));
-                              } else {
-                                setMobileFailedPopoverOrderId(null);
-                              }
-                            }}
-                          >
-                            <PopoverTrigger asChild>
-                              <button
-                                type="button"
-                                className={cn(
-                                  "w-3 h-3 rounded-full cursor-help p-0 m-0 border-0",
-                                  // Ensure the small indicator doesn't inherit default button styles.
-                                  "bg-transparent",
-                                  getStatusColor()
-                                )}
-                                aria-label={language === "en" ? "Failed reason" : "Raison d'échec"}
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            </PopoverTrigger>
-                            <PopoverContent
-                              side="bottom"
-                              align="center"
-                              className="w-48 p-2 text-xs"
-                            >
-                              <div className="space-y-1">
-                                <p className="text-xs">{statusMap[status] ?? status}</p>
-                                {typeof actionCodeDescription === "string" &&
-                                actionCodeDescription.trim().length > 0 ? (
-                                  <p className="text-xs text-muted-foreground">{actionCodeDescription}</p>
-                                ) : null}
-                              </div>
-                            </PopoverContent>
-                          </Popover>
-                        ) : (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className={cn("w-3 h-3 rounded-full cursor-help", getStatusColor())} />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="text-xs">{statusMap[status] ?? status}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                        <span
-                          className={cn("text-xs", orderHasAttributionRibbon(order) ? "text-left" : "text-right")}
-                          style={{ color: "#B0B0B0" }}
-                        >
-                          {statusMap[status] ?? status}
-                        </span>
-                      </>
-                    );
-
-                    return (
-                      <Card
-                        key={order.id}
-                        className="relative overflow-hidden cursor-pointer transition-opacity hover:opacity-95"
-                        onClick={() => onViewOrder(order)}
-                        title={
-                          order.ville
-                            ? language === "en"
-                              ? `Tap to view order details — Neighborhood: ${order.ville}`
-                              : `Appuyer pour voir la commande — Quartier : ${order.ville}`
-                            : language === "en"
-                              ? "Tap to view order details"
-                              : "Appuyer pour voir la commande"
-                        }
-                      >
-                        {order.presale_code_id ? (
-                          <div
-                            className="pointer-events-none absolute right-0 top-0 z-10 h-[80px] w-[80px] overflow-hidden"
-                            title={language === "en" ? "Placed via presale" : "Commande presale"}
-                          >
-                            <span
-                              className="absolute block bg-indigo-500 py-[2px] text-center text-[10px] font-bold uppercase tracking-wider text-white shadow-md"
-                              style={{ width: 130, transform: "rotate(45deg)", top: 16, right: -38 }}
-                            >
-                              {language === "en" ? "Presale" : "Presale"}
-                            </span>
-                          </div>
-                        ) : promoCodeLabelForOrder(order) ? (
-                          <OrderPromoCornerRibbon
-                            variant="card"
-                            code={promoCodeLabelForOrder(order)!}
-                            color={promoColorForOrder(order)}
-                            title={
-                              language === "en"
-                                ? `Promo code: ${promoCodeLabelForOrder(order)}`
-                                : `Code promo : ${promoCodeLabelForOrder(order)}`
-                            }
-                          />
-                        ) : null}
-                        <CardContent className="p-4">
-                          <div
-                            className={cn(
-                              orderHasAttributionRibbon(order)
-                                ? "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2"
-                                : "flex items-start justify-between gap-3",
-                              orderHasAttributionRibbon(order) && "pr-[5.25rem]",
-                            )}
-                          >
-                            {orderHasAttributionRibbon(order) ? (
-                              <p
-                                className="min-w-0 break-words text-sm font-heading font-semibold"
-                                style={{ color: "#FFFFFF" }}
-                              >
-                                {order.user_name ?? order.customer_name ?? "N/A"}
-                              </p>
-                            ) : (
-                              <div className="min-w-0">
-                                <p className="text-sm font-heading font-semibold" style={{ color: "#FFFFFF" }}>
-                                  {order.user_name ?? order.customer_name ?? "N/A"}
-                                </p>
-                              </div>
-                            )}
-                            <div className="flex shrink-0 items-center gap-2">{mobilePaymentStatus}</div>
-                          </div>
-
-                          <div className="mt-3">
-                            <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                              {language === "en" ? "Pass Types" : "Types de Pass"}
-                            </p>
-                            <div className="mt-1 flex flex-wrap gap-2">
-                              {passItems.length > 0 ? (
-                                passItems.map((px, idx) => (
-                                  <div
-                                    key={idx}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-muted/30 text-xs"
-                                  >
-                                    <span className="font-medium">{px.name}</span>
-                                    <span className="text-muted-foreground">×{px.quantity}</span>
-                                  </div>
-                                ))
-                              ) : (
-                                <span className="text-xs text-muted-foreground">N/A</span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                {language === "en" ? "Phone" : "Téléphone"}
-                              </p>
-                              <p className="text-xs" style={{ color: "#B0B0B0" }}>
-                                {order.user_phone ?? order.phone ?? "N/A"}
-                              </p>
-
-                              <div className="space-y-1 mt-2">
-                                <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                  {language === "en" ? "Email" : "Email"}
-                                </p>
-                                {email !== "N/A" ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleCopyEmail(email);
-                                    }}
-                                    className="text-xs hover:text-primary hover:underline cursor-pointer"
-                                    title={language === "en" ? "Click to copy email" : "Cliquer pour copier l'email"}
-                                  >
-                                    {maskEmail(email)}
-                                  </button>
-                                ) : (
-                                  <span className="text-xs" style={{ color: "#B0B0B0" }}>
-                                    N/A
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="space-y-1">
-                              <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                {language === "en" ? "Total Price" : "Prix Total"}
-                              </p>
-                              {order.total_price != null ? (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="cursor-help inline-block text-sm font-semibold" style={{ color: "#FFFFFF" }}>
-                                        {Number(order.total_with_fees ?? order.total_price).toFixed(2)} TND
-                                      </span>
-                                    </TooltipTrigger>
-                                    {subtotalWithoutFees != null && feeAmount != null ? (
-                                      <TooltipContent className="text-xs space-y-1">
-                                        <p className="font-semibold">
-                                          {language === "en" ? "Total with fees" : "Total avec frais"}: {Number(order.total_price).toFixed(2)} TND
-                                        </p>
-                                        <p>
-                                          {language === "en" ? "Subtotal (without fees)" : "Sous-total (hors frais)"}:{" "}
-                                          {subtotalWithoutFees.toFixed(2)} TND
-                                        </p>
-                                        <p>
-                                          {language === "en" ? "Fees" : "Frais"}: {feeAmount.toFixed(2)} TND
-                                        </p>
-                                      </TooltipContent>
-                                    ) : (
-                                      <TooltipContent className="text-xs">
-                                        <p className="font-semibold">
-                                          {language === "en"
-                                            ? "Total amount (including fees)"
-                                            : "Montant total (frais inclus)"}
-                                        </p>
-                                      </TooltipContent>
-                                    )}
-                                  </Tooltip>
-                                </TooltipProvider>
-                              ) : (
-                                <span className="text-xs" style={{ color: "#B0B0B0" }}>
-                                  N/A
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="mt-3 w-full max-w-full space-y-1">
-                            <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                              {language === "en" ? "Created" : "Créé"}
-                            </p>
-                            <span className="min-w-0 text-xs tabular-nums" style={{ color: "#B0B0B0" }}>
-                              {createdText}
-                            </span>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+              {/* Mobile: list view */}
+              <div className="md:hidden">
+                <AdminOnlineOrderMobileList
+                  orders={onlineOrders}
+                  language={language}
+                  onViewOrder={onViewOrder}
+                />
+              </div>
             </>
           )}
         </CardContent>

@@ -69,6 +69,26 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/ambassador-logout",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/ambassador/me",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/ambassador-update-password",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/ambassador/cancel-order",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/ambassador/confirm-cash",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/ambassador-application",
       "destination": "/api/misc.js"
     },

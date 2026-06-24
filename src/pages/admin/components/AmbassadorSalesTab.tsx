@@ -3,7 +3,7 @@
  * Extracted from Dashboard.tsx for maintainability.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,12 +14,13 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Download, RefreshCw, X, Eye, Trophy, Medal, Award, BarChart3 } from "lucide-react";
+import { Download, RefreshCw, Trophy, Medal, Award, BarChart3 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { calculateAmbassadorIncome } from "@/lib/ambassadors/ambassadorIncome";
 import { OrderPromoCornerRibbon } from "@/components/admin/OrderPromoCornerRibbon";
+import { AdminCodOrderMobileList } from "./AdminMobileOrderList";
 import { orderHasPromoAttribution, parsePromoFromOrder, resolvePromoBadgeColor } from "@/lib/eventPromo/promoOrder";
 import type { AmbassadorOrderFilters, AmbassadorFilterOptions, AmbassadorOrderLog } from "../types";
 
@@ -35,6 +36,87 @@ function promoCodeLabelForCodOrder(order: CodOrder): string | null {
 function codOrderHasAttributionRibbon(order: CodOrder): boolean {
   return !!(order.presale_code_id || orderHasPromoAttribution(order));
 }
+
+function CodOrdersFilterField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+const AMBASSADOR_SALES_TAB_TRIGGER_CLASS = cn(
+  "relative z-10 rounded-full bg-transparent px-3 py-1.5 shadow-none",
+  "transition-colors duration-200",
+  "data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+);
+
+function AmbassadorSalesSubTabsList({
+  activeValue,
+  children,
+}: {
+  activeValue: string;
+  children: React.ReactNode;
+}) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [indicator, setIndicator] = useState({ left: 0, width: 0, ready: false });
+
+  const updateIndicator = useCallback(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const active = list.querySelector<HTMLElement>('[data-state="active"]');
+    if (!active) return;
+    setIndicator({
+      left: active.offsetLeft,
+      width: active.offsetWidth,
+      ready: true,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    updateIndicator();
+  }, [activeValue, updateIndicator]);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const observer = new ResizeObserver(() => updateIndicator());
+    observer.observe(list);
+    window.addEventListener("resize", updateIndicator);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateIndicator);
+    };
+  }, [updateIndicator]);
+
+  return (
+    <TabsList
+      ref={listRef}
+      className="relative grid h-10 w-full grid-cols-3 rounded-full bg-muted p-1"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute bottom-1 top-1 rounded-full bg-background shadow-sm",
+          "transition-[left,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+          !indicator.ready && "opacity-0"
+        )}
+        style={{ left: indicator.left, width: indicator.width }}
+      />
+      {children}
+    </TabsList>
+  );
+}
+
+const AMBASSADOR_SALES_TAB_PANEL_CLASS =
+  "ambassador-sales-subtab-panel mt-6 focus-visible:outline-none";
 
 export interface CodOrder {
   id: string;
@@ -276,169 +358,224 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
   return (
     <TooltipProvider delayDuration={200}>
     <TabsContent value="ambassador-sales" className="space-y-6">
-      <Tabs value={p.salesSystemTab} onValueChange={p.setSalesSystemTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="cod-ambassador-orders">
+      <Tabs value={p.salesSystemTab} onValueChange={p.setSalesSystemTab} className="ambassador-sales-subtabs w-full">
+        <AmbassadorSalesSubTabsList activeValue={p.salesSystemTab}>
+          <TabsTrigger value="cod-ambassador-orders" className={AMBASSADOR_SALES_TAB_TRIGGER_CLASS}>
             {p.language === "en" ? "Orders" : "Commandes"}
           </TabsTrigger>
-          <TabsTrigger value="reports">{p.language === "en" ? "Reports" : "Rapports"}</TabsTrigger>
-          <TabsTrigger value="order-logs">{p.language === "en" ? "Logs" : "Journaux"}</TabsTrigger>
-        </TabsList>
+          <TabsTrigger value="reports" className={AMBASSADOR_SALES_TAB_TRIGGER_CLASS}>
+            {p.language === "en" ? "Reports" : "Rapports"}
+          </TabsTrigger>
+          <TabsTrigger value="order-logs" className={AMBASSADOR_SALES_TAB_TRIGGER_CLASS}>
+            {p.language === "en" ? "Logs" : "Journaux"}
+          </TabsTrigger>
+        </AmbassadorSalesSubTabsList>
 
         {/* COD Ambassador Orders */}
-        <TabsContent value="cod-ambassador-orders" className="mt-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>
-                  {p.language === "en" ? "COD Ambassador Orders" : "Commandes COD Ambassadeur"}
+        <TabsContent value="cod-ambassador-orders" className={AMBASSADOR_SALES_TAB_PANEL_CLASS}>
+          <Card className="border-border/70">
+            <CardHeader className="space-y-0 border-b border-border/60 px-4 py-4 sm:px-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle className="text-base font-semibold leading-snug">
+                  {p.language === "en" ? "COD ambassador orders" : "Commandes COD ambassadeur"}
                 </CardTitle>
-                    <div className="flex gap-2 flex-col sm:flex-row items-stretch sm:items-center w-auto sm:w-auto">
-                      <Button
-                        onClick={p.onExportExcel}
-                        variant="outline"
-                        size="sm"
-                        className="w-full sm:w-auto"
-                      >
-                    <Download className="w-4 h-4 mr-2" />
-                    {p.language === "en" ? "Export Excel" : "Exporter Excel"}
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                  <Button
+                    type="button"
+                    onClick={p.onExportExcel}
+                    variant="outline"
+                    size="sm"
+                    className="cod-ambassador-orders-toolbar h-8 justify-center text-xs sm:min-w-[7rem]"
+                  >
+                    <Download className="h-3.5 w-3.5 sm:mr-1.5" aria-hidden />
+                    <span className="truncate">
+                      {p.language === "en" ? "Export" : "Exporter"}
+                    </span>
                   </Button>
                   <Button
+                    type="button"
                     onClick={() => p.onRefresh(p.orderFilters.status || undefined)}
                     variant="outline"
                     size="sm"
-                        className="w-full sm:w-auto"
+                    className="cod-ambassador-orders-toolbar h-8 justify-center text-xs sm:min-w-[7rem]"
                   >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    {p.language === "en" ? "Refresh" : "Actualiser"}
+                    <RefreshCw className="h-3.5 w-3.5 sm:mr-1.5" aria-hidden />
+                    <span className="truncate">
+                      {p.language === "en" ? "Refresh" : "Actualiser"}
+                    </span>
                   </Button>
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
-              {/* Filters */}
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4 pb-4 border-b items-end">
-                <div>
-                  <Label className="text-xs mb-2">
-                      {p.language === "en" ? "Order Number" : "Numéro de Commande"}
-                  </Label>
-                  <Input
-                    placeholder={p.language === "en" ? "Order Number (e.g., #807105)" : "Numéro (ex: #807105)"}
-                    value={p.orderFilters.orderId}
-                    onChange={(e) => p.setOrderFilters({ ...p.orderFilters, orderId: e.target.value })}
-                    className="h-8 text-xs font-mono"
-                  />
-                </div>
-
-                <div>
-                  <Label className="text-xs mb-2">{p.language === "en" ? "Status" : "Statut"}</Label>
-                  <Select
-                    value={p.orderFilters.status || undefined}
-                    onValueChange={(value) => {
-                      const newStatus = value === "all" || value === "" ? "" : value;
-                      p.setOrderFilters({ ...p.orderFilters, status: newStatus });
-                      p.onRefresh(newStatus || undefined);
-                    }}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder={p.language === "en" ? "All Statuses" : "Tous les Statuts"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PENDING_CASH">
-                        {p.language === "en" ? "Pending Cash" : "En Attente Espèces"}
-                      </SelectItem>
-                      <SelectItem value="PENDING_ADMIN_APPROVAL">
-                        {p.language === "en" ? "Pending Approval" : "En Attente d'Approbation"}
-                      </SelectItem>
-                      <SelectItem value="PAID">{p.language === "en" ? "Paid" : "Payé"}</SelectItem>
-                      <SelectItem value="REJECTED">{p.language === "en" ? "Rejected" : "Rejeté"}</SelectItem>
-                      <SelectItem value="CANCELLED">{p.language === "en" ? "Cancelled" : "Annulé"}</SelectItem>
-                      <SelectItem value="REMOVED_BY_ADMIN">
-                        {p.language === "en" ? "Removed by Admin" : "Retiré par l'administrateur"}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label className="text-xs mb-2">{p.language === "en" ? "Phone" : "Téléphone"}</Label>
-                  <Input
-                    placeholder={p.language === "en" ? "Search by phone..." : "Rechercher par téléphone..."}
-                    value={p.orderFilters.phone}
-                    onChange={(e) => p.setOrderFilters({ ...p.orderFilters, phone: e.target.value })}
-                    className="h-8 text-xs"
-                  />
-                </div>
-
-                <div>
-                  <Label className="text-xs mb-2">{p.language === "en" ? "Ambassador" : "Ambassadeur"}</Label>
-                  <Select
-                    value={p.orderFilters.ambassador || undefined}
-                    onValueChange={(value) => p.setOrderFilters({ ...p.orderFilters, ambassador: value })}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder={p.language === "en" ? "All Ambassadors" : "Tous les Ambassadeurs"} />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
-                      {p.filterOptions.ambassadors.map((ambassador) => (
-                        <SelectItem key={ambassador} value={ambassador}>
-                          {ambassador}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label className="text-xs mb-2">{p.language === "en" ? "Pass Type" : "Type de Pass"}</Label>
-                  <Select
-                    value={p.orderFilters.passType || undefined}
-                    onValueChange={(value) =>
+            <CardContent className="px-4 py-4 sm:px-6">
+              <div className="cod-ambassador-orders-filters mb-4 rounded-lg border border-border/60 bg-muted/20 p-3 sm:p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {p.language === "en" ? "Filters" : "Filtres"}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
                       p.setOrderFilters({
-                        ...p.orderFilters,
-                        passType: value === "all" ? "" : value,
-                      })
-                    }
+                        status: "",
+                        phone: "",
+                        ambassador: "",
+                        city: "",
+                        ville: "",
+                        orderId: "",
+                        passType: "",
+                      });
+                      p.onRefresh();
+                    }}
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
                   >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder={p.language === "en" ? "All Pass Types" : "Tous les Types"} />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
-                      <SelectItem value="all">{p.language === "en" ? "All Pass Types" : "Tous les Types"}</SelectItem>
-                      {p.filterOptions.passTypes.map((passType) => (
-                        <SelectItem key={passType} value={passType}>
-                          {passType}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {p.orderFilters.passType && (
-                    <div className="mt-1 text-xs text-primary font-semibold">
-                      {p.language === "en" ? "Total:" : "Total:"} {p.selectedPassTypeTotal}
-                    </div>
-                  )}
+                    {p.language === "en" ? "Clear all" : "Tout effacer"}
+                  </Button>
                 </div>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    p.setOrderFilters({
-                      status: "",
-                      phone: "",
-                      ambassador: "",
-                      city: "",
-                      ville: "",
-                      orderId: "",
-                      passType: "",
-                    });
-                    p.onRefresh();
-                  }}
-                  className="h-8 text-xs w-full md:w-auto self-end justify-self-end"
-                >
-                  <X className="w-4 h-4 mr-2" />
-                  {p.language === "en" ? "Clear All" : "Tout Effacer"}
-                </Button>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                  <CodOrdersFilterField
+                    label={p.language === "en" ? "Order number" : "N° commande"}
+                  >
+                    <Input
+                      placeholder={
+                        p.language === "en" ? "e.g. #807105" : "ex. #807105"
+                      }
+                      value={p.orderFilters.orderId}
+                      onChange={(e) =>
+                        p.setOrderFilters({ ...p.orderFilters, orderId: e.target.value })
+                      }
+                      className="h-9 bg-background text-sm font-mono"
+                    />
+                  </CodOrdersFilterField>
+
+                  <CodOrdersFilterField label={p.language === "en" ? "Status" : "Statut"}>
+                    <Select
+                      value={p.orderFilters.status || "all"}
+                      onValueChange={(value) => {
+                        const newStatus = value === "all" || value === "" ? "" : value;
+                        p.setOrderFilters({ ...p.orderFilters, status: newStatus });
+                        p.onRefresh(newStatus || undefined);
+                      }}
+                    >
+                      <SelectTrigger className="h-9 bg-background text-sm">
+                        <SelectValue
+                          placeholder={
+                            p.language === "en" ? "All statuses" : "Tous les statuts"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">
+                          {p.language === "en" ? "All statuses" : "Tous les statuts"}
+                        </SelectItem>
+                        <SelectItem value="PENDING_CASH">
+                          {p.language === "en" ? "Pending cash" : "En attente espèces"}
+                        </SelectItem>
+                        <SelectItem value="PENDING_ADMIN_APPROVAL">
+                          {p.language === "en" ? "Pending approval" : "En attente d'approbation"}
+                        </SelectItem>
+                        <SelectItem value="PAID">{p.language === "en" ? "Paid" : "Payé"}</SelectItem>
+                        <SelectItem value="REJECTED">
+                          {p.language === "en" ? "Rejected" : "Rejeté"}
+                        </SelectItem>
+                        <SelectItem value="CANCELLED">
+                          {p.language === "en" ? "Cancelled" : "Annulé"}
+                        </SelectItem>
+                        <SelectItem value="REMOVED_BY_ADMIN">
+                          {p.language === "en" ? "Removed by admin" : "Retiré par l'admin"}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </CodOrdersFilterField>
+
+                  <CodOrdersFilterField label={p.language === "en" ? "Phone" : "Téléphone"}>
+                    <Input
+                      placeholder={
+                        p.language === "en" ? "Search by phone…" : "Rechercher par téléphone…"
+                      }
+                      value={p.orderFilters.phone}
+                      onChange={(e) =>
+                        p.setOrderFilters({ ...p.orderFilters, phone: e.target.value })
+                      }
+                      className="h-9 bg-background text-sm"
+                    />
+                  </CodOrdersFilterField>
+
+                  <CodOrdersFilterField
+                    label={p.language === "en" ? "Ambassador" : "Ambassadeur"}
+                  >
+                    <Select
+                      value={p.orderFilters.ambassador || "all"}
+                      onValueChange={(value) =>
+                        p.setOrderFilters({
+                          ...p.orderFilters,
+                          ambassador: value === "all" ? "" : value,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-9 bg-background text-sm">
+                        <SelectValue
+                          placeholder={
+                            p.language === "en" ? "All ambassadors" : "Tous les ambassadeurs"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
+                        <SelectItem value="all">
+                          {p.language === "en" ? "All ambassadors" : "Tous les ambassadeurs"}
+                        </SelectItem>
+                        {p.filterOptions.ambassadors.map((ambassador) => (
+                          <SelectItem key={ambassador} value={ambassador}>
+                            {ambassador}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </CodOrdersFilterField>
+
+                  <CodOrdersFilterField
+                    label={p.language === "en" ? "Pass type" : "Type de pass"}
+                  >
+                    <Select
+                      value={p.orderFilters.passType || "all"}
+                      onValueChange={(value) =>
+                        p.setOrderFilters({
+                          ...p.orderFilters,
+                          passType: value === "all" ? "" : value,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-9 bg-background text-sm">
+                        <SelectValue
+                          placeholder={
+                            p.language === "en" ? "All pass types" : "Tous les types"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
+                        <SelectItem value="all">
+                          {p.language === "en" ? "All pass types" : "Tous les types"}
+                        </SelectItem>
+                        {p.filterOptions.passTypes.map((passType) => (
+                          <SelectItem key={passType} value={passType}>
+                            {passType}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {p.orderFilters.passType && (
+                      <p className="text-xs text-muted-foreground">
+                        {p.language === "en" ? "Total" : "Total"}:{" "}
+                        <span className="font-medium text-foreground tabular-nums">
+                          {p.selectedPassTypeTotal}
+                        </span>
+                      </p>
+                    )}
+                  </CodOrdersFilterField>
+                </div>
               </div>
 
               {!p.loadingOrders && filteredOrdersCount > ORDERS_PAGE_SIZE && (
@@ -711,264 +848,14 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                     </div>
                   </div>
 
-                  {/* Mobile: cards view */}
-                  <div className="md:hidden space-y-4">
-                  {p.filteredCodOrders.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground font-heading">
-                      {p.language === "en"
-                        ? "No COD ambassador orders found"
-                        : "Aucune commande COD ambassadeur trouvée"}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {paginatedCodOrders.map((order) => {
-                        const passes = order.passes || [];
-                        const createdText = (() => {
-                          const d = new Date(order.created_at);
-                          const day = String(d.getDate()).padStart(2, "0");
-                          const month = String(d.getMonth() + 1).padStart(2, "0");
-                          return `${day}/${month}/${d.getFullYear()}`;
-                        })();
-
-                        const codMobileStatus = (
-                          <>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div
-                                  className={`h-3 w-3 shrink-0 cursor-help rounded-full ${getStatusColor(order.status)}`}
-                                />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="text-xs">{getStatusLabel(order.status)}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                            <span
-                              className={cn("text-xs", codOrderHasAttributionRibbon(order) ? "text-left" : "text-right")}
-                              style={{ color: "#B0B0B0" }}
-                            >
-                              {getStatusLabel(order.status)}
-                            </span>
-                          </>
-                        );
-
-                        return (
-                          <Card key={order.id} className="relative overflow-hidden">
-                            {order.presale_code_id ? (
-                              <div
-                                className="pointer-events-none absolute right-0 top-0 z-10 h-[80px] w-[80px] overflow-hidden"
-                                title={p.language === "en" ? "Placed via presale" : "Commande presale"}
-                              >
-                                <span
-                                  className="absolute block bg-indigo-500 py-[2px] text-center text-[10px] font-bold uppercase tracking-wider text-white shadow-md"
-                                  style={{ width: 130, transform: "rotate(45deg)", top: 16, right: -38 }}
-                                >
-                                  {p.language === "en" ? "Presale" : "Presale"}
-                                </span>
-                              </div>
-                            ) : promoCodeLabelForCodOrder(order) ? (
-                              <OrderPromoCornerRibbon
-                                variant="card"
-                                code={promoCodeLabelForCodOrder(order)!}
-                                color={promoColorForCodOrder(order)}
-                                title={
-                                  p.language === "en"
-                                    ? `Promo code: ${promoCodeLabelForCodOrder(order)}`
-                                    : `Code promo : ${promoCodeLabelForCodOrder(order)}`
-                                }
-                              />
-                            ) : null}
-                            <CardContent className="p-4">
-                              {!codOrderHasAttributionRibbon(order) ? (
-                                <div className="flex items-start justify-end gap-3">
-                                  <div className="flex items-center gap-2">{codMobileStatus}</div>
-                                </div>
-                              ) : null}
-
-                              <div
-                                className={cn(
-                                  "mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2",
-                                  codOrderHasAttributionRibbon(order) && "pr-[5.25rem]",
-                                )}
-                              >
-                                <div className="space-y-2">
-                                  <div>
-                                    <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                      {p.language === "en" ? "Pass Types" : "Types de Pass"}
-                                    </p>
-                                    <div className="mt-1 flex flex-wrap gap-2">
-                                      {passes.length > 0 ? (
-                                        passes.map((px: { pass_type?: string; passName?: string; quantity?: number }, idx: number) => (
-                                          <div
-                                            key={idx}
-                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-muted/30 text-xs"
-                                          >
-                                            <span className="font-medium">{px.pass_type || px.passName}</span>
-                                            <span className="text-muted-foreground">×{px.quantity}</span>
-                                          </div>
-                                        ))
-                                      ) : null}
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                      {p.language === "en" ? "Total Price" : "Prix Total"}
-                                    </p>
-                                    <p className="text-sm font-heading font-semibold" style={{ color: "#FFFFFF" }}>
-                                      {order.total_price ? `${parseFloat(String(order.total_price)).toFixed(2)} TND` : "N/A"}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <div>
-                                    <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                      {p.language === "en" ? "Client" : "Client"}
-                                    </p>
-                                    {order.presale_code_id ? (
-                                      <div className="mt-0 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                                        <p
-                                          className="break-words text-sm font-heading font-semibold"
-                                          style={{ color: "#FFFFFF" }}
-                                        >
-                                          {order.user_name || "N/A"}
-                                        </p>
-                                        <div className="flex shrink-0 items-center gap-2">{codMobileStatus}</div>
-                                      </div>
-                                    ) : (
-                                      <p className="text-sm font-heading font-semibold" style={{ color: "#FFFFFF" }}>
-                                        {order.user_name || "N/A"}
-                                      </p>
-                                    )}
-                                    <p className="text-xs" style={{ color: "#B0B0B0" }}>
-                                      {order.user_phone || "N/A"}
-                                    </p>
-                                  </div>
-
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                      {p.language === "en" ? "Email" : "Email"}
-                                    </p>
-                                    {order.user_email ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleCopyEmail(order.user_email!)}
-                                        className="text-xs hover:text-primary hover:underline cursor-pointer"
-                                        title={
-                                          p.language === "en"
-                                            ? "Click to copy email"
-                                            : "Cliquer pour copier l'email"
-                                        }
-                                      >
-                                        {maskEmail(order.user_email)}
-                                      </button>
-                                    ) : (
-                                      <span className="text-xs" style={{ color: "#B0B0B0" }}>
-                                        N/A
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  <div className="space-y-1">
-                                    <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                      {p.language === "en" ? "Ambassador" : "Ambassadeur"}
-                                    </p>
-                                    {order.ambassador_id ? (
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <button
-                                          type="button"
-                                          onClick={() => p.onViewAmbassador(order.ambassador_id!)}
-                                          className="text-primary hover:underline cursor-pointer text-xs text-left"
-                                        >
-                                          {order.ambassador_name ?? "—"}
-                                        </button>
-                                        {getAmbassadorStatusBadge(order.ambassador_status)}
-                                      </div>
-                                    ) : (
-                                      <span className="text-xs" style={{ color: "#B0B0B0" }}>
-                                        N/A
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="mt-3 space-y-1">
-                                  <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                    {p.language === "en" ? "Expires At" : "Expire Le"}
-                                  </p>
-                                  {order.status === "REJECTED" && order.rejected_at ? (
-                                    <div className="flex flex-col gap-1">
-                                      <Badge variant="destructive" className="text-xs px-1 py-0 w-fit">
-                                        {p.language === "en" ? "Rejected" : "Rejeté"}
-                                      </Badge>
-                                      {order.expires_at && (
-                                        <span className="text-xs text-muted-foreground">
-                                          {new Date(order.expires_at).toLocaleString(
-                                            p.language === "en" ? "en-US" : "fr-FR",
-                                            { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
-                                          )}
-                                        </span>
-                                      )}
-                                    </div>
-                                  ) : order.expires_at && order.status === "PENDING_CASH" ? (
-                                    <div className="flex flex-col gap-1">
-                                      <span
-                                        className={cn(
-                                          "text-xs",
-                                          new Date(order.expires_at) <= new Date()
-                                            ? "text-red-500 font-semibold"
-                                            : new Date(order.expires_at).getTime() - new Date().getTime() <
-                                                2 * 60 * 60 * 1000
-                                              ? "text-orange-500 font-semibold"
-                                              : "text-yellow-500"
-                                        )}
-                                      >
-                                        {new Date(order.expires_at).toLocaleString(
-                                          p.language === "en" ? "en-US" : "fr-FR",
-                                          { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
-                                        )}
-                                      </span>
-                                      {new Date(order.expires_at) <= new Date() && (
-                                        <Badge variant="destructive" className="text-xs px-1 py-0 w-fit">
-                                          {p.language === "en" ? "Expired" : "Expiré"}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">-</span>
-                                  )}
-                              </div>
-
-                              <div className="mt-3 w-full max-w-full space-y-1">
-                                <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                  {p.language === "en" ? "Created" : "Créé"}
-                                </p>
-                                <div className="grid w-full max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1">
-                                  <span className="min-w-0 text-xs tabular-nums text-muted-foreground">{createdText}</span>
-                                  <Button
-                                    size="sm"
-                                    variant="default"
-                                    className="justify-self-end bg-black hover:bg-gray-800 text-white border-none text-xs px-2 py-1 h-auto"
-                                    onClick={() => p.onViewOrder(order)}
-                                    title={
-                                      p.language === "en"
-                                        ? "View order details and manage actions"
-                                        : "Voir les détails de la commande et gérer les actions"
-                                    }
-                                  >
-                                    <Eye className="w-3 h-3 mr-1 text-white" />
-                                    {p.language === "en" ? "View" : "Voir"}
-                                  </Button>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                  {/* Mobile: list view */}
+                  <div className="md:hidden">
+                    <AdminCodOrderMobileList
+                      orders={paginatedCodOrders}
+                      language={p.language}
+                      onViewOrder={p.onViewOrder}
+                    />
+                  </div>
                 </>
               )}
             </CardContent>
@@ -976,7 +863,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
         </TabsContent>
 
         {/* Reports */}
-        <TabsContent value="reports" className="mt-6">
+        <TabsContent value="reports" className={AMBASSADOR_SALES_TAB_PANEL_CLASS}>
           <Card>
             <CardHeader>
               <CardTitle>{p.language === "en" ? "Ambassador Reports" : "Rapports Ambassadeurs"}</CardTitle>
@@ -1149,7 +1036,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
         </TabsContent>
 
         {/* Order Logs */}
-        <TabsContent value="order-logs" className="mt-6">
+        <TabsContent value="order-logs" className={AMBASSADOR_SALES_TAB_PANEL_CLASS}>
           <Card>
             <CardHeader>
               <CardTitle>{p.language === "en" ? "Order Logs" : "Journaux de Commandes"}</CardTitle>

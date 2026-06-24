@@ -327,31 +327,6 @@ export interface OnlineOrder {
   [key: string]: unknown;
 }
 
-/** AIO Events form submission (admin aio-events tab). */
-export interface AioEventsSubmission {
-  id: string;
-  full_name?: string;
-  email?: string;
-  phone?: string;
-  city?: string;
-  ville?: string;
-  event_name?: string;
-  event_date?: string;
-  selected_passes?: Array<{ name?: string; passName?: string; quantity?: number }>;
-  total_quantity?: number;
-  total_price?: number;
-  submitted_at?: string;
-  [key: string]: unknown;
-}
-
-/** Pagination for AIO Events submissions list. */
-export interface AioEventsPagination {
-  total: number;
-  limit: number;
-  offset: number;
-  hasMore: boolean;
-}
-
 /** Log entry for admin logs tab. */
 export interface AdminLog {
   id: string;

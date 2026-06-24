@@ -57,6 +57,17 @@ const {
   processAmbassadorLeadTracking,
 } = requireFromRoot(nodePath.join(__dirname, '_lib', 'meta', 'ambassador-lead-tracking.cjs'));
 
+const {
+  handleAmbassadorLogin,
+  handleAmbassadorMe,
+  handleAmbassadorLogout,
+  handleAmbassadorOrders,
+  handleAmbassadorPerformance,
+  handleAmbassadorUpdatePassword,
+  handleAmbassadorCancelOrder,
+  handleAmbassadorConfirmCash,
+} = requireFromRoot(nodePath.join(__dirname, '_lib', 'ambassador-routes.cjs'));
+
 async function runTicketMetaTrackingSafe(dbClient, orderId, req) {
   try {
     return await processConfirmedTicketPurchaseTracking(dbClient, orderId, { req });
@@ -1773,95 +1784,46 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // /api/ambassador-login
     // ============================================
     if (path === '/api/ambassador-login' && method === 'POST') {
-      try {
-        const ip = getClientIp(req);
-        if (!checkAmbassadorLoginRateLimit(ip)) {
-          return res.status(429).json({
-            error: 'Too many login attempts, please try again later.'
-          });
-        }
+      return handleAmbassadorLogin(req, res, {
+        parseBody,
+        getClientIp,
+        checkAmbassadorLoginRateLimit,
+      });
+    }
 
-        const bodyData = await parseBody(req);
-        const { phone, password, recaptchaToken } = bodyData;
+    // ============================================
+    // /api/ambassador/me
+    // ============================================
+    if (path === '/api/ambassador/me' && method === 'GET') {
+      return handleAmbassadorMe(req, res);
+    }
 
-        if (!phone || !password) {
-          return res.status(400).json({ error: 'Phone number and password are required' });
-        }
+    // ============================================
+    // /api/ambassador-logout
+    // ============================================
+    if (path === '/api/ambassador-logout' && method === 'POST') {
+      return handleAmbassadorLogout(req, res);
+    }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ 
-            error: 'Supabase not configured',
-            details: 'Please check environment variables: SUPABASE_URL and SUPABASE_ANON_KEY must be set'
-          });
-        }
+    // ============================================
+    // /api/ambassador-update-password
+    // ============================================
+    if (path === '/api/ambassador-update-password' && method === 'POST') {
+      return handleAmbassadorUpdatePassword(req, res, { parseBody });
+    }
 
-        if (recaptchaToken && recaptchaToken !== 'localhost-bypass-token') {
-          const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
-          if (RECAPTCHA_SECRET_KEY) {
-            try {
-              const verifyResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
-              });
-              const verifyData = await verifyResponse.json();
-              if (!verifyData.success) {
-                return res.status(400).json({ error: 'reCAPTCHA verification failed' });
-              }
-            } catch (recaptchaError) {
-              console.error('reCAPTCHA verification error:', recaptchaError);
-              return res.status(500).json({ error: 'reCAPTCHA verification service unavailable' });
-            }
-          }
-        }
+    // ============================================
+    // /api/ambassador/cancel-order
+    // ============================================
+    if (path === '/api/ambassador/cancel-order' && method === 'POST') {
+      return handleAmbassadorCancelOrder(req, res, { parseBody });
+    }
 
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-
-        const { data: ambassador, error } = await supabase
-          .from('ambassadors')
-          .select('*')
-          .eq('phone', phone)
-          .single();
-
-        if (error || !ambassador) {
-          return res.status(401).json({ error: 'Invalid phone number or password' });
-        }
-
-        const bcrypt = await import('bcryptjs');
-        const isPasswordValid = await bcrypt.default.compare(password, ambassador.password);
-        if (!isPasswordValid) {
-          return res.status(401).json({ error: 'Invalid phone number or password' });
-        }
-
-        if (ambassador.status === 'pending') {
-          return res.status(403).json({ error: 'Your application is under review' });
-        }
-
-        if (ambassador.status === 'rejected') {
-          return res.status(403).json({ error: 'Your application was not approved' });
-        }
-
-        return res.status(200).json({ 
-          success: true, 
-          ambassador: {
-            id: ambassador.id,
-            full_name: ambassador.full_name,
-            phone: ambassador.phone,
-            email: ambassador.email,
-            status: ambassador.status
-          }
-        });
-      } catch (error) {
-        console.error('Ambassador login error:', error);
-        return res.status(500).json({ 
-          error: 'Internal server error', 
-          details: error.message 
-        });
-      }
+    // ============================================
+    // /api/ambassador/confirm-cash
+    // ============================================
+    if (path === '/api/ambassador/confirm-cash' && method === 'POST') {
+      return handleAmbassadorConfirmCash(req, res, { parseBody });
     }
     
     // ============================================
@@ -5816,273 +5778,13 @@ Billets envoyés par email. We Create Memories`;
     // /api/ambassador/orders (GET)
     // ============================================
     if (path === '/api/ambassador/orders' && method === 'GET') {
-      try {
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-
-        const { createClient } = await import('@supabase/supabase-js');
-        
-        // Parse query parameters from req.url
-        const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
-        const searchParams = new URLSearchParams(queryString);
-        const ambassadorId = searchParams.get('ambassadorId');
-        const status = searchParams.get('status');
-        const limit = parseInt(searchParams.get('limit') || '100');
-        const eventIdRaw = searchParams.get('event_id');
-        const eventId =
-          eventIdRaw && String(eventIdRaw).trim() !== '' ? String(eventIdRaw).trim() : null;
-
-        if (!ambassadorId) {
-          return res.status(400).json({
-            error: 'Missing required field',
-            details: 'ambassadorId is required'
-          });
-        }
-
-        // Use service role key if available (for RLS bypass)
-        let dbClient;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
-
-        // Verify ambassador exists and is approved
-        const { data: ambassador, error: ambassadorError } = await dbClient
-          .from('ambassadors')
-          .select('id, status')
-          .eq('id', ambassadorId)
-          .single();
-
-        if (ambassadorError || !ambassador) {
-          return res.status(404).json({ error: 'Ambassador not found' });
-        }
-
-        if (ambassador.status !== 'approved') {
-          return res.status(403).json({ 
-            error: 'Ambassador not approved',
-            details: 'Only approved ambassadors can access orders'
-          });
-        }
-
-        // Build query - exclude REMOVED_BY_ADMIN by default
-        let query = dbClient
-          .from('orders')
-          .select('*, order_passes (*)')
-          .eq('ambassador_id', ambassadorId)
-          .neq('status', 'REMOVED_BY_ADMIN') // Exclude removed orders
-          .order('created_at', { ascending: false })
-          .limit(limit);
-
-        // Apply status filter if provided
-        if (status) {
-          if (status === 'REMOVED_BY_ADMIN') {
-            // If explicitly requesting removed orders, show only those
-            query = dbClient
-              .from('orders')
-              .select('*, order_passes (*)')
-              .eq('ambassador_id', ambassadorId)
-              .eq('status', 'REMOVED_BY_ADMIN')
-              .order('created_at', { ascending: false })
-              .limit(limit);
-          } else {
-            query = query.eq('status', status);
-          }
-        }
-
-        if (eventId) {
-          query = query.eq('event_id', eventId);
-        }
-
-        // Check and auto-reject expired orders before fetching (on-demand checking)
-        try {
-          await dbClient.rpc('auto_reject_expired_pending_cash_orders');
-        } catch (rejectError) {
-          // Log but don't fail the request if auto-rejection fails
-          console.warn('Warning: Failed to auto-reject expired orders:', rejectError);
-        }
-
-        const { data: orders, error: ordersError } = await query;
-
-        if (ordersError) {
-          console.error('Error fetching ambassador orders:', ordersError);
-          return res.status(500).json({
-            error: 'Failed to fetch orders',
-            details: ordersError.message
-          });
-        }
-
-        return res.status(200).json({
-          success: true,
-          data: orders || [],
-          count: orders?.length || 0
-        });
-
-      } catch (error) {
-        console.error('Error in /api/ambassador/orders:', error);
-        return res.status(500).json({
-          error: 'Internal server error',
-          details: error.message
-        });
-      }
+      return handleAmbassadorOrders(req, res);
     }
 
     // /api/ambassador/performance (GET)
     // ============================================
     if (path === '/api/ambassador/performance' && method === 'GET') {
-      try {
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-
-        const { createClient } = await import('@supabase/supabase-js');
-        
-        // Parse query parameters from req.url
-        const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
-        const searchParams = new URLSearchParams(queryString);
-        const ambassadorId = searchParams.get('ambassadorId');
-        const perfEventIdRaw = searchParams.get('event_id');
-        const perfEventId =
-          perfEventIdRaw && String(perfEventIdRaw).trim() !== ''
-            ? String(perfEventIdRaw).trim()
-            : null;
-
-        if (!ambassadorId) {
-          return res.status(400).json({
-            error: 'Missing required field',
-            details: 'ambassadorId is required'
-          });
-        }
-
-        // Use service role key if available (for RLS bypass)
-        let dbClient;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
-
-        // Verify ambassador exists and is approved
-        const { data: ambassador, error: ambassadorError } = await dbClient
-          .from('ambassadors')
-          .select('id, status')
-          .eq('id', ambassadorId)
-          .single();
-
-        if (ambassadorError || !ambassador) {
-          return res.status(404).json({ error: 'Ambassador not found' });
-        }
-
-        if (ambassador.status !== 'approved') {
-          return res.status(403).json({ 
-            error: 'Ambassador not approved',
-            details: 'Only approved ambassadors can access performance data'
-          });
-        }
-
-        // Fetch all orders with order_passes (exclude REMOVED_BY_ADMIN)
-        let perfQuery = dbClient
-          .from('orders')
-          .select('*, order_passes (*)')
-          .eq('ambassador_id', ambassadorId)
-          .neq('status', 'REMOVED_BY_ADMIN'); // Exclude removed orders from performance
-
-        if (perfEventId) {
-          perfQuery = perfQuery.eq('event_id', perfEventId);
-        }
-
-        const { data: allOrders, error: ordersError } = await perfQuery;
-
-        if (ordersError) {
-          console.error('Error fetching ambassador orders for performance:', ordersError);
-          return res.status(500).json({
-            error: 'Failed to fetch orders',
-            details: ordersError.message
-          });
-        }
-
-        const activeOrders = allOrders || [];
-
-        // Calculate metrics
-        const total = activeOrders.length;
-        const paid = activeOrders.filter(o => o.status === 'PAID').length;
-        const cancelled = activeOrders.filter(o => 
-          o.status === 'CANCELLED' || 
-          o.status === 'CANCELLED_BY_AMBASSADOR' || 
-          o.status === 'CANCELLED_BY_ADMIN'
-        ).length;
-        const rejected = activeOrders.filter(o => o.status === 'REJECTED').length;
-        const ignored = activeOrders.filter(o => 
-          (o.status === 'PENDING') && 
-          o.assigned_at &&
-          new Date(o.assigned_at).getTime() < Date.now() - 15 * 60 * 1000 &&
-          !o.accepted_at
-        ).length;
-
-        // Calculate revenue from PAID orders only
-        const revenueOrders = activeOrders.filter(o => o.status === 'PAID');
-        let totalRevenue = 0;
-        let totalPassesSold = 0;
-
-        revenueOrders.forEach(order => {
-          if (order.order_passes && Array.isArray(order.order_passes)) {
-            order.order_passes.forEach((pass) => {
-              totalRevenue += parseFloat(pass.price || 0) * parseInt(pass.quantity || 0);
-              totalPassesSold += parseInt(pass.quantity || 0);
-            });
-          } else {
-            // Fallback to total_price if order_passes not available
-            totalRevenue += parseFloat(order.total_price || 0);
-            totalPassesSold += 1;
-          }
-        });
-
-        // Calculate average response time
-        const acceptedOrders = activeOrders.filter(o => o.accepted_at && o.assigned_at);
-        let averageResponseTime = 0;
-        if (acceptedOrders.length > 0) {
-          const totalResponseTime = acceptedOrders.reduce((sum, order) => {
-            const assigned = new Date(order.assigned_at);
-            const accepted = new Date(order.accepted_at);
-            return sum + (accepted.getTime() - assigned.getTime());
-          }, 0);
-          averageResponseTime = totalResponseTime / acceptedOrders.length / 1000 / 60; // Convert to minutes
-        }
-
-        return res.status(200).json({
-          success: true,
-          data: {
-            total,
-            paid,
-            cancelled,
-            rejected,
-            ignored,
-            revenue: totalRevenue,
-            passesSold: totalPassesSold,
-            averageResponseTime: Math.round(averageResponseTime * 100) / 100
-          }
-        });
-
-      } catch (error) {
-        console.error('Error in /api/ambassador/performance:', error);
-        return res.status(500).json({
-          error: 'Internal server error',
-          details: error.message
-        });
-      }
+      return handleAmbassadorPerformance(req, res);
     }
 
     // /api/admin-remove-order (POST)

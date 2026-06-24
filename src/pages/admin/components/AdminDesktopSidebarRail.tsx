@@ -45,8 +45,6 @@ export type AdminDesktopSidebarRailProps = {
   fetchPhoneSubscribers: () => void | Promise<void>;
   smsLogsCount: number;
   fetchSmsLogs: () => void | Promise<void>;
-  aioEventsSubmissionsCount: number;
-  fetchAioEventsSubmissions: (reset?: boolean) => void | Promise<void>;
   consultationInquiriesCount: number;
   fetchConsultationInquiries: () => void | Promise<void>;
   logsCount: number;
@@ -69,8 +67,6 @@ export function AdminDesktopSidebarRail({
   fetchPhoneSubscribers,
   smsLogsCount,
   fetchSmsLogs,
-  aioEventsSubmissionsCount,
-  fetchAioEventsSubmissions,
   consultationInquiriesCount,
   fetchConsultationInquiries,
   logsCount,
@@ -475,27 +471,6 @@ export function AdminDesktopSidebarRail({
               >
                 <Lightbulb className={`w-4 h-4 shrink-0 ${activeTab === "suggestions" ? "animate-pulse" : ""}`} />
                 <span>Suggestions</span>
-              </button>
-            )}
-            {canAccessTab("aio-events") && (
-              <button
-                type="button"
-                data-active={activeTab === "aio-events"}
-                onClick={() => {
-                  setActiveTab("aio-events");
-                  if (aioEventsSubmissionsCount === 0) {
-                    void fetchAioEventsSubmissions(true);
-                  }
-                }}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "aio-events" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "aio-events" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <Database className={`w-4 h-4 shrink-0 ${activeTab === "aio-events" ? "animate-pulse" : ""}`} />
-                <span>AIO Events</span>
               </button>
             )}
             {canAccessTab("logs") && (

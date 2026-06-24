@@ -19,6 +19,17 @@ import { apiFetch } from "@/lib/api-client";
 import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
 import { cn } from "@/lib/utils";
 import {
+  ADMIN_ORDER_DETAILS_DIALOG_CLASS,
+  AdminOrderDetailsField,
+  AdminOrderDetailsGrid,
+  AdminOrderDetailsSection,
+  AdminPassTypePill,
+  AdminOrderStatusPill,
+  AdminOrderTagPill,
+  formatAdminOrderDateTime,
+  formatAdminOrderSource,
+} from "./adminOrderDetailsUi";
+import {
   formatPresaleOrderDiscountLabel,
   formatPresalePassBreakdownRule,
   parsePresaleOrderSnapshot,
@@ -33,13 +44,38 @@ import {
 } from "@/lib/eventPromo/promoOrder";
 import { PromoCodeColorBadge } from "@/components/admin/PromoCodeColorBadge";
 import { formatPromoPassBreakdownRule } from "@/lib/eventPromo/discountPolicy";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AdminOrderQrTicketsSection } from "./AdminOrderQrTicketsSection";
+import {
+  AdminOrderActionConfirm,
+  ADMIN_ORDER_CONFIRM_CLOSE_MS,
+  type AdminOrderConfirmAction,
+} from "./AdminOrderActionConfirm";
+import {
+  AdminResendEmailConfirm,
+  ADMIN_RESEND_EMAIL_CONFIRM_CLOSE_MS,
+  type AdminResendEmailKind,
+} from "./AdminResendEmailConfirm";
 import {
   Package, FileText, Activity, Database, Calendar as CalendarIcon, Clock,
   User, Phone, Mail, MapPin, Ticket, Save, X, Edit, RefreshCw, Send,
-  Trash2, Wrench, CheckCircle, XCircle, CheckCircle2, Zap, MailCheck, Shield, AlertCircle, Plus, Tag
+  Wrench, CheckCircle, XCircle, MailCheck, Plus, Tag
 } from "lucide-react";
+
+function isAmbassadorCashOrder(order: Record<string, unknown>): boolean {
+  const paymentMethod = String(order.payment_method ?? "");
+  const source = String(order.source ?? "");
+  return (
+    paymentMethod === "ambassador_cash" ||
+    paymentMethod === "cod" ||
+    source === "platform_cod" ||
+    source === "ambassador_manual"
+  );
+}
+
+function shouldShowAmbassadorOrderActions(order: Record<string, unknown>): boolean {
+  const status = String(order.status ?? "");
+  return status !== "PAID" && status !== "REMOVED_BY_ADMIN";
+}
 
 export interface OrderDetailsDialogProps {
   open: boolean;
@@ -117,16 +153,12 @@ export function OrderDetailsDialog({
   const [emailDeliveryLogs, setEmailDeliveryLogs] = useState([]);
   const [loadingEmailLogs, setLoadingEmailLogs] = useState(false);
   const [resendingEmail, setResendingEmail] = useState(false);
-  const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);
-  const [removingOrderId, setRemovingOrderId] = useState<string | null>(null);
-  const [isRemoving, setIsRemoving] = useState(false);
-  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
-  const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
-  const [rejectionReason, setRejectionReason] = useState("");
-  const [isSkipDialogOpen, setIsSkipDialogOpen] = useState(false);
-  const [skippingOrderId, setSkippingOrderId] = useState<string | null>(null);
-  const [skipReason, setSkipReason] = useState("");
-  const [isSkipping, setIsSkipping] = useState(false);
+  const [resendConfirmKind, setResendConfirmKind] = useState<AdminResendEmailKind | null>(null);
+  const [isResendConfirmOpen, setIsResendConfirmOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<AdminOrderConfirmAction | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [actionReason, setActionReason] = useState("");
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -252,144 +284,210 @@ export function OrderDetailsDialog({
   const hasSyntheticActivity = !!(codApprovalAttribution || codRejectionAttribution);
   const hasAnyActivity = uniqueOrderActivityLogs.length > 0 || hasSyntheticActivity;
 
+  const openConfirmAction = (action: AdminOrderConfirmAction) => {
+    setActionReason("");
+    setConfirmAction(action);
+    setIsConfirmOpen(true);
+  };
+
+  const scheduleConfirmCleanup = () => {
+    window.setTimeout(() => {
+      setConfirmAction(null);
+      setActionReason("");
+    }, ADMIN_ORDER_CONFIRM_CLOSE_MS);
+  };
+
+  const closeConfirmAction = (nextOpen: boolean) => {
+    if (nextOpen) {
+      setIsConfirmOpen(true);
+      return;
+    }
+    setIsConfirmOpen(false);
+    scheduleConfirmCleanup();
+  };
+
+  const handleConfirmAction = async () => {
+    if (!order?.id || !confirmAction) return;
+    const orderId = String(order.id);
+
+    if (confirmAction === "reject" && !actionReason.trim()) {
+      toast({
+        title: language === "en" ? "Reason required" : "Raison requise",
+        description:
+          language === "en"
+            ? "Please enter a rejection reason."
+            : "Veuillez saisir une raison de rejet.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmittingAction(true);
+    try {
+      if (confirmAction === "approve") {
+        setIsApproving(true);
+        await onApprove(orderId);
+      } else if (confirmAction === "reject") {
+        setIsRejecting(true);
+        await onReject(orderId, actionReason.trim());
+      } else if (confirmAction === "skip") {
+        await onSkip(orderId, actionReason.trim() || undefined);
+      } else {
+        await onRemove(orderId);
+      }
+      setIsConfirmOpen(false);
+      scheduleConfirmCleanup();
+    } catch {
+      // Error toast already shown by handler
+    } finally {
+      setIsSubmittingAction(false);
+      setIsApproving(false);
+      setIsRejecting(false);
+    }
+  };
+
+  const openResendConfirm = (kind: AdminResendEmailKind) => {
+    setResendConfirmKind(kind);
+    setIsResendConfirmOpen(true);
+  };
+
+  const closeResendConfirm = (nextOpen: boolean) => {
+    if (nextOpen) {
+      setIsResendConfirmOpen(true);
+      return;
+    }
+    setIsResendConfirmOpen(false);
+    window.setTimeout(() => setResendConfirmKind(null), ADMIN_RESEND_EMAIL_CONFIRM_CLOSE_MS);
+  };
+
+  const handleResendCompletionEmail = async () => {
+    if (!order?.id) return;
+    setResendingEmail(true);
+    try {
+      const response = await apiFetch(API_ROUTES.RESEND_ORDER_COMPLETION_EMAIL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      if (response.ok) {
+        toast({
+          title:
+            resendConfirmKind === "completion-first"
+              ? language === "en"
+                ? "Email sent"
+                : "E-mail envoyé"
+              : language === "en"
+                ? "Email resent"
+                : "E-mail renvoyé",
+          description:
+            resendConfirmKind === "completion-first"
+              ? language === "en"
+                ? "The completion email has been sent successfully."
+                : "L'e-mail de confirmation a été envoyé avec succès."
+              : language === "en"
+                ? "The completion email has been resent successfully."
+                : "L'e-mail de confirmation a été renvoyé avec succès.",
+          variant: "default",
+        });
+        const logsResponse = await apiFetch(API_ROUTES.EMAIL_DELIVERY_LOGS(order.id));
+        if (logsResponse.ok) {
+          const data = await logsResponse.json();
+          setEmailDeliveryLogs(data.logs || []);
+        }
+        setIsResendConfirmOpen(false);
+        window.setTimeout(() => setResendConfirmKind(null), ADMIN_RESEND_EMAIL_CONFIRM_CLOSE_MS);
+      } else {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        toast({
+          title: language === "en" ? "Error" : "Erreur",
+          description:
+            errorData.details ||
+            errorData.error ||
+            (language === "en" ? "Failed to resend email." : "Échec du renvoi de l'e-mail."),
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error resending email:", error);
+      toast({
+        title: language === "en" ? "Error" : "Erreur",
+        description: language === "en" ? "Failed to resend email." : "Échec du renvoi de l'e-mail.",
+        variant: "destructive",
+      });
+    } finally {
+      setResendingEmail(false);
+    }
+  };
+
+  const handleConfirmResendEmail = async () => {
+    if (!order?.id || !resendConfirmKind) return;
+    if (resendConfirmKind === "ticket") {
+      setIsResendConfirmOpen(false);
+      window.setTimeout(() => setResendConfirmKind(null), ADMIN_RESEND_EMAIL_CONFIRM_CLOSE_MS);
+      await onResendTicket(String(order.id));
+      return;
+    }
+    await handleResendCompletionEmail();
+  };
+
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="w-full max-w-[100vw] left-0 translate-x-0 p-3 sm:p-6 sm:left-1/2 sm:translate-x-[-50%] sm:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden scrollbar-hidden"
+          className={ADMIN_ORDER_DETAILS_DIALOG_CLASS}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          <DialogHeader>
-            <DialogTitle>
-              {language === "en" ? "Ambassadors Order Details" : "Détails de la commande ambassadeur"}
+          <DialogHeader className="shrink-0 space-y-0 border-b border-border/60 px-5 py-4 sm:px-6">
+            <DialogTitle className="text-base font-semibold">
+              {language === "en" ? "Ambassador order details" : "Détails commande ambassadeur"}
             </DialogTitle>
           </DialogHeader>
           {order && (
-            <div className="space-y-3 sm:space-y-6 w-full break-words">
-              {/* Order Summary Card */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-2 sm:pb-3">
-                  <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-                    <Package className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Order Summary' : 'Résumé de la commande'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0 sm:p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <FileText className="w-3 h-3" />
-                        {language === 'en' ? 'Order Number' : 'Numéro de commande'}
-                      </Label>
-                      <p className="font-mono text-sm break-all">
-                        #{order.order_number != null ? String(order.order_number) : String(order.id)}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Activity className="w-3 h-3" />
-                        {language === 'en' ? 'Status' : 'Statut'}
-                      </Label>
-                      <div className="flex items-center gap-2">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div
-                                className={cn(
-                                  "w-3 h-3 rounded-full cursor-help",
-                                  order.status === 'PAID' || order.status === 'APPROVED' || order.status === 'COMPLETED' ? 'bg-green-500' :
-                                  order.status === 'REJECTED' || order.status?.includes('CANCELLED') ? 'bg-red-500' :
-                                  order.status === 'REMOVED_BY_ADMIN' ? 'bg-gray-600' :
-                                  order.status === 'PENDING_ADMIN_APPROVAL' ? 'bg-yellow-500' :
-                                  order.status === 'PENDING_CASH' ? 'bg-gray-500' :
-                                  'bg-gray-500'
-                                )}
-                              />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{order.status}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        <Badge 
-                          variant={
-                            order.status === 'PAID' || order.status === 'APPROVED' || order.status === 'COMPLETED' ? 'default' :
-                            order.status === 'REJECTED' || order.status?.includes('CANCELLED') ? 'destructive' :
-                            order.status === 'REMOVED_BY_ADMIN' ? 'secondary' :
-                            order.status === 'PENDING_ADMIN_APPROVAL' ? 'secondary' :
-                            order.status === 'PENDING_CASH' ? 'secondary' :
-                            'secondary'
-                          }
-                          className={
-                            order.status === 'PAID' || order.status === 'APPROVED' || order.status === 'COMPLETED' ? 'bg-green-500 hover:bg-green-500 text-white border-green-600' :
-                            order.status === 'REJECTED' || order.status?.includes('CANCELLED') ? 'bg-red-500 hover:bg-red-500 text-white border-red-600' :
-                            order.status === 'REMOVED_BY_ADMIN' ? 'bg-gray-600 hover:bg-gray-600 text-white border-gray-700' :
-                            order.status === 'PENDING_ADMIN_APPROVAL' ? 'bg-yellow-500 hover:bg-yellow-500 text-white border-yellow-600' :
-                            order.status === 'PENDING_CASH' ? 'bg-gray-500 hover:bg-gray-500 text-white border-gray-600' :
-                            ''
-                          }
+            <>
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain break-words px-5 py-5 scrollbar-hidden sm:px-6">
+              <AdminOrderDetailsSection title={language === "en" ? "Order summary" : "Résumé"}>
+                <AdminOrderDetailsGrid>
+                  <AdminOrderDetailsField label={language === "en" ? "Order number" : "N° commande"}>
+                    <span className="font-mono">
+                      #{order.order_number != null ? String(order.order_number) : String(order.id)}
+                    </span>
+                  </AdminOrderDetailsField>
+                  <AdminOrderDetailsField label={language === "en" ? "Status" : "Statut"}>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <AdminOrderStatusPill status={String(order.status)} />
+                      {isPresaleOrder && (
+                        <AdminOrderTagPill>
+                          {language === "en" ? "Presale" : "Presale"}
+                          {presaleInfo?.code_label ? ` · ${presaleInfo.code_label}` : ""}
+                        </AdminOrderTagPill>
+                      )}
+                      {isPromoOrder && promoInfo?.code && (
+                        <PromoCodeColorBadge
+                          color={promoBadgeColor}
+                          className="inline-flex h-auto items-center gap-1 border px-2 py-0.5 text-xs font-medium"
                         >
-                          {order.status}
-                        </Badge>
-                        {isPresaleOrder && (
-                          <Badge
-                            variant="default"
-                            className="bg-indigo-500 hover:bg-indigo-500 text-white border-indigo-600 inline-flex items-center gap-1"
-                            title={presaleInfo?.code_label
-                              ? `${language === 'en' ? 'Presale code' : 'Code presale'}: ${presaleInfo.code_label}`
-                              : (language === 'en' ? 'Placed via presale' : 'Commande presale')}
-                          >
-                            <Tag className="w-3 h-3" />
-                            {language === 'en' ? 'Presale' : 'Presale'}
-                            {presaleInfo?.code_label ? ` · ${presaleInfo.code_label}` : ''}
-                          </Badge>
-                        )}
-                        {isPromoOrder && promoInfo?.code && (
-                          <PromoCodeColorBadge
-                            color={promoBadgeColor}
-                            className="inline-flex items-center gap-1"
-                            title={`${language === 'en' ? 'Promo code' : 'Code promo'}: ${promoInfo.code}`}
-                          >
-                            <Tag className="w-3 h-3" />
-                            {language === 'en' ? 'Promo' : 'Promo'}
-                            {` · ${promoInfo.code}`}
-                          </PromoCodeColorBadge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Database className="w-3 h-3" />
-                        {language === 'en' ? 'Order Type' : 'Type de Commande'}
-                      </Label>
-                      <Badge variant="outline" className="font-normal">
-                        {order.source === 'platform_online' ? (language === 'en' ? 'Platform Online' : 'Plateforme En Ligne') :
-                         order.source === 'ambassador_manual' ? (language === 'en' ? 'Ambassador Manual (COD)' : 'Manuel Ambassadeur (COD)') :
-                         order.source}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <CalendarIcon className="w-3 h-3" />
-                        {language === 'en' ? 'Created At' : 'Créé le'}
-                      </Label>
-                      <p className="text-sm">{formatOrderSummaryDateTime(order.created_at as string | undefined)}</p>
-                      {order.status === "PENDING_CASH" && order.expires_at && (
-                        <>
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1 pt-2">
-                            <Clock className="w-3 h-3" />
-                            {language === "en" ? "Expires At" : "Expire Le"}
-                          </Label>
-                          <p className="text-sm">{formatOrderSummaryDateTime(order.expires_at as string)}</p>
-                        </>
+                          {language === "en" ? "Promo" : "Promo"}
+                          {` · ${promoInfo.code}`}
+                        </PromoCodeColorBadge>
                       )}
                     </div>
-                    <div className="space-y-1 md:col-span-2">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Ticket className="w-3 h-3" />
-                        {language === 'en' ? 'Pass Details' : 'Détails du pass'}
-                      </Label>
+                  </AdminOrderDetailsField>
+                  <AdminOrderDetailsField label={language === "en" ? "Order type" : "Type"}>
+                    {formatAdminOrderSource(order.source as string, language)}
+                  </AdminOrderDetailsField>
+                  <AdminOrderDetailsField label={language === "en" ? "Created" : "Créé le"}>
+                    {formatAdminOrderDateTime(order.created_at as string, language)}
+                  </AdminOrderDetailsField>
+                  {order.status === "PENDING_CASH" && order.expires_at && (
+                    <AdminOrderDetailsField label={language === "en" ? "Expires" : "Expire le"}>
+                      {formatAdminOrderDateTime(order.expires_at as string, language)}
+                    </AdminOrderDetailsField>
+                  )}
+                </AdminOrderDetailsGrid>
+              </AdminOrderDetailsSection>
+
+              <AdminOrderDetailsSection title={language === "en" ? "Passes" : "Passes"}>
                   {(() => {
                         let allPasses: any[] = [];
                         try {
@@ -413,14 +511,14 @@ export function OrderDetailsDialog({
                           return (
                             <div className="space-y-3">
                               {/* Desktop keeps table formatting */}
-                              <div className="hidden md:block">
-                                <Table className="w-full table-fixed">
+                              <div className="hidden md:block overflow-hidden rounded-lg border border-border/70">
+                                <Table className="w-full">
                                   <TableHeader>
-                                    <TableRow>
-                                      <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
-                                      <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
-                                      <TableHead>{language === 'en' ? 'Unit Price' : 'Prix Unitaire'}</TableHead>
-                                      <TableHead>{language === 'en' ? 'Subtotal' : 'Sous-total'}</TableHead>
+                                    <TableRow className="border-border/70 hover:bg-transparent">
+                                      <TableHead className="text-xs text-muted-foreground">{language === 'en' ? 'Pass' : 'Pass'}</TableHead>
+                                      <TableHead className="text-xs text-muted-foreground">{language === 'en' ? 'Qty' : 'Qté'}</TableHead>
+                                      <TableHead className="text-xs text-muted-foreground">{language === 'en' ? 'Unit' : 'Unité'}</TableHead>
+                                      <TableHead className="text-right text-xs text-muted-foreground">{language === 'en' ? 'Subtotal' : 'Sous-total'}</TableHead>
                                     </TableRow>
                                   </TableHeader>
                                   <TableBody>
@@ -434,15 +532,13 @@ export function OrderDetailsDialog({
                                         pass.type ||
                                         'N/A';
                                       return (
-                                        <TableRow key={index}>
+                                        <TableRow key={index} className="border-border/70">
                                           <TableCell>
-                                            <Badge variant={pass.passType === 'vip' ? 'default' : 'secondary'}>
-                                              {String(passLabel).toUpperCase()}
-                                            </Badge>
+                                            <AdminPassTypePill label={String(passLabel)} />
                                           </TableCell>
-                                          <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
-                                          <TableCell>{pass.price?.toFixed(2) || '0.00'} TND</TableCell>
-                                          <TableCell className="font-semibold">
+                                          <TableCell className="tabular-nums">{pass.quantity || 0}</TableCell>
+                                          <TableCell className="tabular-nums">{pass.price?.toFixed(2) || '0.00'} TND</TableCell>
+                                          <TableCell className="text-right font-medium tabular-nums">
                                             {((pass.price || 0) * (pass.quantity || 0)).toFixed(2)} TND
                                           </TableCell>
                                         </TableRow>
@@ -578,9 +674,7 @@ export function OrderDetailsDialog({
                                       className="rounded-lg border border-border/60 bg-muted/30 p-2"
                                     >
                                       <div className="flex items-start justify-between gap-3">
-                                        <Badge variant={pass.passType === 'vip' ? 'default' : 'secondary'}>
-                                          {String(passLabel).toUpperCase()}
-                                        </Badge>
+                                        <AdminPassTypePill label={String(passLabel)} />
                                         <span className="text-xs text-muted-foreground">{subtotal.toFixed(2)} TND</span>
                                       </div>
 
@@ -709,40 +803,17 @@ export function OrderDetailsDialog({
 
                         return null;
                       })()}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              </AdminOrderDetailsSection>
 
-              {/* Customer Information */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-2 sm:pb-3">
-                  <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-                    <User className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Customer Information' : 'Informations Client'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0 sm:p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        {language === 'en' ? 'Name' : 'Nom'}
-                      </Label>
-                      <p className="font-semibold text-sm sm:text-base">{order.user_name || order.customer_name || 'N/A'}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Phone className="w-3 h-3" />
-                        {language === 'en' ? 'Phone' : 'Téléphone'}
-                      </Label>
-                      <p className="text-sm sm:text-base">{order.user_phone || order.phone || 'N/A'}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Mail className="w-3 h-3" />
-                        {language === 'en' ? 'Email' : 'Email'}
-                      </Label>
+              <AdminOrderDetailsSection title={language === "en" ? "Customer" : "Client"}>
+                <AdminOrderDetailsGrid>
+                  <AdminOrderDetailsField label={language === "en" ? "Name" : "Nom"}>
+                    <span className="font-medium">{String(order.user_name || order.customer_name || "—")}</span>
+                  </AdminOrderDetailsField>
+                  <AdminOrderDetailsField label={language === "en" ? "Phone" : "Téléphone"}>
+                    {String(order.user_phone || order.phone || "—")}
+                  </AdminOrderDetailsField>
+                  <AdminOrderDetailsField label={language === "en" ? "Email" : "Email"}>
                       {isEditingEmail ? (
                         <div className="flex items-center gap-2">
                           <Input
@@ -847,42 +918,30 @@ export function OrderDetailsDialog({
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <p className="text-base break-all flex-1">{order.user_email || order.email || 'N/A'}</p>
+                          <span className="break-all">{String(order.user_email || order.email || "—")}</span>
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={() => {
-                              setEditingEmailValue(order.user_email || order.email || '');
+                              setEditingEmailValue(String(order.user_email || order.email || ""));
                               setIsEditingEmail(true);
                             }}
-                            className="h-8 w-8 p-0"
-                            title={language === 'en' ? 'Edit email' : 'Modifier l\'email'}
+                            className="h-7 w-7 shrink-0 p-0"
+                            title={language === "en" ? "Edit email" : "Modifier l'email"}
                           >
-                            <Edit className="w-4 h-4" />
+                            <Edit className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       )}
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {language === 'en' ? 'City/Ville' : 'Ville/Quartier'}
-                      </Label>
-                      <p className="text-base">{order.city || 'N/A'}{order.ville ? ` - ${order.ville}` : ''}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </AdminOrderDetailsField>
+                  <AdminOrderDetailsField label={language === "en" ? "Location" : "Localisation"}>
+                    {order.city || "—"}
+                    {order.ville ? ` · ${order.ville}` : ""}
+                  </AdminOrderDetailsField>
+                </AdminOrderDetailsGrid>
+              </AdminOrderDetailsSection>
 
-              {/* Admin Notes */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Admin Notes' : 'Notes Administrateur'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <AdminOrderDetailsSection title={language === "en" ? "Admin notes" : "Notes admin"}>
                   {isEditingAdminNotes ? (
                     <div className="space-y-2">
                       <Textarea
@@ -1001,18 +1060,9 @@ export function OrderDetailsDialog({
                       </Button>
                     </div>
                   )}
-                </CardContent>
-              </Card>
+              </AdminOrderDetailsSection>
 
-              {/* Order Logs */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Order Activity Log' : "Journal d'activité de la commande"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <AdminOrderDetailsSection title={language === "en" ? "Activity" : "Activité"}>
                   <div className="max-h-96 overflow-y-auto scrollbar-hidden">
                     {!hasAnyActivity ? (
                       <div className="text-center py-8">
@@ -1022,7 +1072,7 @@ export function OrderDetailsDialog({
                     ) : (
                       <div className="space-y-3">
                         {codApprovalAttribution ? (
-                          <div className="flex items-start gap-3 p-3 rounded-lg border border-green-500/30 bg-green-500/5 hover:bg-green-500/10 transition-colors">
+                          <div className="flex items-start gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3">
                             <div className="mt-0.5">
                               <CheckCircle className="w-4 h-4 text-green-500" />
                             </div>
@@ -1061,7 +1111,7 @@ export function OrderDetailsDialog({
                           </div>
                         ) : null}
                         {codRejectionAttribution ? (
-                          <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/5 hover:bg-destructive/10 transition-colors">
+                          <div className="flex items-start gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-3">
                             <div className="mt-0.5">
                               <XCircle className="w-4 h-4 text-red-500" />
                             </div>
@@ -1159,7 +1209,7 @@ export function OrderDetailsDialog({
                           return (
                             <div
                               key={log.id}
-                              className="flex items-start gap-3 p-3 rounded-lg border border-border bg-background/50 hover:bg-muted/50 transition-colors"
+                              className="flex items-start gap-3 rounded-lg border border-border/70 bg-muted/20 p-3"
                             >
                               <div className="mt-0.5">{getActionIcon()}</div>
                               <div className="flex-1 min-w-0">
@@ -1244,18 +1294,11 @@ export function OrderDetailsDialog({
                       </div>
                     )}
                   </div>
-                </CardContent>
-              </Card>
+              </AdminOrderDetailsSection>
 
-              {/* Email Delivery Status */}
               {(order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED') && order.payment_method === 'ambassador_cash' && (
-                <Card className="bg-muted/30">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Mail className="w-5 h-5 text-primary" />
-                        {language === 'en' ? 'Email Delivery Status' : 'Statut de Livraison Email'}
-                      </CardTitle>
+                <AdminOrderDetailsSection title={language === "en" ? "Email delivery" : "Livraison email"}>
+                  <div className="mb-3 flex justify-end">
                       <Button
                         variant="outline"
                         size="sm"
@@ -1278,9 +1321,7 @@ export function OrderDetailsDialog({
                         {loadingEmailLogs ? <Loader size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                         {language === 'en' ? 'Refresh' : 'Actualiser'}
                       </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
+                  </div>
                     {emailDeliveryLogs.length > 0 ? (
                       <div className="space-y-3">
                         {emailDeliveryLogs.map((log: any) => (
@@ -1326,47 +1367,7 @@ export function OrderDetailsDialog({
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={async () => {
-                                  setResendingEmail(true);
-                                  try {
-                                    const response = await apiFetch(API_ROUTES.RESEND_ORDER_COMPLETION_EMAIL, {
-                                      method: 'POST',
-                                      headers: {
-                                        'Content-Type': 'application/json',
-                                      },
-                                      body: JSON.stringify({ orderId: order.id }),
-                                    });
-                                    if (response.ok) {
-                                      toast({
-                                        title: language === 'en' ? 'Email Resent' : 'E-mail renvoyé',
-                                        description: language === 'en' ? 'The completion email has been resent successfully.' : "L'e-mail de confirmation a été renvoyé avec succès.",
-                                        variant: 'default',
-                                      });
-                                      // Refresh email logs
-                                      const logsResponse = await apiFetch(API_ROUTES.EMAIL_DELIVERY_LOGS(order.id));
-                                      if (logsResponse.ok) {
-                                        const data = await logsResponse.json();
-                                        setEmailDeliveryLogs(data.logs || []);
-                                      }
-                                    } else {
-                                      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-                                      toast({
-                                        title: language === 'en' ? 'Error' : 'Erreur',
-                                        description: errorData.details || errorData.error || (language === 'en' ? 'Failed to resend email.' : "Échec du renvoi de l'e-mail."),
-                                        variant: 'destructive',
-                                      });
-                                    }
-                                  } catch (error) {
-                                    console.error('Error resending email:', error);
-                                    toast({
-                                      title: language === 'en' ? 'Error' : 'Erreur',
-                                      description: language === 'en' ? 'Failed to resend email.' : "Échec du renvoi de l'e-mail.",
-                                      variant: 'destructive',
-                                    });
-                                  } finally {
-                                    setResendingEmail(false);
-                                  }
-                                }}
+                                onClick={() => openResendConfirm("completion")}
                                 disabled={resendingEmail}
                                 className="w-full"
                               >
@@ -1386,47 +1387,7 @@ export function OrderDetailsDialog({
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={async () => {
-                              setResendingEmail(true);
-                              try {
-                                const response = await apiFetch(API_ROUTES.RESEND_ORDER_COMPLETION_EMAIL, {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                  },
-                                  body: JSON.stringify({ orderId: order.id }),
-                                });
-                                if (response.ok) {
-                                  toast({
-                                    title: language === 'en' ? 'Email Sent' : 'E-mail envoyé',
-                                    description: language === 'en' ? 'The completion email has been sent successfully.' : "L'e-mail de confirmation a été envoyé avec succès.",
-                                    variant: 'default',
-                                  });
-                                  // Refresh email logs
-                                  const logsResponse = await apiFetch(API_ROUTES.EMAIL_DELIVERY_LOGS(order.id));
-                                  if (logsResponse.ok) {
-                                    const data = await logsResponse.json();
-                                    setEmailDeliveryLogs(data.logs || []);
-                                  }
-                                } else {
-                                  const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-                                  toast({
-                                    title: language === 'en' ? 'Error' : 'Erreur',
-                                    description: errorData.details || errorData.error || (language === 'en' ? 'Failed to send email.' : "Échec de l'envoi de l'e-mail."),
-                                    variant: 'destructive',
-                                  });
-                                }
-                              } catch (error: any) {
-                                console.error('Error sending email:', error);
-                                toast({
-                                  title: language === 'en' ? 'Error' : 'Erreur',
-                                  description: error?.message || (language === 'en' ? 'Failed to send email. Please check server logs for details.' : "Échec de l'envoi de l'e-mail. Veuillez vérifier les journaux du serveur."),
-                                  variant: 'destructive',
-                                });
-                              } finally {
-                                setResendingEmail(false);
-                              }
-                            }}
+                            onClick={() => openResendConfirm("completion-first")}
                             disabled={resendingEmail}
                           >
                             {resendingEmail ? <Loader size="sm" className="mr-2" /> : <Send className="w-4 h-4 mr-2" />}
@@ -1435,183 +1396,35 @@ export function OrderDetailsDialog({
                         )}
                       </div>
                     )}
-                  </CardContent>
-                </Card>
+                </AdminOrderDetailsSection>
               )}
 
-              {/* Admin Actions (workflow + remove order) */}
-              {((order.status === 'PENDING_CASH' ||
-                (order.status === 'PENDING_ADMIN_APPROVAL' && order.payment_method === 'ambassador_cash')) ||
-                (order.status !== 'PAID' && order.status !== 'REMOVED_BY_ADMIN')) && (
-                <Card className="bg-primary/5 border-primary/20">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Wrench className="w-5 h-5 text-primary" />
-                      {language === 'en' ? 'Admin Actions' : 'Actions Admin'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {/* Admin Approve/Reject - For PENDING_ADMIN_APPROVAL (after ambassador confirms cash) */}
-                      {order.payment_method === 'ambassador_cash' && order.status === 'PENDING_ADMIN_APPROVAL' && (
-                        <>
-                          <Button
-                            onClick={async () => {
-                              setIsApproving(true);
-                              try {
-                                await onApprove(order.id);
-                              } finally {
-                                setIsApproving(false);
-                              }
-                            }}
-                            variant="default"
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700"
-                            disabled={isApproving}
-                          >
-                            {isApproving ? <Loader size="sm" className="mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                            {isApproving ? (language === 'en' ? 'Approving...' : 'Approbation...') : (language === 'en' ? 'Approve Order' : 'Approuver la Commande')}
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              setRejectingOrderId(order.id);
-                              setIsRejectDialogOpen(true);
-                            }}
-                            variant="destructive"
-                            size="sm"
-                            disabled={isRejecting}
-                          >
-                            <XCircle className="w-4 h-4 mr-2" />
-                            {language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}
-                          </Button>
-                        </>
-                      )}
-                      
-                      {/* Admin Skip Ambassador Confirmation - Only for PENDING_CASH (before ambassador confirms) */}
-                      {order.status === 'PENDING_CASH' && (
-                        <Button
-                          onClick={() => {
-                            setSkippingOrderId(order.id);
-                            setIsSkipDialogOpen(true);
-                          }}
-                          variant="outline"
-                          size="sm"
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-600"
-                        >
-                          <Zap className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Approve Without Ambassador' : 'Approuver sans Ambassadeur'}
-                        </Button>
-                      )}
-                      
-                      {/* Approved COD orders can be completed */}
-                      {order.payment_method === 'ambassador_cash' && order.status === 'APPROVED' && (
-                        <Button
-                          onClick={async () => {
-                            setIsCompleting(true);
-                            try {
-                              await onComplete(order.id);
-                            } finally {
-                              setIsCompleting(false);
-                            }
-                          }}
-                          variant="default"
-                          size="sm"
-                          disabled={isCompleting}
-                        >
-                          {isCompleting ? <Loader size="sm" className="mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                          {isCompleting ? (language === 'en' ? 'Completing...' : 'En cours...') : (language === 'en' ? 'Complete Order' : 'Terminer la Commande')}
-                        </Button>
-                      )}
-                      
-                      {/* Legacy status support (for backward compatibility) */}
-                      {order.status === 'PENDING' && order.payment_method !== 'ambassador_cash' && (
-                        <Button
-                          onClick={async () => {
-                            setIsApproving(true);
-                            try {
-                              await onApprove(order.id);
-                            } finally {
-                              setIsApproving(false);
-                            }
-                          }}
-                          variant="default"
-                          size="sm"
-                          disabled={isApproving}
-                        >
-                          {isApproving ? <Loader size="sm" className="mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                          {isApproving ? (language === 'en' ? 'Approving...' : 'Approbation...') : (language === 'en' ? 'Accept Order' : 'Accepter la Commande')}
-                        </Button>
-                      )}
-                      {order.status === 'ACCEPTED' && order.payment_method !== 'ambassador_cash' && (
-                        <Button
-                          onClick={async () => {
-                            setIsCompleting(true);
-                            try {
-                              await onComplete(order.id);
-                            } finally {
-                              setIsCompleting(false);
-                            }
-                          }}
-                          variant="default"
-                          size="sm"
-                          disabled={isCompleting}
-                        >
-                          {isCompleting ? <Loader size="sm" className="mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                          {isCompleting ? (language === 'en' ? 'Completing...' : 'En cours...') : (language === 'en' ? 'Complete Order' : 'Terminer la Commande')}
-                        </Button>
-                      )}
-
-                      {order.status !== 'PAID' && order.status !== 'REMOVED_BY_ADMIN' && (
-                        <Button
-                          onClick={() => {
-                            setRemovingOrderId(order.id);
-                            setIsRemoveDialogOpen(true);
-                          }}
-                          variant="destructive"
-                          size="sm"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Admin Resend Ticket Email - NEW FEATURE */}
-              {order.status === 'PAID' && (
-                <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <MailCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                      {language === 'en' ? 'Ticket Email Actions' : 'Actions Email de Billets'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        onClick={() => onResendTicket(order.id)}
-                        variant="outline"
-                        size="sm"
-                        disabled={resendingTicketEmail}
-                        className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-950/40"
-                      >
-                        {resendingTicketEmail ? <Loader size="sm" className="mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-                        {resendingTicketEmail 
-                          ? (language === 'en' ? 'Resending...' : 'Renvoi en cours...')
-                          : (language === 'en' ? 'Resend Ticket Email' : 'Renvoyer l\'Email des Billets')
-                        }
-                      </Button>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {language === 'en' 
-                          ? 'Resend ticket email using existing tickets (max 5 per hour per order)'
-                          : 'Renvoyer l\'email des billets en utilisant les billets existants (max 5 par heure par commande)'
-                        }
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
+              {order.status === "PAID" && (
+                <AdminOrderDetailsSection title={language === "en" ? "Ticket email" : "Email billets"}>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => openResendConfirm("ticket")}
+                      variant="outline"
+                      size="sm"
+                      disabled={resendingTicketEmail}
+                      className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                    >
+                      {resendingTicketEmail ? <Loader size="sm" className="mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+                      {resendingTicketEmail
+                        ? language === "en"
+                          ? "Resending..."
+                          : "Renvoi en cours..."
+                        : language === "en"
+                          ? "Resend Ticket Email"
+                          : "Renvoyer l'Email des Billets"}
+                    </Button>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {language === "en"
+                        ? "Resend ticket email using existing tickets (max 5 per hour per order)"
+                        : "Renvoyer l'email des billets en utilisant les billets existants (max 5 par heure par commande)"}
+                    </p>
+                  </div>
+                </AdminOrderDetailsSection>
               )}
 
               <AdminOrderQrTicketsSection
@@ -1621,225 +1434,159 @@ export function OrderDetailsDialog({
                 isSuperAdmin={isSuperAdmin}
               />
             </div>
+
+            {shouldShowAmbassadorOrderActions(order) && (
+              <div className="admin-order-details-actions shrink-0 border-t border-border/60 bg-background px-5 py-4 sm:px-6">
+                <div className="flex flex-col gap-2 sm:items-end">
+                  {(isAmbassadorCashOrder(order) && order.status === "PENDING_ADMIN_APPROVAL") ||
+                  order.status === "PENDING_CASH" ||
+                  (isAmbassadorCashOrder(order) && order.status === "APPROVED") ||
+                  (order.status === "PENDING" && !isAmbassadorCashOrder(order)) ||
+                  (order.status === "ACCEPTED" && !isAmbassadorCashOrder(order)) ? (
+                    <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+                      {isAmbassadorCashOrder(order) && order.status === "PENDING_ADMIN_APPROVAL" && (
+                        <>
+                          <Button
+                            type="button"
+                            onClick={() => openConfirmAction("approve")}
+                            variant="outline"
+                            disabled={isApproving || isSubmittingAction}
+                            className="h-9 w-full justify-center border-emerald-600/40 px-4 text-sm font-medium text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300 sm:min-w-[9rem] sm:w-auto"
+                          >
+                            {language === "en" ? "Approve" : "Approuver"}
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={() => openConfirmAction("reject")}
+                            variant="outline"
+                            disabled={isRejecting || isSubmittingAction}
+                            className="h-9 w-full justify-center border-destructive/40 px-4 text-sm font-medium text-destructive hover:bg-destructive/10 sm:min-w-[9rem] sm:w-auto"
+                          >
+                            {language === "en" ? "Reject" : "Rejeter"}
+                          </Button>
+                        </>
+                      )}
+
+                      {order.status === "PENDING_CASH" && (
+                        <Button
+                          type="button"
+                          onClick={() => openConfirmAction("skip")}
+                          variant="outline"
+                          disabled={isSubmittingAction}
+                          className="h-9 w-full justify-center border-amber-600/40 px-4 text-sm font-medium text-amber-800 hover:bg-amber-500/10 dark:text-amber-200 sm:min-w-[9rem] sm:w-auto"
+                        >
+                          {language === "en" ? "Skip ambassador" : "Sans ambassadeur"}
+                        </Button>
+                      )}
+
+                      {isAmbassadorCashOrder(order) && order.status === "APPROVED" && (
+                        <Button
+                          type="button"
+                          onClick={async () => {
+                            setIsCompleting(true);
+                            try {
+                              await onComplete(String(order.id));
+                            } finally {
+                              setIsCompleting(false);
+                            }
+                          }}
+                          variant="default"
+                          size="sm"
+                          disabled={isCompleting}
+                          className="h-9 w-full justify-center px-4 text-sm font-medium sm:min-w-[9rem] sm:w-auto"
+                        >
+                          {isCompleting
+                            ? language === "en"
+                              ? "Completing…"
+                              : "En cours…"
+                            : language === "en"
+                              ? "Complete"
+                              : "Terminer"}
+                        </Button>
+                      )}
+
+                      {order.status === "PENDING" && !isAmbassadorCashOrder(order) && (
+                        <Button
+                          type="button"
+                          onClick={() => openConfirmAction("approve")}
+                          variant="default"
+                          size="sm"
+                          disabled={isApproving || isSubmittingAction}
+                          className="h-9 w-full justify-center px-4 text-sm font-medium sm:min-w-[9rem] sm:w-auto"
+                        >
+                          {language === "en" ? "Accept" : "Accepter"}
+                        </Button>
+                      )}
+
+                      {order.status === "ACCEPTED" && !isAmbassadorCashOrder(order) && (
+                        <Button
+                          type="button"
+                          onClick={async () => {
+                            setIsCompleting(true);
+                            try {
+                              await onComplete(String(order.id));
+                            } finally {
+                              setIsCompleting(false);
+                            }
+                          }}
+                          variant="default"
+                          size="sm"
+                          disabled={isCompleting}
+                          className="h-9 w-full justify-center px-4 text-sm font-medium sm:min-w-[9rem] sm:w-auto"
+                        >
+                          {isCompleting
+                            ? language === "en"
+                              ? "Completing…"
+                              : "En cours…"
+                            : language === "en"
+                              ? "Complete"
+                              : "Terminer"}
+                        </Button>
+                      )}
+                    </div>
+                  ) : null}
+
+                  <Button
+                    type="button"
+                    onClick={() => openConfirmAction("remove")}
+                    variant="ghost"
+                    disabled={isSubmittingAction}
+                    className="h-9 w-full justify-center px-4 text-sm font-medium text-destructive hover:bg-destructive/10 hover:text-destructive sm:min-w-[9rem] sm:w-auto"
+                  >
+                    {language === "en" ? "Remove order" : "Retirer la commande"}
+                  </Button>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Remove Order Dialog */}
-      <Dialog open={isRemoveDialogOpen} onOpenChange={(open) => {
-        setIsRemoveDialogOpen(open);
-        if (!open) setRemovingOrderId(null);
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Trash2 className="w-5 h-5 text-red-500" />
-              {language === "en" ? "Remove Order" : "Retirer la Commande"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Alert variant="destructive">
-              <AlertDescription>
-                {language === "en"
-                  ? "Are you sure you want to remove this order? This action will hide the order from reports and calculations, but all data will be preserved for audit purposes. This action cannot be undone."
-                  : "Êtes-vous sûr de vouloir retirer cette commande ? Cette action masquera la commande des rapports et calculs, mais toutes les données seront conservées à des fins d'audit. Cette action ne peut pas être annulée."}
-              </AlertDescription>
-            </Alert>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsRemoveDialogOpen(false);
-                  setRemovingOrderId(null);
-                }}
-                disabled={isRemoving}
-              >
-                {language === "en" ? "Cancel" : "Annuler"}
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={async () => {
-                  if (!removingOrderId) return;
-                  setIsRemoving(true);
-                  try {
-                    await onRemove(removingOrderId);
-                    setIsRemoveDialogOpen(false);
-                    setRemovingOrderId(null);
-                  } finally {
-                    setIsRemoving(false);
-                  }
-                }}
-                disabled={isRemoving}
-              >
-                {isRemoving ? (
-                  <>
-                    <Loader size="sm" className="mr-2" />
-                    {language === "en" ? "Removing..." : "Retrait en cours..."}
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    {language === "en" ? "Remove Order" : "Retirer la Commande"}
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AdminOrderActionConfirm
+        open={isConfirmOpen}
+        onOpenChange={closeConfirmAction}
+        action={confirmAction}
+        order={order}
+        language={language}
+        reason={actionReason}
+        onReasonChange={setActionReason}
+        onConfirm={handleConfirmAction}
+        isSubmitting={isSubmittingAction}
+      />
 
-      {/* Reject Order Dialog */}
-      <Dialog open={isRejectDialogOpen} onOpenChange={(open) => {
-        setIsRejectDialogOpen(open);
-        if (!open) {
-          setRejectingOrderId(null);
-          setRejectionReason("");
+      <AdminResendEmailConfirm
+        open={isResendConfirmOpen}
+        onOpenChange={closeResendConfirm}
+        kind={resendConfirmKind}
+        language={language}
+        order={order}
+        recipientEmail={order?.user_email ? String(order.user_email) : null}
+        onConfirm={handleConfirmResendEmail}
+        isSubmitting={
+          resendConfirmKind === "ticket" ? resendingTicketEmail : resendingEmail
         }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{language === "en" ? "Reject Order" : "Rejeter la Commande"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>{language === "en" ? "Rejection Reason" : "Raison du Rejet"} *</Label>
-              <Textarea
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder={language === "en" ? "Enter rejection reason..." : "Entrez la raison du rejet..."}
-                rows={4}
-                required
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsRejectDialogOpen(false);
-                  setRejectingOrderId(null);
-                  setRejectionReason("");
-                }}
-                disabled={isRejecting}
-              >
-                {language === "en" ? "Cancel" : "Annuler"}
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={async () => {
-                  if (!rejectingOrderId || !rejectionReason.trim()) {
-                    toast({
-                      title: language === "en" ? "Error" : "Erreur",
-                      description: language === "en" ? "Rejection reason is required" : "La raison du rejet est requise",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-                  setIsRejecting(true);
-                  try {
-                    await onReject(rejectingOrderId, rejectionReason.trim());
-                    setIsRejectDialogOpen(false);
-                    setRejectingOrderId(null);
-                    setRejectionReason("");
-                  } catch {
-                    // Error toast already shown by handler
-                  } finally {
-                    setIsRejecting(false);
-                  }
-                }}
-                disabled={!rejectionReason.trim() || isRejecting}
-              >
-                {isRejecting ? <Loader size="sm" className="mr-2" /> : <XCircle className="w-4 h-4 mr-2" />}
-                {isRejecting ? (language === "en" ? "Rejecting..." : "Rejet en cours...") : (language === "en" ? "Reject Order" : "Rejeter la Commande")}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Skip Ambassador Confirmation Dialog */}
-      <Dialog open={isSkipDialogOpen} onOpenChange={(open) => {
-        setIsSkipDialogOpen(open);
-        if (!open) {
-          setSkippingOrderId(null);
-          setSkipReason("");
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-orange-600" />
-              {language === "en" ? "Skip Ambassador Confirmation" : "Ignorer la Confirmation de l'Ambassadeur"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Alert variant="default" className="border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800">
-              <AlertCircle className="h-4 w-4 text-orange-600" />
-              <AlertDescription className="text-sm text-orange-900 dark:text-orange-200">
-                {language === "en"
-                  ? "This action will approve the order and generate tickets WITHOUT waiting for ambassador cash confirmation. Use only when ambassador has confirmed payment separately."
-                  : "Cette action approuvera la commande et générera les billets SANS attendre la confirmation de l'ambassadeur. Utilisez uniquement lorsque l'ambassadeur a confirmé le paiement séparément."}
-              </AlertDescription>
-            </Alert>
-            <div>
-              <Label htmlFor="skip-reason">
-                {language === "en" ? "Reason (Optional)" : "Raison (Optionnel)"}
-              </Label>
-              <Textarea
-                id="skip-reason"
-                value={skipReason}
-                onChange={(e) => setSkipReason(e.target.value)}
-                placeholder={language === "en"
-                  ? "Enter reason for skipping ambassador confirmation (optional)..."
-                  : "Entrez la raison de l'ignorance de la confirmation de l'ambassadeur (optionnel)..."}
-                rows={3}
-                className="mt-1"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsSkipDialogOpen(false);
-                  setSkippingOrderId(null);
-                  setSkipReason("");
-                }}
-                disabled={isSkipping}
-              >
-                {language === "en" ? "Cancel" : "Annuler"}
-              </Button>
-              <Button
-                variant="default"
-                onClick={async () => {
-                  if (!skippingOrderId) return;
-                  setIsSkipping(true);
-                  try {
-                    await onSkip(skippingOrderId, skipReason.trim() || undefined);
-                    setIsSkipDialogOpen(false);
-                    setSkippingOrderId(null);
-                    setSkipReason("");
-                  } finally {
-                    setIsSkipping(false);
-                  }
-                }}
-                disabled={isSkipping || !skippingOrderId}
-                className="bg-orange-600 hover:bg-orange-700 text-white"
-              >
-                {isSkipping ? (
-                  <>
-                    <Loader size="sm" className="mr-2" />
-                    {language === "en" ? "Processing..." : "Traitement..."}
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4 mr-2" />
-                    {language === "en" ? "Skip & Approve" : "Ignorer et Approuver"}
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      />
     </>
   );
 }

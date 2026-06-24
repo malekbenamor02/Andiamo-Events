@@ -58,6 +58,164 @@
   border-color: hsl(var(--muted-foreground) / 0.25) !important;
 }
 
+/* Admin — ambassador edit dialog: no field transitions, subtle focus */
+.ambassador-edit-dialog input,
+.ambassador-edit-dialog textarea,
+.ambassador-edit-dialog [role="combobox"] {
+  transition: none !important;
+}
+.ambassador-edit-dialog input:focus,
+.ambassador-edit-dialog input:focus-visible,
+.ambassador-edit-dialog textarea:focus,
+.ambassador-edit-dialog textarea:focus-visible,
+.ambassador-edit-dialog [role="combobox"]:focus,
+.ambassador-edit-dialog [role="combobox"]:focus-visible {
+  transform: none !important;
+}
+.ambassador-edit-dialog input:focus-visible,
+.ambassador-edit-dialog textarea:focus-visible,
+.ambassador-edit-dialog [role="combobox"]:focus-visible {
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-width: 0 !important;
+  --tw-ring-width: 0 !important;
+  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  outline: none !important;
+}
+
+/* Admin — order details dialogs: no field transitions */
+.admin-order-details-dialog input,
+.admin-order-details-dialog textarea,
+.admin-order-details-dialog [role="combobox"] {
+  transition: none !important;
+}
+.admin-order-details-dialog input:focus-visible,
+.admin-order-details-dialog textarea:focus-visible,
+.admin-order-details-dialog [role="combobox"]:focus-visible {
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-width: 0 !important;
+  --tw-ring-width: 0 !important;
+  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  outline: none !important;
+}
+
+.admin-order-details-actions button {
+  transition: none !important;
+}
+
+.cod-ambassador-orders-filters input,
+.cod-ambassador-orders-filters [role="combobox"],
+.cod-ambassador-orders-toolbar {
+  transition: none !important;
+}
+.cod-ambassador-orders-filters input:focus-visible,
+.cod-ambassador-orders-filters [role="combobox"]:focus-visible {
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  outline: none !important;
+}
+
+.admin-event-select-content {
+  width: max(var(--radix-select-trigger-width), min(calc(100vw - 2rem), 28rem));
+  max-width: min(calc(100vw - 2rem), 28rem);
+}
+
+.admin-dashboard-toolbar input,
+.admin-dashboard-toolbar [role="combobox"],
+.admin-dashboard-toolbar button {
+  transition: none !important;
+}
+.admin-dashboard-toolbar input:focus-visible,
+.admin-dashboard-toolbar [role="combobox"]:focus-visible {
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  outline: none !important;
+}
+
+.ambassador-sales-subtab-panel[data-state="active"] {
+  animation: ambassador-sales-tab-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes ambassador-sales-tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambassador-sales-subtab-panel[data-state="active"] {
+    animation: none;
+  }
+  .ambassador-sales-subtabs [aria-hidden] {
+    transition: none !important;
+  }
+}
+
+/* Admin — order action confirmations: no field transitions */
+.admin-order-action-confirm textarea,
+.admin-order-action-confirm-textarea {
+  transition: none !important;
+}
+.admin-order-action-confirm textarea:focus-visible,
+.admin-order-action-confirm-textarea:focus-visible {
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-width: 0 !important;
+  --tw-ring-width: 0 !important;
+  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  outline: none !important;
+}
+
+/* Ambassador auth: border-only focus — same as pass purchase fields */
+.ambassador-auth-fields input:focus-visible {
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-width: 0 !important;
+  --tw-ring-width: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.ambassador-auth-aside {
+  opacity: 0;
+  animation: ambassador-auth-slide-in 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.ambassador-auth-enter {
+  opacity: 0;
+  animation: ambassador-auth-fade-up 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes ambassador-auth-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ambassador-auth-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Pass purchase: border-only focus — no red ring fragments on rounded fields */
 .pass-purchase-fields input:focus-visible,
 .pass-purchase-fields textarea:focus-visible,
@@ -765,7 +923,9 @@ All colors MUST be HSL.
 @media (prefers-reduced-motion: reduce) {
   .career-form-view,
   .career-form-item,
-  .career-form-field {
+  .career-form-field,
+  .ambassador-auth-aside,
+  .ambassador-auth-enter {
     animation: none !important;
     opacity: 1;
     transform: none;

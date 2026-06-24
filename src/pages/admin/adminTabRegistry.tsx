@@ -3,7 +3,6 @@ import {
   BarChart3,
   CalendarIcon,
   CreditCard,
-  Database,
   DollarSign,
   FileText,
   GraduationCap,
@@ -48,7 +47,6 @@ export type AdminTabKey =
   | 'contact'
   | 'consultation-inquiries'
   | 'suggestions'
-  | 'aio-events'
   | 'logs'
   | 'settings';
 
@@ -74,7 +72,6 @@ const TAB_ICONS: Record<AdminTabKey, LucideIcon> = {
   contact: MessageSquare,
   'consultation-inquiries': MessageSquare,
   suggestions: Lightbulb,
-  'aio-events': Database,
   logs: FileText,
   settings: Settings,
 };

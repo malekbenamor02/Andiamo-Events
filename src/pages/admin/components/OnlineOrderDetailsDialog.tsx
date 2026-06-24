@@ -5,29 +5,13 @@
 
 import React, { useRef, useState } from "react";
 import Loader from "@/components/ui/Loader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  Package,
-  FileText,
-  Activity,
-  Database,
-  Calendar as CalendarIcon,
-  Clock,
-  DollarSign,
-  User,
-  Phone,
-  Mail,
-  MapPin,
-  Ticket,
-  CreditCard,
-  Settings,
   ArrowDown,
   Send,
   Copy,
@@ -36,7 +20,17 @@ import {
   X,
   Tag,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import {
+  ADMIN_ORDER_DETAILS_DIALOG_CLASS,
+  AdminOrderDetailsField,
+  AdminOrderDetailsGrid,
+  AdminOrderDetailsSection,
+  AdminPassTypePill,
+  AdminOrderStatusPill,
+  AdminOrderTagPill,
+  formatAdminOrderDateTime,
+  formatAdminOrderSource,
+} from "./adminOrderDetailsUi";
 import {
   formatPresaleOrderDiscountLabel,
   formatPresalePassBreakdownRule,
@@ -54,6 +48,9 @@ import { PromoCodeColorBadge } from "@/components/admin/PromoCodeColorBadge";
 import { formatPromoPassBreakdownRule } from "@/lib/eventPromo/discountPolicy";
 import { useToast } from "@/hooks/use-toast";
 import { AdminOrderQrTicketsSection } from "./AdminOrderQrTicketsSection";
+import {
+  AdminResendEmailConfirm,
+} from "./AdminResendEmailConfirm";
 
 export interface OnlineOrderDetailsDialogProps {
   open: boolean;
@@ -120,6 +117,7 @@ export function OnlineOrderDetailsDialog({
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [editingEmailValue, setEditingEmailValue] = useState("");
   const [updatingEmail, setUpdatingEmail] = useState(false);
+  const [isResendConfirmOpen, setIsResendConfirmOpen] = useState(false);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length !== 1) return;
@@ -144,18 +142,6 @@ export function OnlineOrderDetailsDialog({
     if (dt > 900) return;
 
     onOpenChange(false);
-  };
-
-  const getActionCodeDescription = (paymentConfirmResponse: unknown): string | null => {
-    const obj = paymentConfirmResponse as any;
-    const actionCodeDescription =
-      obj?.actionCodeDescription ??
-      obj?.action_code_description ??
-      obj?.actionCodeDescriptio ??
-      obj?.action_code_desc;
-    return typeof actionCodeDescription === "string" && actionCodeDescription.trim().length > 0
-      ? actionCodeDescription
-      : null;
   };
 
   // Safely parse fee breakdown, preferring dedicated columns and falling back to notes JSON.
@@ -242,15 +228,16 @@ export function OnlineOrderDetailsDialog({
   );
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-full max-w-[100vw] left-0 translate-x-0 p-3 sm:p-6 sm:left-1/2 sm:translate-x-[-50%] sm:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden scrollbar-hidden"
+        className={ADMIN_ORDER_DETAILS_DIALOG_CLASS}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        <DialogHeader>
-          <DialogTitle>
-            {language === "en" ? "Online Order Details" : "Détails de la Commande en Ligne"}
+        <DialogHeader className="shrink-0 space-y-0 border-b border-border/60 px-5 py-4 sm:px-6">
+          <DialogTitle className="text-base font-semibold">
+            {language === "en" ? "Online order details" : "Détails commande en ligne"}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {language === "en"
@@ -259,217 +246,115 @@ export function OnlineOrderDetailsDialog({
           </DialogDescription>
         </DialogHeader>
         {order && (
-          <div className="space-y-4 sm:space-y-6 w-full break-words">
-            {/* Order Summary Card */}
-            <Card className="bg-muted/30">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Package className="w-5 h-5 text-primary" />
-                  {language === "en" ? "Order Summary" : "Résumé de la Commande"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                      <FileText className="w-3 h-3" />
-                      {language === "en" ? "Order Number" : "Numéro de Commande"}
-                    </Label>
-                    <p className="font-mono text-sm break-all">
-                      #{order.order_number != null ? String(order.order_number) : order.id.length > 8 ? order.id.slice(0, 8).toUpperCase() : order.id}
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Activity className="w-3 h-3" />
-                      {language === "en" ? "Payment Status" : "Statut de Paiement"}
-                    </Label>
-                    <div className="flex items-center gap-2">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div
-                              className={cn(
-                                "w-3 h-3 rounded-full cursor-help",
-                                order.payment_status === "PAID" ? "bg-green-500" :
-                                order.payment_status === "EXPIRED" ? "bg-blue-500" :
-                                order.payment_status === "FAILED" || order.payment_status === "REFUNDED" ? "bg-red-500" :
-                                "bg-yellow-500"
-                              )}
-                            />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            {order.payment_status === "FAILED" ? (
-                              (() => {
-                                const msg = getActionCodeDescription(order.payment_confirm_response);
-                                return (
-                                  <div className="space-y-1">
-                                    <p>{order.payment_status || "FAILED"}</p>
-                                    {msg ? <p className="text-xs text-muted-foreground">{msg}</p> : null}
-                                  </div>
-                                );
-                              })()
-                            ) : (
-                              <p>{order.payment_status || "PENDING_PAYMENT"}</p>
-                            )}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <Badge
-                        variant={
-                          order.payment_status === "PAID" ? "default" :
-                          order.payment_status === "EXPIRED" ? "default" :
-                          order.payment_status === "FAILED" || order.payment_status === "REFUNDED" ? "destructive" :
-                          "outline"
-                        }
-                        className={
-                          order.payment_status === "PAID" ? "bg-green-500 hover:bg-green-500 text-white border-green-600" :
-                          order.payment_status === "EXPIRED" ? "bg-blue-500 hover:bg-blue-500 text-white border-blue-600" :
-                          order.payment_status === "FAILED" || order.payment_status === "REFUNDED" ? "bg-red-500 hover:bg-red-500 text-white border-red-600" :
-                          ""
-                        }
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain break-words px-5 py-5 scrollbar-hidden sm:px-6">
+            <AdminOrderDetailsSection
+              title={language === "en" ? "Order summary" : "Résumé"}
+            >
+              <AdminOrderDetailsGrid>
+                <AdminOrderDetailsField
+                  label={language === "en" ? "Order number" : "N° commande"}
+                >
+                  <span className="font-mono">
+                    #{order.order_number != null ? String(order.order_number) : order.id.length > 8 ? order.id.slice(0, 8).toUpperCase() : order.id}
+                  </span>
+                </AdminOrderDetailsField>
+                <AdminOrderDetailsField
+                  label={language === "en" ? "Payment status" : "Statut paiement"}
+                >
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <AdminOrderStatusPill
+                      status={order.payment_status || "PENDING_PAYMENT"}
+                      kind="payment"
+                    />
+                    {isPresaleOrder && (
+                      <AdminOrderTagPill>
+                        {language === "en" ? "Presale" : "Presale"}
+                        {presaleInfo?.code_label ? ` · ${presaleInfo.code_label}` : ""}
+                      </AdminOrderTagPill>
+                    )}
+                    {isPromoOrder && promoInfo?.code && (
+                      <PromoCodeColorBadge
+                        color={promoBadgeColor}
+                        className="inline-flex h-auto items-center gap-1 border px-2 py-0.5 text-xs font-medium"
                       >
-                        {order.payment_status || "PENDING_PAYMENT"}
-                      </Badge>
-                      {isPresaleOrder && (
-                        <Badge
-                          variant="default"
-                          className="bg-indigo-500 hover:bg-indigo-500 text-white border-indigo-600 inline-flex items-center gap-1"
-                          title={presaleInfo?.code_label
-                            ? `${language === "en" ? "Presale code" : "Code presale"}: ${presaleInfo.code_label}`
-                            : (language === "en" ? "Placed via presale" : "Commande presale")}
-                        >
-                          <Tag className="w-3 h-3" />
-                          {language === "en" ? "Presale" : "Presale"}
-                          {presaleInfo?.code_label ? ` · ${presaleInfo.code_label}` : ""}
-                        </Badge>
-                      )}
-                      {isPromoOrder && promoInfo?.code && (
-                        <PromoCodeColorBadge
-                          color={promoBadgeColor}
-                          className="inline-flex items-center gap-1"
-                          title={`${language === "en" ? "Promo code" : "Code promo"}: ${promoInfo.code}`}
-                        >
-                          <Tag className="w-3 h-3" />
-                          {language === "en" ? "Promo" : "Promo"}
-                          {` · ${promoInfo.code}`}
-                        </PromoCodeColorBadge>
-                      )}
-                    </div>
+                        {language === "en" ? "Promo" : "Promo"}
+                        {` · ${promoInfo.code}`}
+                      </PromoCodeColorBadge>
+                    )}
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Database className="w-3 h-3" />
-                      {language === "en" ? "Order Type" : "Type de Commande"}
-                    </Label>
-                    <Badge variant="outline" className="font-normal">
-                      {order.source === "platform_online" ? (language === "en" ? "Platform Online" : "Plateforme En Ligne") : order.source}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                      <CalendarIcon className="w-3 h-3" />
-                      {language === "en" ? "Created At" : "Créé Le"}
-                    </Label>
-                    <p className="text-sm">{(() => {
-                      const d = new Date(order.created_at);
-                      const day = String(d.getDate()).padStart(2, "0");
-                      const month = String(d.getMonth() + 1).padStart(2, "0");
-                      return `${day}/${month}/${d.getFullYear()}, ${d.toLocaleTimeString(language === "en" ? "en-GB" : "fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-                    })()}</p>
-                  </div>
-                  {order.updated_at && order.updated_at !== order.created_at && (
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {language === "en" ? "Updated At" : "Mis à Jour Le"}
-                      </Label>
-                      <p className="text-sm">{(() => {
-                        const d = new Date(order.updated_at);
-                        const day = String(d.getDate()).padStart(2, "0");
-                        const month = String(d.getMonth() + 1).padStart(2, "0");
-                        return `${day}/${month}/${d.getFullYear()}, ${d.toLocaleTimeString(language === "en" ? "en-GB" : "fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-                      })()}</p>
-                    </div>
-                  )}
-                  {(order.payment_status_set_by ||
-                    order.payment_status_set_at ||
-                    (order.payment_status_set_by_name && order.payment_status_set_by_name.trim())) && (
-                    <div className="space-y-1 md:col-span-2">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Settings className="w-3 h-3" />
-                        {language === "en" ? "Payment status (manual)" : "Statut de paiement (manuel)"}
-                      </Label>
-                      <p className="text-sm">
-                        {language === "en" ? "Set by" : "Défini par"}:{" "}
-                        <span className="font-medium">
+                </AdminOrderDetailsField>
+                <AdminOrderDetailsField
+                  label={language === "en" ? "Order type" : "Type"}
+                >
+                  {formatAdminOrderSource(order.source, language)}
+                </AdminOrderDetailsField>
+                <AdminOrderDetailsField
+                  label={language === "en" ? "Created" : "Créé le"}
+                >
+                  {formatAdminOrderDateTime(order.created_at, language)}
+                </AdminOrderDetailsField>
+                {order.updated_at && order.updated_at !== order.created_at && (
+                  <AdminOrderDetailsField
+                    label={language === "en" ? "Updated" : "Mis à jour"}
+                  >
+                    {formatAdminOrderDateTime(order.updated_at, language)}
+                  </AdminOrderDetailsField>
+                )}
+                {(order.payment_status_set_by ||
+                  order.payment_status_set_at ||
+                  (order.payment_status_set_by_name && order.payment_status_set_by_name.trim())) && (
+                  <AdminOrderDetailsField
+                    label={language === "en" ? "Manual status change" : "Statut manuel"}
+                    className="sm:col-span-2"
+                  >
+                    <div className="space-y-0.5">
+                      <p>
+                        {language === "en" ? "Set by" : "Défini par"}{" "}
+                        <span className="font-medium text-foreground">
                           {order.payment_status_set_by_name?.trim() ||
-                            (language === "en" ? "Admin (name not recorded)" : "Admin (nom non enregistré)")}
+                            (language === "en" ? "Admin" : "Admin")}
                         </span>
                       </p>
                       {order.payment_status_set_at ? (
                         <p className="text-xs text-muted-foreground">
-                          {(() => {
-                            const d = new Date(order.payment_status_set_at);
-                            const day = String(d.getDate()).padStart(2, "0");
-                            const month = String(d.getMonth() + 1).padStart(2, "0");
-                            return `${day}/${month}/${d.getFullYear()}, ${d.toLocaleTimeString(language === "en" ? "en-GB" : "fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-                          })()}
+                          {formatAdminOrderDateTime(order.payment_status_set_at, language)}
                         </p>
                       ) : null}
                     </div>
-                  )}
-                  {order.total_price && (
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <DollarSign className="w-3 h-3" />
-                        {language === "en" ? "Total Amount" : "Montant Total"}
-                      </Label>
-                      <p className="text-lg font-bold text-primary">
+                  </AdminOrderDetailsField>
+                )}
+                {order.total_price != null && (
+                  <AdminOrderDetailsField
+                    label={language === "en" ? "Total" : "Total"}
+                  >
+                    <div className="space-y-0.5">
+                      <p className="text-base font-semibold tabular-nums">
                         {(order.total_with_fees ?? order.total_price).toFixed(2)} TND
                       </p>
                       {paymentFees?.subtotal != null && paymentFees.fee_amount != null && (
                         <p className="text-xs text-muted-foreground">
                           {language === "en"
-                            ? `Subtotal (without fees): ${paymentFees.subtotal.toFixed(2)} TND · Fees: ${paymentFees.fee_amount.toFixed(2)} TND`
-                            : `Sous-total (hors frais) : ${paymentFees.subtotal.toFixed(2)} TND · Frais : ${paymentFees.fee_amount.toFixed(2)} TND`}
+                            ? `Subtotal ${paymentFees.subtotal.toFixed(2)} TND · Fees ${paymentFees.fee_amount.toFixed(2)} TND`
+                            : `Sous-total ${paymentFees.subtotal.toFixed(2)} TND · Frais ${paymentFees.fee_amount.toFixed(2)} TND`}
                         </p>
                       )}
                     </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                  </AdminOrderDetailsField>
+                )}
+              </AdminOrderDetailsGrid>
+            </AdminOrderDetailsSection>
 
-            {/* Customer Information */}
-            <Card className="bg-muted/30">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <User className="w-5 h-5 text-primary" />
-                  {language === "en" ? "Customer Information" : "Informations Client"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                      <User className="w-3 h-3" />
-                      {language === "en" ? "Name" : "Nom"}
-                    </Label>
-                    <p className="font-semibold text-base">{order.user_name || order.customer_name || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Phone className="w-3 h-3" />
-                      {language === "en" ? "Phone" : "Téléphone"}
-                    </Label>
-                    <p className="text-base">{order.user_phone || order.phone || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Mail className="w-3 h-3" />
-                      {language === "en" ? "Email" : "Email"}
-                    </Label>
+            <AdminOrderDetailsSection
+              title={language === "en" ? "Customer" : "Client"}
+            >
+              <AdminOrderDetailsGrid>
+                <AdminOrderDetailsField label={language === "en" ? "Name" : "Nom"}>
+                  <span className="font-medium">{order.user_name || order.customer_name || "—"}</span>
+                </AdminOrderDetailsField>
+                <AdminOrderDetailsField label={language === "en" ? "Phone" : "Téléphone"}>
+                  {order.user_phone || order.phone || "—"}
+                </AdminOrderDetailsField>
+                <AdminOrderDetailsField label={language === "en" ? "Email" : "Email"}>
                     {isEditingEmail ? (
                       <div className="flex items-center gap-2">
                         <Input
@@ -545,7 +430,7 @@ export function OnlineOrderDetailsDialog({
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
-                        <p className="text-base break-all flex-1">{order.user_email || order.email || "N/A"}</p>
+                        <span className="break-all">{order.user_email || order.email || "—"}</span>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -553,41 +438,26 @@ export function OnlineOrderDetailsDialog({
                             setEditingEmailValue(order.user_email || order.email || "");
                             setIsEditingEmail(true);
                           }}
-                          className="h-8 w-8 p-0"
+                          className="h-7 w-7 shrink-0 p-0"
                           title={language === "en" ? "Edit email" : "Modifier l'email"}
                         >
-                          <Edit className="w-4 h-4" />
+                          <Edit className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     )}
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {language === "en" ? "City" : "Ville"}
-                    </Label>
-                    <p className="text-base">{order.city || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {language === "en" ? "Neighborhood" : "Quartier"}
-                    </Label>
-                    <p className="text-base">{order.ville || "—"}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </AdminOrderDetailsField>
+                <AdminOrderDetailsField label={language === "en" ? "City" : "Ville"}>
+                  {order.city || "—"}
+                </AdminOrderDetailsField>
+                <AdminOrderDetailsField label={language === "en" ? "Neighborhood" : "Quartier"}>
+                  {order.ville || "—"}
+                </AdminOrderDetailsField>
+              </AdminOrderDetailsGrid>
+            </AdminOrderDetailsSection>
 
-            {/* Passes List */}
-            <Card className="bg-muted/30">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Ticket className="w-5 h-5 text-primary" />
-                  {language === "en" ? "Passes Purchased" : "Passes Achetés"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <AdminOrderDetailsSection
+              title={language === "en" ? "Passes" : "Passes"}
+            >
                 {(() => {
                   // Prefer order_passes (from pass stock); fallback to notes.all_passes
                   let allPasses: { passType?: string; pass_type?: string; quantity?: number; price?: number }[] = [];
@@ -622,27 +492,25 @@ export function OnlineOrderDetailsDialog({
                     return (
                       <div className="w-full">
                         {/* Desktop: keep table */}
-                        <div className="hidden md:block">
-                          <Table className="w-full table-fixed">
+                        <div className="hidden md:block overflow-hidden rounded-lg border border-border/70">
+                          <Table className="w-full">
                             <TableHeader>
-                              <TableRow>
-                                <TableHead>{language === "en" ? "Pass Type" : "Type Pass"}</TableHead>
-                                <TableHead>{language === "en" ? "Quantity" : "Quantité"}</TableHead>
-                                <TableHead>{language === "en" ? "Unit Price" : "Prix Unitaire"}</TableHead>
-                                <TableHead>{language === "en" ? "Subtotal" : "Sous-total"}</TableHead>
+                              <TableRow className="border-border/70 hover:bg-transparent">
+                                <TableHead className="text-xs text-muted-foreground">{language === "en" ? "Pass" : "Pass"}</TableHead>
+                                <TableHead className="text-xs text-muted-foreground">{language === "en" ? "Qty" : "Qté"}</TableHead>
+                                <TableHead className="text-xs text-muted-foreground">{language === "en" ? "Unit" : "Unité"}</TableHead>
+                                <TableHead className="text-right text-xs text-muted-foreground">{language === "en" ? "Subtotal" : "Sous-total"}</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
                               {allPasses.map((pass: { passType?: string; pass_type?: string; quantity?: number; price?: number }, index: number) => (
-                                <TableRow key={index}>
+                                <TableRow key={index} className="border-border/70">
                                   <TableCell>
-                                    <Badge variant={passName(pass).toLowerCase() === "vip" ? "default" : "secondary"}>
-                                      {passName(pass).toUpperCase()}
-                                    </Badge>
+                                    <AdminPassTypePill label={passName(pass)} />
                                   </TableCell>
-                                  <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
-                                  <TableCell>{pass.price?.toFixed(2) || "0.00"} TND</TableCell>
-                                  <TableCell className="font-semibold">
+                                  <TableCell className="tabular-nums">{pass.quantity || 0}</TableCell>
+                                  <TableCell className="tabular-nums">{pass.price?.toFixed(2) || "0.00"} TND</TableCell>
+                                  <TableCell className="text-right font-medium tabular-nums">
                                     {((pass.quantity || 0) * (pass.price || 0)).toFixed(2)} TND
                                   </TableCell>
                                 </TableRow>
@@ -742,13 +610,13 @@ export function OnlineOrderDetailsDialog({
                                   </TableCell>
                                 </TableRow>
                               )}
-                              <TableRow className="font-bold border-t-2">
-                                <TableCell colSpan={3} className="text-right">
+                              <TableRow className="border-border/70">
+                                <TableCell colSpan={3} className="text-right text-sm text-muted-foreground">
                                   {presaleInfo || promoInfo
-                                    ? (language === "en" ? "Subtotal (after discount, without fees)" : "Sous-total (après remise, hors frais)")
-                                    : (language === "en" ? "Subtotal (without fees)" : "Sous-total (hors frais)")}
+                                    ? (language === "en" ? "Subtotal (after discount)" : "Sous-total (après remise)")
+                                    : (language === "en" ? "Subtotal" : "Sous-total")}
                                 </TableCell>
-                                <TableCell className="text-lg">
+                                <TableCell className="text-right font-semibold tabular-nums">
                                   {calculatedTotal.toFixed(2)} TND
                                 </TableCell>
                               </TableRow>
@@ -790,10 +658,8 @@ export function OnlineOrderDetailsDialog({
                                 className="rounded-lg border border-border/60 bg-muted/30 p-3"
                               >
                                 <div className="flex items-start justify-between gap-3">
-                                  <Badge variant={passName(pass).toLowerCase() === "vip" ? "default" : "secondary"}>
-                                    {label}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground">{subtotal.toFixed(2)} TND</span>
+                                  <AdminPassTypePill label={label} />
+                                  <span className="text-xs tabular-nums text-muted-foreground">{subtotal.toFixed(2)} TND</span>
                                 </div>
 
                                 <div className="mt-2 grid grid-cols-2 gap-2">
@@ -946,52 +812,36 @@ export function OnlineOrderDetailsDialog({
                     return null;
                   }
                 })()}
-              </CardContent>
-            </Card>
+            </AdminOrderDetailsSection>
 
-            {/* Payment Gateway Information */}
             {(order.transaction_id || order.payment_gateway_reference || order.payment_response_data) && (
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <CreditCard className="w-5 h-5 text-primary" />
-                    {language === "en" ? "Payment Gateway Information" : "Informations Passerelle de Paiement"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <AdminOrderDetailsSection
+                title={language === "en" ? "Payment gateway" : "Passerelle"}
+              >
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {order.transaction_id && (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                          <FileText className="w-3 h-3" />
-                          {language === "en" ? "Transaction ID" : "ID Transaction"}
-                        </Label>
-                        <p className="font-mono text-sm break-all">{order.transaction_id}</p>
-                      </div>
+                      <AdminOrderDetailsField label={language === "en" ? "Transaction ID" : "ID transaction"}>
+                        <span className="break-all font-mono text-xs">{order.transaction_id}</span>
+                      </AdminOrderDetailsField>
                     )}
                     {order.payment_gateway_reference && (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Database className="w-3 h-3" />
-                          {language === "en" ? "Payment Gateway Reference" : "Référence Passerelle"}
-                        </Label>
-                        <p className="font-mono text-sm break-all">{order.payment_gateway_reference}</p>
-                      </div>
+                      <AdminOrderDetailsField label={language === "en" ? "Gateway reference" : "Référence"}>
+                        <span className="break-all font-mono text-xs">{order.payment_gateway_reference}</span>
+                      </AdminOrderDetailsField>
                     )}
                     {order.payment_response_data && (
-                      <div className="md:col-span-2 space-y-1">
+                      <div className="space-y-1.5 sm:col-span-2">
                         <div className="flex items-center justify-between">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <FileText className="w-3 h-3" />
-                            {language === "en" ? "Payment Response Data" : "Données de Réponse"}
-                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            {language === "en" ? "Response data" : "Données réponse"}
+                          </p>
                           <CopyButton
                             text={JSON.stringify(order.payment_response_data, null, 2)}
                             label={language === "en" ? "Payment Response Data" : "Données de Réponse"}
                           />
                         </div>
                         <pre
-                          className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-x-auto overflow-y-auto max-h-40 whitespace-pre-wrap break-all w-full scrollbar-hidden"
+                          className="max-h-40 w-full overflow-auto rounded-lg border border-border/70 bg-muted/20 p-3 text-xs whitespace-pre-wrap break-all scrollbar-hidden"
                           style={{ WebkitOverflowScrolling: "touch" }}
                         >
                           {JSON.stringify(order.payment_response_data, null, 2)}
@@ -999,59 +849,38 @@ export function OnlineOrderDetailsDialog({
                       </div>
                     )}
                   </div>
-                </CardContent>
-              </Card>
+              </AdminOrderDetailsSection>
             )}
 
-            {/* Payment Logs Section */}
-            <Card className="bg-muted/30">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-primary" />
-                  {language === "en" ? "Payment Logs" : "Journaux de Paiement"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {order.payment_confirm_response ? (
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Activity className="w-3 h-3" />
-                        {language === "en" ? "ClicToPay getOrderStatus Response" : "Réponse ClicToPay getOrderStatus"}
-                      </Label>
-                      <CopyButton
-                        text={JSON.stringify(order.payment_confirm_response, null, 2)}
-                        label={language === "en" ? "Payment Logs" : "Journaux de Paiement"}
-                      />
-                    </div>
-                    <pre
-                      className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-x-auto overflow-y-auto max-h-40 whitespace-pre-wrap break-all w-full scrollbar-hidden"
-                      style={{ WebkitOverflowScrolling: "touch" }}
-                    >
-                      {JSON.stringify(order.payment_confirm_response, null, 2)}
-                    </pre>
-                  </div>
-                ) : (
-                  <div className="p-4 bg-background border rounded-lg text-center text-muted-foreground">
-                    <p className="text-sm">
-                      {language === "en"
-                        ? "Payment logs will appear here after the payment confirmation (return from ClicToPay)."
-                        : "Les journaux de paiement apparaîtront ici après la confirmation du paiement (retour de ClicToPay)."}
+            <AdminOrderDetailsSection title={language === "en" ? "Payment logs" : "Journaux"}>
+              {order.payment_confirm_response ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      {language === "en" ? "ClicToPay response" : "Réponse ClicToPay"}
                     </p>
+                    <CopyButton
+                      text={JSON.stringify(order.payment_confirm_response, null, 2)}
+                      label={language === "en" ? "Payment Logs" : "Journaux de Paiement"}
+                    />
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  <pre
+                    className="max-h-40 w-full overflow-auto rounded-lg border border-border/70 bg-muted/20 p-3 text-xs whitespace-pre-wrap break-all scrollbar-hidden"
+                    style={{ WebkitOverflowScrolling: "touch" }}
+                  >
+                    {JSON.stringify(order.payment_confirm_response, null, 2)}
+                  </pre>
+                </div>
+              ) : (
+                <p className="rounded-lg border border-border/70 bg-muted/20 px-3 py-4 text-center text-sm text-muted-foreground">
+                  {language === "en"
+                    ? "Logs appear after payment confirmation."
+                    : "Les journaux apparaissent après confirmation du paiement."}
+                </p>
+              )}
+            </AdminOrderDetailsSection>
 
-            {/* Admin Actions */}
-            <Card className="bg-muted/30">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-primary" />
-                  {language === "en" ? "Admin Actions" : "Actions Administrateur"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <AdminOrderDetailsSection title={language === "en" ? "Actions" : "Actions"}>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="secondary"
@@ -1069,7 +898,7 @@ export function OnlineOrderDetailsDialog({
                   {order.payment_status === "PAID" && onResendTicket && (
                     <Button
                       variant="outline"
-                      onClick={() => onResendTicket(order.id)}
+                      onClick={() => setIsResendConfirmOpen(true)}
                       disabled={resendingTicketEmail}
                     >
                       {resendingTicketEmail ? (
@@ -1087,8 +916,7 @@ export function OnlineOrderDetailsDialog({
                     </Button>
                   )}
                 </div>
-              </CardContent>
-            </Card>
+            </AdminOrderDetailsSection>
 
             <AdminOrderQrTicketsSection
               orderId={order.id}
@@ -1100,5 +928,21 @@ export function OnlineOrderDetailsDialog({
         )}
       </DialogContent>
     </Dialog>
+
+    <AdminResendEmailConfirm
+      open={isResendConfirmOpen}
+      onOpenChange={setIsResendConfirmOpen}
+      kind={isResendConfirmOpen ? "ticket" : null}
+      language={language}
+      order={order as Record<string, unknown> | null}
+      recipientEmail={order?.user_email || order?.email || null}
+      onConfirm={async () => {
+        if (!order || !onResendTicket) return;
+        setIsResendConfirmOpen(false);
+        await onResendTicket(order.id);
+      }}
+      isSubmitting={resendingTicketEmail}
+    />
+    </>
   );
 }

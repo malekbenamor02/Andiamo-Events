@@ -2,11 +2,10 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff, User, Lock, ArrowLeft } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { API_ROUTES } from '@/lib/api-routes';
+import { Eye, EyeOff, User, Lock } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
 import { safeApiCall } from '@/lib/api-client';
 import { logger } from '@/lib/logger';
 
@@ -162,7 +161,12 @@ const Auth = ({ language }: AuthProps) => {
         toggleLogin: "Login",
         toggleRegister: "Register",
         passwordRequirements: "Password must be at least 6 characters",
-        phoneFormat: "Enter valid phone number"
+        phoneFormat: "Enter valid phone number",
+        applyLink: "Not an ambassador yet? Apply here"
+      },
+      brand: {
+        headline: "Your crowd. Your commission.",
+        tagline: "Sign in to track sales, manage orders, and grow with Andiamo Events."
       }
     },
     fr: {
@@ -197,12 +201,37 @@ const Auth = ({ language }: AuthProps) => {
         toggleLogin: "Connexion",
         toggleRegister: "Inscription",
         passwordRequirements: "Le mot de passe doit contenir au moins 6 caractères",
-        phoneFormat: "Entrez un numéro de téléphone valide"
+        phoneFormat: "Entrez un numéro de téléphone valide",
+        applyLink: "Pas encore ambassadeur ? Postulez ici"
+      },
+      brand: {
+        headline: "Votre réseau. Vos commissions.",
+        tagline: "Connectez-vous pour suivre vos ventes, gérer vos commandes et grandir avec Andiamo Events."
       }
     }
   };
 
   const t = content[language];
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${getApiBaseUrl()}${API_ROUTES.AMBASSADOR_ME}`, {
+          credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && data?.ambassador) {
+          navigate('/ambassador/dashboard', { replace: true });
+        }
+      } catch {
+        // stay on login page
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   const recaptchaTimeoutMessage = language === 'en'
     ? "Verification timed out. Please try again or open this page in your device's browser (e.g. Safari or Chrome) instead of the in-app browser."
@@ -282,13 +311,6 @@ const Auth = ({ language }: AuthProps) => {
           description: language === 'en' ? "Redirecting to dashboard..." : "Redirection vers le tableau de bord...",
         });
 
-        // Store ambassador session
-        localStorage.setItem('ambassadorSession', JSON.stringify({ 
-          user: data.ambassador, 
-          loggedInAt: new Date().toISOString() 
-        }));
-
-        // Redirect to dashboard
         navigate('/ambassador/dashboard');
       } else {
         throw new Error('Login failed');
@@ -351,28 +373,69 @@ const Auth = ({ language }: AuthProps) => {
 
 
   return (
-    <div className="min-h-screen bg-gradient-dark flex items-center justify-center p-4">
-      <Card className="w-full max-w-md glass">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-heading text-primary">
-            {t.login.title}
-          </CardTitle>
-          <p className="text-muted-foreground">
-            {t.login.subtitle}
+    <div className="min-h-screen flex flex-col bg-gradient-dark lg:flex-row">
+      <aside
+        className="ambassador-auth-aside relative hidden shrink-0 flex-col justify-between border-r border-border bg-card p-12 lg:flex lg:w-[min(44%,480px)]"
+        aria-hidden="true"
+      >
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.35]"
+          style={{
+            backgroundImage:
+              "linear-gradient(hsl(var(--border) / 0.4) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border) / 0.4) 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+          }}
+        />
+        <div className="absolute left-0 top-[18%] bottom-[18%] w-[3px] rounded-r-full bg-primary" />
+
+        <img
+          src="/email-assets/logo-white.png"
+          alt=""
+          className="relative z-10 h-8 w-auto"
+        />
+
+        <div className="relative z-10 space-y-5">
+          <h2 className="max-w-[16rem] font-heading text-[2rem] font-bold leading-[1.15] text-foreground">
+            {t.brand.headline}
+          </h2>
+          <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
+            {t.brand.tagline}
           </p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
+        </div>
+
+        <p className="relative z-10 text-xs text-muted-foreground">© Andiamo Events</p>
+      </aside>
+
+      <main className="flex flex-1 items-center justify-center px-5 py-12 sm:px-10">
+        <div className="w-full max-w-[400px]">
+          <header
+            className="ambassador-auth-enter mb-9 text-center lg:text-left"
+            style={{ animationDelay: "0.08s" }}
+          >
+            <h1 className="font-heading text-2xl font-bold tracking-tight text-primary sm:text-[1.75rem]">
+              {t.login.title}
+            </h1>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+              {t.login.subtitle}
+            </p>
+          </header>
+
+          <form
+            onSubmit={handleLogin}
+            className="ambassador-auth-fields ambassador-auth-enter space-y-5"
+            style={{ animationDelay: "0.18s" }}
+          >
             <div className="space-y-2">
               <Label htmlFor="login-phone">{t.login.phone}</Label>
               <div className="relative">
-                <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <User className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="login-phone"
                   type="tel"
+                  autoComplete="tel"
                   placeholder="XX XXX XXX"
                   value={loginData.phone}
-                  onChange={(e) => setLoginData({...loginData, phone: e.target.value})}
+                  onChange={(e) => setLoginData({ ...loginData, phone: e.target.value })}
                   className="pl-10"
                   required
                 />
@@ -382,12 +445,13 @@ const Auth = ({ language }: AuthProps) => {
             <div className="space-y-2">
               <Label htmlFor="login-password">{t.login.password}</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Lock className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="login-password"
                   type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
                   value={loginData.password}
-                  onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+                  onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
                   className="pl-10 pr-10"
                   required
                 />
@@ -397,6 +461,7 @@ const Auth = ({ language }: AuthProps) => {
                   size="sm"
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
@@ -404,19 +469,19 @@ const Auth = ({ language }: AuthProps) => {
             </div>
 
             {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
-              <div className="p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-md text-center">
+              <div className="rounded-md border border-yellow-500/20 bg-yellow-500/10 p-2 text-center">
                 <p className="text-xs text-yellow-600 dark:text-yellow-400">
-                  {language === 'en' 
-                    ? '⚠️ Development mode: reCAPTCHA is disabled on localhost'
-                    : '⚠️ Mode développement : reCAPTCHA est désactivé sur localhost'}
+                  {language === 'en'
+                    ? 'Development mode: reCAPTCHA is disabled on localhost'
+                    : 'Mode développement : reCAPTCHA est désactivé sur localhost'}
                 </p>
               </div>
             )}
 
             {!RECAPTCHA_SITE_KEY && (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') && (
-              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-md text-center">
+              <div className="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-center">
                 <p className="text-sm text-destructive">
-                  {language === 'en' 
+                  {language === 'en'
                     ? 'reCAPTCHA is not configured. Please set VITE_RECAPTCHA_SITE_KEY in environment variables.'
                     : 'reCAPTCHA n\'est pas configuré. Veuillez définir VITE_RECAPTCHA_SITE_KEY dans les variables d\'environnement.'}
                 </p>
@@ -427,8 +492,20 @@ const Auth = ({ language }: AuthProps) => {
               {isLoading ? t.login.loading : t.login.submit}
             </Button>
           </form>
-        </CardContent>
-      </Card>
+
+          <footer
+            className="ambassador-auth-enter mt-8 border-t border-border pt-6 text-center text-sm"
+            style={{ animationDelay: "0.3s" }}
+          >
+            <Link
+              to="/ambassador"
+              className="text-muted-foreground transition-colors hover:text-primary"
+            >
+              {t.common.applyLink}
+            </Link>
+          </footer>
+        </div>
+      </main>
     </div>
   );
 };

@@ -103,10 +103,14 @@ export const API_ROUTES = {
   
   // Ambassador
   AMBASSADOR_LOGIN: '/api/ambassador-login',
+  AMBASSADOR_LOGOUT: '/api/ambassador-logout',
+  AMBASSADOR_ME: '/api/ambassador/me',
   AMBASSADOR_APPLICATION: '/api/ambassador-application',
   AMBASSADOR_UPDATE_PASSWORD: '/api/ambassador-update-password',
   AMBASSADOR_ORDERS: '/api/ambassador/orders',
   AMBASSADOR_PERFORMANCE: '/api/ambassador/performance',
+  AMBASSADOR_CONFIRM_CASH: '/api/ambassador/confirm-cash',
+  AMBASSADOR_CANCEL_ORDER: '/api/ambassador/cancel-order',
   
   // Tickets & QR Codes
   VALIDATE_TICKET: '/api/validate-ticket',
@@ -213,9 +217,6 @@ export const API_ROUTES = {
   ADMIN_LOGS: '/api/admin/logs',
   ADMIN_CONSULTATION_INQUIRIES: '/api/admin/consultation-inquiries',
   ADMIN_CSP_REPORTS: '/api/admin/csp-reports',
-  
-  // AIO Events Submissions (Admin) - via misc.js
-  ADMIN_AIO_EVENTS_SUBMISSIONS: '/api/admin/aio-events-submissions',
   
   // Official Invitations (Super Admin Only)
   CREATE_OFFICIAL_INVITATION: '/api/admin/official-invitations/create',

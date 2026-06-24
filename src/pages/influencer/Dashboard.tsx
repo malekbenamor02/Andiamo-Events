@@ -23,7 +23,6 @@ import {
   Receipt,
   RefreshCw,
   Tag,
-  TrendingUp,
 } from 'lucide-react';
 
 interface InfluencerDashboardProps {
@@ -45,16 +44,6 @@ interface SalesRow {
   status: string;
   total_amount_dt: number;
   created_at: string;
-}
-
-function formulaLabel(formule: string, isEn: boolean) {
-  const map: Record<string, { en: string; fr: string }> = {
-    essentielle: { en: 'Essential', fr: 'Essentielle' },
-    pro: { en: 'Pro', fr: 'Pro' },
-    premium: { en: 'Premium', fr: 'Premium' },
-  };
-  const row = map[formule];
-  return row ? (isEn ? row.en : row.fr) : formule;
 }
 
 function statusLabel(status: string, isEn: boolean) {
@@ -80,10 +69,6 @@ function statusDotClass(status: string) {
   if (status === 'paid_online') return 'bg-blue-500';
   if (status === 'cancelled') return 'bg-muted-foreground/50';
   return 'bg-muted-foreground/50';
-}
-
-function formatDt(amount: number) {
-  return `${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DT`;
 }
 
 function formatDate(iso: string, isEn: boolean) {
@@ -269,18 +254,12 @@ function DashboardContent({ language }: InfluencerDashboardProps) {
             </Card>
           ) : (
             <>
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <StatCard
                   icon={CheckCircle2}
                   label={isEn ? 'Approved sales' : 'Ventes approuvées'}
                   value={String(summary?.approved_count ?? 0)}
                   hint={isEn ? 'Confirmed registrations' : 'Inscriptions confirmées'}
-                />
-                <StatCard
-                  icon={TrendingUp}
-                  label={isEn ? 'Approved revenue' : 'Revenus approuvés'}
-                  value={formatDt(summary?.approved_revenue_dt ?? 0)}
-                  hint={isEn ? 'From approved registrations' : 'Des inscriptions approuvées'}
                 />
                 <StatCard
                   icon={Clock3}
@@ -344,17 +323,15 @@ function DashboardContent({ language }: InfluencerDashboardProps) {
                       <TableHeader>
                         <TableRow className="hover:bg-transparent border-border/40">
                           <TableHead className="pl-5">{isEn ? 'Ref' : 'Réf.'}</TableHead>
-                          <TableHead>{isEn ? 'Formula' : 'Formule'}</TableHead>
                           <TableHead>{isEn ? 'Promo' : 'Code'}</TableHead>
                           <TableHead>Status</TableHead>
-                          <TableHead className="text-right">{isEn ? 'Total' : 'Total'}</TableHead>
                           <TableHead className="pr-5">{isEn ? 'Date' : 'Date'}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {rows.length === 0 ? (
                           <TableRow className="hover:bg-transparent">
-                            <TableCell colSpan={6} className="py-16">
+                            <TableCell colSpan={4} className="py-16">
                               <div className="flex flex-col items-center justify-center gap-3 text-center">
                                 <div className="flex h-11 w-11 items-center justify-center rounded-full border border-dashed border-border/80 bg-muted/20">
                                   <Receipt className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
@@ -378,7 +355,6 @@ function DashboardContent({ language }: InfluencerDashboardProps) {
                               <TableCell className="pl-5 font-mono text-xs text-muted-foreground">
                                 {r.registration_number}
                               </TableCell>
-                              <TableCell className="text-sm">{formulaLabel(r.formule, isEn)}</TableCell>
                               <TableCell>
                                 {r.promo_code ? (
                                   <span className="font-mono text-xs text-muted-foreground">{r.promo_code}</span>
@@ -388,9 +364,6 @@ function DashboardContent({ language }: InfluencerDashboardProps) {
                               </TableCell>
                               <TableCell>
                                 <StatusDot status={r.status} isEn={isEn} />
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums text-sm font-medium">
-                                {formatDt(r.total_amount_dt)}
                               </TableCell>
                               <TableCell className="pr-5 text-xs text-muted-foreground whitespace-nowrap">
                                 {formatDate(r.created_at, isEn)}

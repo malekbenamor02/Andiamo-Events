@@ -70,6 +70,7 @@ import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { useToast } from "@/hooks/use-toast";
 import type { AmbassadorApplication, Ambassador, SelectedMotivation } from "../../types";
 import type { ApplicationsTabProps } from "../ApplicationsTab";
+import { AdminResendEmailConfirm, ADMIN_RESEND_EMAIL_CONFIRM_CLOSE_MS } from "../AdminResendEmailConfirm";
 
 export type ApplicationsListCoreProps = ApplicationsTabProps & {
   title?: string;
@@ -171,6 +172,8 @@ export function ApplicationsListCore({
 }: ApplicationsListCoreProps) {
   const { toast } = useToast();
   const [bulkSelectVisible, setBulkSelectVisible] = useState(false);
+  const [resendTarget, setResendTarget] = useState<AmbassadorApplication | null>(null);
+  const [isResendConfirmOpen, setIsResendConfirmOpen] = useState(false);
 
   const bulkSelectableIds = enableBulkSelect
     ? filteredApplications.filter((a) => a.status === "pending").map((a) => a.id)
@@ -263,7 +266,7 @@ export function ApplicationsListCore({
             placeholder="Search by name, email, or phone..."
             value={applicationSearchTerm}
             onChange={(e) => setApplicationSearchTerm(e.target.value)}
-            className="pl-10 transition-all duration-300 focus:scale-105"
+            className="pl-10"
           />
         </div>
 
@@ -878,23 +881,14 @@ export function ApplicationsListCore({
                           {application.status === "approved" && (
                             <div className="flex gap-1">
                               <Button
-                                onClick={() => onResendEmail(application)}
+                                onClick={() => {
+                                  setResendTarget(application);
+                                  setIsResendConfirmOpen(true);
+                                }}
                                 disabled={processingId === application.id}
                                 size="sm"
-                                style={{
-                                  background: "#3B82F6",
-                                  color: "#FFFFFF",
-                                  fontSize: "0.7rem",
-                                  padding: "0.25rem 0.5rem",
-                                  height: "auto",
-                                }}
-                                className="transform hover:scale-105 transition-all duration-300"
-                                onMouseEnter={(e) =>
-                                  (e.currentTarget.style.background = "#2563EB")
-                                }
-                                onMouseLeave={(e) =>
-                                  (e.currentTarget.style.background = "#3B82F6")
-                                }
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
                                 title={
                                   emailStatus[application.id] === "failed"
                                     ? language === "en"
@@ -911,14 +905,14 @@ export function ApplicationsListCore({
                               >
                                 {processingId === application.id ? (
                                   <>
-                                    <Loader size="sm" className="[background:white] shrink-0 mr-1" />
+                                    <Loader size="sm" className="mr-1 shrink-0" />
                                     <span className="text-xs">
                                       {language === "en" ? "Sending..." : "Envoi..."}
                                     </span>
                                   </>
                                 ) : (
                                   <>
-                                    <MailIcon className="w-2.5 h-2.5 mr-1" />
+                                    <MailIcon className="mr-1 h-3 w-3" />
                                     <span className="text-xs">
                                       {language === "en" ? "Resend" : "Renvoyer"}
                                     </span>
@@ -1060,6 +1054,27 @@ export function ApplicationsListCore({
           </div>
         </DialogContent>
       </Dialog>
+
+      <AdminResendEmailConfirm
+        open={isResendConfirmOpen}
+        onOpenChange={(nextOpen) => {
+          setIsResendConfirmOpen(nextOpen);
+          if (!nextOpen) {
+            window.setTimeout(() => setResendTarget(null), ADMIN_RESEND_EMAIL_CONFIRM_CLOSE_MS);
+          }
+        }}
+        kind={isResendConfirmOpen ? "approval" : null}
+        language={language}
+        recipientName={resendTarget?.full_name}
+        recipientEmail={resendTarget?.email}
+        recipientPhone={resendTarget?.phone_number}
+        onConfirm={async () => {
+          if (!resendTarget) return;
+          setIsResendConfirmOpen(false);
+          await onResendEmail(resendTarget);
+        }}
+        isSubmitting={!!resendTarget && processingId === resendTarget.id}
+      />
     </div>
   );
 }

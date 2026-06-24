@@ -14,19 +14,14 @@ let isRedirecting = false;
  * 2. Redirecting to login page
  * 3. Preventing console errors
  */
-const handleUnauthorized = () => {
-  // Prevent multiple redirects
+const handleUnauthorized = (loginPath = '/admin/login') => {
   if (isRedirecting) {
     return;
   }
   isRedirecting = true;
 
-  // No localStorage cleanup needed - session is managed by server token only
-
-  // Redirect to login page
-  // Use a small delay to ensure cleanup happens first
   setTimeout(() => {
-    window.location.href = '/admin/login';
+    window.location.href = loginPath;
   }, 100);
 };
 
@@ -54,24 +49,25 @@ export const apiFetch = async (
     // This happens when JWT 'exp' field has passed or token is invalid
     // BUT: Only redirect for admin endpoints, not for ambassador/login endpoints
     if (response.status === 401) {
-      // Check if this is an admin endpoint that requires token-based auth
       const isAdminEndpoint =
         url.includes('/api/admin-') ||
         url.includes('/api/verify-admin') ||
         url.includes('/api/send-email') ||
         url.includes('/api/resend-order-completion-email') ||
         url.includes('/api/email-delivery-logs');
+
+      const isAmbassadorSessionEndpoint =
+        url.includes('/api/ambassador/me') ||
+        url.includes('/api/ambassador/orders') ||
+        url.includes('/api/ambassador/performance') ||
+        url.includes('/api/ambassador/confirm-cash') ||
+        url.includes('/api/ambassador/cancel-order') ||
+        url.includes('/api/ambassador-update-password') ||
+        url.includes('/api/ambassador-logout');
       
-      // Only redirect for admin endpoints (token expiration)
-      // For ambassador/login endpoints, 401 just means invalid credentials - don't redirect
       if (isAdminEndpoint) {
-        // STRICT: Token expired or invalid - redirect immediately
-        // No token refresh, no extension - session is over
-        handleUnauthorized();
+        handleUnauthorized('/admin/login');
         
-        // Return a response that won't cause console errors
-        // Create a mock response that indicates unauthorized
-        // This prevents the browser from logging the 401 error
         return new Response(
           JSON.stringify({ 
             error: 'Unauthorized', 
@@ -87,8 +83,24 @@ export const apiFetch = async (
           }
         );
       }
-      // For non-admin endpoints (like ambassador-login), just return the original response
-      // so the error message can be displayed to the user
+
+      if (isAmbassadorSessionEndpoint && !window.location.pathname.startsWith('/ambassador/auth')) {
+        handleUnauthorized('/ambassador/auth');
+        return new Response(
+          JSON.stringify({
+            error: 'Unauthorized',
+            valid: false,
+            reason: 'Ambassador session expired or invalid',
+          }),
+          {
+            status: 401,
+            statusText: 'Unauthorized',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
     }
 
     // Handle 404: unknown routes vs valid JSON errors (e.g. "Order not found")

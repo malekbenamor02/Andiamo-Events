@@ -1,18 +1,39 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
 
 const ProtectedAmbassadorRoute = ({ children, language }) => {
   const navigate = useNavigate();
   const [isAuth, setIsAuth] = useState(false);
 
   useEffect(() => {
-    const session = localStorage.getItem('ambassadorSession');
-    if (!session) {
-      navigate('/ambassador/auth');
-    } else {
-      setIsAuth(true);
-    }
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`${getApiBaseUrl()}${API_ROUTES.AMBASSADOR_ME}`, {
+          credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (!res.ok || !data?.ambassador) {
+          navigate('/ambassador/auth');
+          return;
+        }
+
+        setIsAuth(true);
+      } catch {
+        if (!cancelled) {
+          navigate('/ambassador/auth');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
 
   if (!isAuth) {
@@ -27,4 +48,4 @@ const ProtectedAmbassadorRoute = ({ children, language }) => {
   return children;
 };
 
-export default ProtectedAmbassadorRoute; 
+export default ProtectedAmbassadorRoute;

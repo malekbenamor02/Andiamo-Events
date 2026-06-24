@@ -24,7 +24,8 @@ import {
 } from "./components/AnimatedTabPanel";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, User, AlertCircle } from "lucide-react";
+import { LogOut, AlertCircle } from "lucide-react";
+import { SalesClosedState } from "./components/SalesClosedState";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { fetchSalesSettings, subscribeToSalesSettings } from "@/lib/salesSettings";
 import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
@@ -175,8 +176,9 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     cod: "Cash on Delivery",
     online: "Online Payment",
     salesDisabled: "Sales are currently disabled",
-    salesDisabledMessage: "Sales are not open yet. Please check back later.",
-    salesDisabledTitle: "Sales Temporarily Unavailable",
+    salesDisabledMessage:
+      "Orders will show up here once sales go live. Check back soon — there's nothing to do for now.",
+    salesDisabledTitle: "Sales haven't started yet",
     suspended: "Account Paused",
     suspendedMessage: "Your ambassador account has been temporarily paused. Please contact support for more information.",
     suspendedTitle: "Account Temporarily Paused",
@@ -247,45 +249,36 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     cod: "Paiement à la Livraison",
     online: "Paiement en Ligne",
     salesDisabled: "Les ventes sont actuellement désactivées",
-    salesDisabledMessage: "Les ventes ne sont pas encore ouvertes. Veuillez réessayer plus tard.",
-    salesDisabledTitle: "Ventes Temporairement Indisponibles",
+    salesDisabledMessage:
+      "Les commandes apparaîtront ici dès l'ouverture des ventes. Revenez bientôt — rien à faire pour l'instant.",
+    salesDisabledTitle: "Les ventes n'ont pas encore commencé",
     suspended: "Compte en Pause",
     suspendedMessage: "Votre compte d'ambassadeur a été temporairement mis en pause. Veuillez contacter le support pour plus d'informations.",
     suspendedTitle: "Compte Temporairement en Pause"
   };
 
   useEffect(() => {
-    const session = localStorage.getItem('ambassadorSession');
-    if (!session) {
-      navigate('/ambassador/auth');
-      return;
-    }
-    const { user } = JSON.parse(session);
-    
-    // Fetch latest ambassador status from database to check if they were paused
     const loadAmbassadorData = async () => {
       try {
-        const { data: latestAmbassador, error } = await supabase
-          .from('ambassadors')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        
-        if (!error && latestAmbassador) {
-          // Update ambassador state with latest data (including status)
-          setAmbassador(latestAmbassador);
+        const res = await fetch(
+          `${getApiBaseUrl()}${API_ROUTES.AMBASSADOR_ME}`,
+          { credentials: 'include' }
+        );
+        const data = await res.json().catch(() => ({}));
 
-          if (latestAmbassador.status === 'suspended') {
-            setLoading(false);
-          }
-        } else {
-          // If fetch fails, use cached user data
-          setAmbassador(user);
+        if (!res.ok || !data?.ambassador) {
+          navigate('/ambassador/auth');
+          return;
+        }
+
+        setAmbassador(data.ambassador as Ambassador);
+
+        if (data.ambassador.status === 'suspended') {
+          setLoading(false);
         }
       } catch (error) {
-        console.error('Error fetching latest ambassador status:', error);
-        // If fetch fails, use cached user data
-        setAmbassador(user);
+        console.error('Error fetching ambassador session:', error);
+        navigate('/ambassador/auth');
       }
     };
     
@@ -341,7 +334,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   };
 
   const fetchData = useCallback(
-    async (ambassadorId: string, options?: { silent?: boolean }) => {
+    async (options?: { silent?: boolean }) => {
       if (eventsFetchState !== "loaded") {
         return;
       }
@@ -365,10 +358,15 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
         const newOrdersUrl =
           buildFullApiUrl(API_ROUTES.AMBASSADOR_ORDERS, apiBase) +
-          `?ambassadorId=${encodeURIComponent(ambassadorId)}&status=PENDING_CASH${eventQs}`;
+          `?status=PENDING_CASH${eventQs}`;
         const newOrdersResponse = await fetch(newOrdersUrl, {
           credentials: "include",
         });
+
+        if (newOrdersResponse.status === 401) {
+          navigate('/ambassador/auth');
+          return;
+        }
 
         if (!newOrdersResponse.ok) {
           throw new Error("Failed to fetch new orders");
@@ -382,7 +380,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
         const historyUrl =
           buildFullApiUrl(API_ROUTES.AMBASSADOR_ORDERS, apiBase) +
-          `?ambassadorId=${encodeURIComponent(ambassadorId)}&limit=100${eventQs}`;
+          `?limit=100${eventQs}`;
         const historyResponse = await fetch(historyUrl, {
           credentials: "include",
         });
@@ -400,7 +398,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         try {
           const performanceUrl =
             buildFullApiUrl(API_ROUTES.AMBASSADOR_PERFORMANCE, apiBase) +
-            `?ambassadorId=${encodeURIComponent(ambassadorId)}${eventQs}`;
+            `?${eventQs.slice(1)}`;
           const performanceResponse = await fetch(performanceUrl, {
             credentials: "include",
           });
@@ -484,7 +482,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         }
       }
     },
-    [eventsFetchState, selectedEventFilter, t.error, toast]
+    [eventsFetchState, selectedEventFilter, t.error, toast, navigate]
   );
 
   useEffect(() => {
@@ -517,7 +515,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   useEffect(() => {
     if (!ambassador?.id || ambassador.status === "suspended") return;
     if (eventsFetchState !== "loaded") return;
-    void fetchData(ambassador.id);
+    void fetchData();
   }, [
     ambassador?.id,
     ambassador?.status,
@@ -541,24 +539,21 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     }
 
     try {
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          status: 'PENDING_ADMIN_APPROVAL',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', orderId);
+      const apiBase = getApiBaseUrl();
+      const response = await fetch(
+        buildFullApiUrl(API_ROUTES.AMBASSADOR_CONFIRM_CASH, apiBase),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ orderId }),
+        }
+      );
 
-      if (error) throw error;
-
-      // Log cash confirmation (status change itself is logged by DB trigger)
-      await supabase.from('order_logs').insert({
-        order_id: orderId,
-        action: 'cash_confirmed',
-        performed_by: ambassador?.id,
-        performed_by_type: 'ambassador',
-        details: { from_status: 'PENDING_CASH', to_status: 'PENDING_ADMIN_APPROVAL' }
-      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to confirm cash payment.');
+      }
 
       setIsConfirmDialogOpen(false);
       setPaymentSuccessSummary({
@@ -568,7 +563,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       setPaymentSuccessOpen(true);
       setSelectedOrder(null);
 
-      void fetchData(ambassador?.id || "", { silent: true });
+      void fetchData({ silent: true });
     } catch (error: any) {
       console.error('Error confirming cash:', error);
       const errorMessage = error?.message || error?.error?.message || 'Failed to confirm cash payment.';
@@ -636,34 +631,23 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     }
 
     try {
-      // Cancel order without reassignment
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({
-          status: 'CANCELLED',
-          cancelled_by: 'ambassador',
-          cancellation_reason: cancellationReason.trim(),
-          cancelled_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedOrder.id);
+      const apiBase = getApiBaseUrl();
+      const response = await fetch(
+        buildFullApiUrl(API_ROUTES.AMBASSADOR_CANCEL_ORDER, apiBase),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            orderId: selectedOrder.id,
+            reason: cancellationReason.trim(),
+          }),
+        }
+      );
 
-      if (updateError) {
-        throw new Error(updateError.message || 'Failed to update order status');
-      }
-
-      // Log the action (don't fail if logging fails)
-      const { error: logError } = await supabase.from('order_logs').insert({
-        order_id: selectedOrder.id,
-        action: 'cancelled',
-        performed_by: ambassador?.id,
-        performed_by_type: 'ambassador',
-        details: { reason: cancellationReason.trim() }
-      });
-
-      if (logError) {
-        console.warn('Failed to log cancellation:', logError);
-        // Don't throw - order is cancelled, logging is secondary
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to cancel order.');
       }
 
       setIsCancelDialogOpen(false);
@@ -675,7 +659,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       setSelectedOrder(null);
       setCancellationReason("");
 
-      void fetchData(ambassador?.id || "", { silent: true });
+      void fetchData({ silent: true });
     } catch (error: any) {
       console.error('Error cancelling order:', error);
       const errorMessage = error?.message || error?.error?.message || 'Failed to cancel order.';
@@ -725,8 +709,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
           body: JSON.stringify({
-            ambassadorId: ambassador?.id,
             newPassword: profileForm.password
           })
         });
@@ -739,14 +723,20 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
         toast({
           title: t.profileUpdated,
+          description: result.requiresLogin
+            ? (language === 'en'
+              ? 'Password updated. Please log in again.'
+              : 'Mot de passe mis à jour. Veuillez vous reconnecter.')
+            : undefined,
           variant: "default"
         });
 
         setIsProfileDialogOpen(false);
-        // Reset password fields
         setProfileForm({ password: '', confirmPassword: '' });
-        
-        // No need to refresh ambassador data since only password changed
+
+        if (result.requiresLogin) {
+          navigate('/ambassador/auth');
+        }
         return;
       }
 
@@ -768,8 +758,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     }
   };
 
-  const handleLogout = () => {
-    // Log ambassador logout
+  const handleLogout = async () => {
     if (ambassador) {
       logger.action('Ambassador logged out', {
         category: 'authentication',
@@ -781,8 +770,16 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         }
       });
     }
-    
-    localStorage.removeItem('ambassadorSession');
+
+    try {
+      await fetch(`${getApiBaseUrl()}${API_ROUTES.AMBASSADOR_LOGOUT}`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {
+      // proceed to auth page even if logout request fails
+    }
+
     navigate('/ambassador/auth');
   };
 
@@ -953,26 +950,11 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
             </div>
           </div>
 
-          {/* Sales Disabled Message */}
-          <Card className="border-destructive/20 shadow-lg">
-            <CardContent className="pt-6">
-              <div className="text-center space-y-6 py-8">
-                <div className="flex justify-center">
-                  <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center">
-                    <AlertCircle className="w-10 h-10 text-destructive" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
-                    {t.salesDisabledTitle}
-                  </h2>
-                  <p className="text-muted-foreground text-lg">
-                    {t.salesDisabledMessage}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SalesClosedState
+            language={language}
+            title={t.salesDisabledTitle}
+            message={t.salesDisabledMessage}
+          />
         </div>
       </div>
     );

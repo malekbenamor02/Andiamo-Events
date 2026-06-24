@@ -46,15 +46,14 @@ import {
   Mail,
   MapPin,
   Search,
-  Eye,
-  EyeOff,
   RefreshCw,
 } from "lucide-react";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { formatAmbassadorLocationLabel } from "@/lib/ambassadors/extraVilles";
-import { AmbassadorExtraVillesPicker } from "./AmbassadorExtraVillesPicker";
+import { EditAmbassadorForm } from "./EditAmbassadorForm";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import type {
   Ambassador,
   NewAmbassadorForm,
@@ -271,342 +270,36 @@ export function AmbassadorsTab({
                 {t.add}
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
-              <DialogHeader>
-                <DialogTitle>
+            <DialogContent
+              className={cn(
+                "ambassador-edit-dialog flex max-h-[90dvh] w-[min(100%,calc(100vw-2rem))] max-w-2xl flex-col gap-0 overflow-hidden rounded-xl p-0 sm:rounded-xl",
+                "[&_input]:transition-none [&_textarea]:transition-none [&_[role=combobox]]:transition-none"
+              )}
+            >
+              <DialogHeader className="shrink-0 space-y-1 border-b border-border/60 px-5 py-4 sm:px-6">
+                <DialogTitle className="text-base font-semibold">
                   {editingAmbassador?.id
-                    ? "Edit Ambassador"
-                    : "Add New Ambassador"}
+                    ? language === "en"
+                      ? "Edit ambassador"
+                      : "Modifier l'ambassadeur"
+                    : language === "en"
+                      ? "Add ambassador"
+                      : "Ajouter un ambassadeur"}
                 </DialogTitle>
               </DialogHeader>
+
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 scrollbar-hidden sm:px-6">
               {editingAmbassador?.id ? (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="ambassadorName">
-                        {t.ambassadorName}{" "}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="ambassadorName"
-                        value={editingAmbassador?.full_name || ""}
-                        onChange={(e) => {
-                          setEditingAmbassador((prev) => ({
-                            ...prev,
-                            full_name: e.target.value,
-                          }));
-                          if (ambassadorErrors.full_name) {
-                            setAmbassadorErrors((prev) => ({
-                              ...prev,
-                              full_name: undefined,
-                            }));
-                          }
-                        }}
-                        className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.full_name ? "border-destructive" : ""}`}
-                        required
-                      />
-                      {ambassadorErrors.full_name && (
-                        <p className="text-sm text-destructive mt-1">
-                          {ambassadorErrors.full_name}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="ambassadorAge">
-                        {language === "en" ? "Age" : "Âge"}{" "}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="ambassadorAge"
-                        type="number"
-                        min={16}
-                        max={99}
-                        value={editingAmbassador?.age ?? ""}
-                        onChange={(e) => {
-                          const ageValue = e.target.value;
-                          setEditingAmbassador((prev) => ({
-                            ...prev,
-                            age: ageValue ? parseInt(ageValue, 10) : undefined,
-                          }));
-                        }}
-                        className="transition-all duration-300 focus:scale-105"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="ambassadorPhone">
-                        {t.ambassadorPhone}{" "}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="ambassadorPhone"
-                        value={editingAmbassador?.phone || ""}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          const digitsOnly = value.replace(/\D/g, "");
-                          const limited = digitsOnly.slice(0, 8);
-                          setEditingAmbassador((prev) => ({
-                            ...prev,
-                            phone: limited,
-                          }));
-                          if (ambassadorErrors.phone) {
-                            setAmbassadorErrors((prev) => ({
-                              ...prev,
-                              phone: undefined,
-                            }));
-                          }
-                        }}
-                        placeholder="24951234"
-                        className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.phone ? "border-destructive" : ""}`}
-                        required
-                      />
-                      {ambassadorErrors.phone && (
-                        <p className="text-sm text-destructive mt-1">
-                          {ambassadorErrors.phone}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="ambassadorEmail">
-                        {t.ambassadorEmail}{" "}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="ambassadorEmail"
-                        type="email"
-                        value={editingAmbassador?.email || ""}
-                        onChange={(e) => {
-                          setEditingAmbassador((prev) => ({
-                            ...prev,
-                            email: e.target.value,
-                          }));
-                          if (ambassadorErrors.email) {
-                            setAmbassadorErrors((prev) => ({
-                              ...prev,
-                              email: undefined,
-                            }));
-                          }
-                        }}
-                        className={ambassadorErrors.email ? "border-destructive" : ""}
-                        required
-                      />
-                      {ambassadorErrors.email && (
-                        <p className="text-sm text-destructive mt-1">
-                          {ambassadorErrors.email}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="ambassadorCity">
-                        {t.ambassadorCity}{" "}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Select
-                        value={editingAmbassador?.city || ""}
-                        onValueChange={(value) => {
-                          setEditingAmbassador((prev) => ({
-                            ...prev,
-                            city: value,
-                            ville:
-                              value === "Sousse" || value === "Tunis"
-                                ? prev?.ville ?? ""
-                                : "",
-                            extra_villes: [],
-                          }));
-                          if (ambassadorErrors.city) {
-                            setAmbassadorErrors((prev) => ({
-                              ...prev,
-                              city: undefined,
-                            }));
-                          }
-                        }}
-                      >
-                        <SelectTrigger
-                          className={
-                            ambassadorErrors.city ? "border-destructive" : ""
-                          }
-                        >
-                          <SelectValue
-                            placeholder={
-                              language === "en"
-                                ? "Select a city"
-                                : "Sélectionner une ville"
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CITIES.map((city) => (
-                            <SelectItem key={city} value={city}>
-                              {city}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {ambassadorErrors.city && (
-                        <p className="text-sm text-destructive mt-1">
-                          {ambassadorErrors.city}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {(editingAmbassador?.city === "Sousse" ||
-                    editingAmbassador?.city === "Tunis") && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="ambassadorVille">
-                          {language === "en"
-                            ? "Ville (Neighborhood)"
-                            : "Quartier"}{" "}
-                          <span className="text-destructive">*</span>
-                        </Label>
-                        <Select
-                          value={editingAmbassador?.ville || ""}
-                          onValueChange={(value) => {
-                            setEditingAmbassador((prev) => ({
-                              ...prev,
-                              ville: value,
-                              extra_villes: (prev?.extra_villes ?? []).filter(
-                                (v) => v !== value
-                              ),
-                            }));
-                            if (ambassadorErrors.ville) {
-                              setAmbassadorErrors((prev) => ({
-                                ...prev,
-                                ville: undefined,
-                              }));
-                            }
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue
-                              placeholder={
-                                language === "en"
-                                  ? "Select a neighborhood"
-                                  : "Sélectionner un quartier"
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {editingAmbassador?.city === "Sousse" &&
-                              SOUSSE_VILLES.map((ville) => (
-                                <SelectItem key={ville} value={ville}>
-                                  {ville}
-                                </SelectItem>
-                              ))}
-                            {editingAmbassador?.city === "Tunis" &&
-                              TUNIS_VILLES.map((ville) => (
-                                <SelectItem key={ville} value={ville}>
-                                  {ville}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                        {ambassadorErrors.ville && (
-                          <p className="text-sm text-destructive mt-1">
-                            {ambassadorErrors.ville}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {(editingAmbassador?.city === "Sousse" ||
-                    editingAmbassador?.city === "Tunis") && (
-                    <AmbassadorExtraVillesPicker
-                      city={editingAmbassador.city}
-                      primaryVille={editingAmbassador.ville}
-                      value={editingAmbassador.extra_villes ?? []}
-                      onChange={(extra_villes) =>
-                        setEditingAmbassador((prev) =>
-                          prev ? { ...prev, extra_villes } : prev
-                        )
-                      }
-                      language={language}
-                    />
-                  )}
-                  <div>
-                    <Label htmlFor="ambassadorSocialLink">
-                      {language === "en"
-                        ? "Instagram Link"
-                        : "Lien Instagram"}
-                    </Label>
-                    <Input
-                      id="ambassadorSocialLink"
-                      type="url"
-                      value={editingAmbassador?.social_link || ""}
-                      onChange={(e) => {
-                        setEditingAmbassador((prev) => ({
-                          ...prev,
-                          social_link: e.target.value,
-                        }));
-                        if (ambassadorErrors.social_link) {
-                          setAmbassadorErrors((prev) => ({
-                            ...prev,
-                            social_link: undefined,
-                          }));
-                        }
-                      }}
-                      placeholder="https://www.instagram.com/username"
-                      className="transition-all duration-300 focus:scale-105"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {language === "en"
-                        ? "Must start with https://www.instagram.com/ or https://instagram.com/"
-                        : "Doit commencer par https://www.instagram.com/ ou https://instagram.com/"}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="ambassadorPassword">
-                        {t.ambassadorPassword}
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="ambassadorPassword"
-                          type={showPassword ? "text" : "password"}
-                          value={editingAmbassador?.password || ""}
-                          onChange={(e) => {
-                            setEditingAmbassador((prev) => ({
-                              ...prev,
-                              password: e.target.value,
-                            }));
-                            if (ambassadorErrors.password) {
-                              setAmbassadorErrors((prev) => ({
-                                ...prev,
-                                password: undefined,
-                              }));
-                            }
-                          }}
-                          className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.password ? "border-destructive" : ""}`}
-                          placeholder={
-                            language === "en"
-                              ? "Leave empty to keep current password"
-                              : "Laisser vide pour garder le mot de passe actuel"
-                          }
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-2 top-1/2 transform -translate-y-1/2 transition-all duration-300 hover:scale-110"
-                        >
-                          {showPassword ? (
-                            <EyeOff className="w-4 h-4 animate-pulse" />
-                          ) : (
-                            <Eye className="w-4 h-4 animate-pulse" />
-                          )}
-                        </button>
-                      </div>
-                      {ambassadorErrors.password && (
-                        <p className="text-sm text-destructive mt-1">
-                          {ambassadorErrors.password}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <EditAmbassadorForm
+                  language={language}
+                  t={t}
+                  ambassador={editingAmbassador}
+                  setAmbassador={setEditingAmbassador}
+                  errors={ambassadorErrors}
+                  setErrors={setAmbassadorErrors}
+                  showPassword={showPassword}
+                  setShowPassword={setShowPassword}
+                />
               ) : (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -630,7 +323,7 @@ export function AmbassadorsTab({
                             }));
                           }
                         }}
-                        className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.full_name ? "border-destructive" : ""}`}
+                        className={ambassadorErrors.full_name ? "border-destructive" : ""}
                         required
                       />
                       {ambassadorErrors.full_name && (
@@ -662,7 +355,7 @@ export function AmbassadorsTab({
                             }));
                           }
                         }}
-                        className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.full_name ? "border-destructive" : ""}`}
+                        className={ambassadorErrors.full_name ? "border-destructive" : ""}
                         required
                       />
                       {ambassadorErrors.full_name && (
@@ -700,7 +393,7 @@ export function AmbassadorsTab({
                           }
                         }}
                         placeholder="24951234"
-                        className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.phone ? "border-destructive" : ""}`}
+                        className={ambassadorErrors.phone ? "border-destructive" : ""}
                         required
                       />
                       {ambassadorErrors.phone && (
@@ -822,7 +515,7 @@ export function AmbassadorsTab({
                           }
                         }}
                         placeholder="https://www.instagram.com/username"
-                        className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.social_link ? "border-destructive" : ""}`}
+                        className={ambassadorErrors.social_link ? "border-destructive" : ""}
                       />
                       {ambassadorErrors.social_link && (
                         <p className="text-sm text-destructive mt-1">
@@ -916,7 +609,6 @@ export function AmbassadorsTab({
                           : "Pourquoi voulez-vous devenir ambassadeur ? (optionnel)"
                       }
                       rows={4}
-                      className="transition-all duration-300 focus:scale-105"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       {language === "en"
@@ -933,11 +625,12 @@ export function AmbassadorsTab({
                   </div>
                 </div>
               )}
-              <div className="flex justify-end gap-2 mt-6">
+              </div>
+
+              <div className="flex shrink-0 justify-end gap-2 border-t border-border/60 px-5 py-4 sm:px-6">
                 <DialogClose asChild>
                   <Button
                     variant="outline"
-                    className="transform hover:scale-105 transition-all duration-300"
                     onClick={() => {
                       setNewAmbassadorForm(EMPTY_NEW_FORM);
                       setAmbassadorErrors({});
@@ -958,7 +651,6 @@ export function AmbassadorsTab({
                     }
                   }}
                   disabled={processingId === "new-ambassador"}
-                  className="transform hover:scale-105 transition-all duration-300"
                 >
                   {processingId === "new-ambassador" ? (
                     <>
@@ -967,7 +659,7 @@ export function AmbassadorsTab({
                     </>
                   ) : (
                     <>
-                      <Save className="w-4 h-4 mr-2 animate-pulse" />
+                      <Save className="w-4 h-4 mr-2" />
                       {t.save}
                     </>
                   )}

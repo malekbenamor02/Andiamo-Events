@@ -55,6 +55,22 @@ const {
   tryBuildPremiumTicketsPdfAttachmentInvitation,
 } = require('./api/_lib/render-premium-ticket-pdf.cjs');
 const { buildCampaignEmailHtml } = require('./api/_lib/campaign-email-html.cjs');
+const {
+  handleAmbassadorLogin,
+  handleAmbassadorMe,
+  handleAmbassadorLogout,
+  handleAmbassadorOrders,
+  handleAmbassadorPerformance,
+  handleAmbassadorUpdatePassword,
+  handleAmbassadorCancelOrder,
+  handleAmbassadorConfirmCash,
+} = require('./api/_lib/ambassador-routes.cjs');
+const { getClientIp: getAmbassadorClientIp } = require('./api/_lib/ambassador-auth.cjs');
+
+const ambassadorExpressDeps = {
+  parseBody: async (req) => req.body || {},
+  getClientIp: getAmbassadorClientIp,
+};
 
 // Import centralized SMS template helpers
 const {
@@ -5243,329 +5259,32 @@ app.put('/api/admin/payment-options/:type', requireAdminAuth, requireAdminPermis
 
 // POST /api/ambassador/cancel-order - Cancel order by ambassador
 app.post('/api/ambassador/cancel-order', async (req, res) => {
-  try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase not configured' });
-    }
-
-    const { orderId, ambassadorId, reason } = req.body;
-
-    if (!orderId || !ambassadorId || !reason) {
-      return res.status(400).json({
-        error: 'Missing required fields',
-        details: 'orderId, ambassadorId, and reason are required'
-      });
-    }
-
-    const dbClient = supabaseService || supabase;
-
-    // Verify order exists and belongs to ambassador
-    const { data: order, error: orderError } = await dbClient
-      .from('orders')
-      .select('id, ambassador_id, status')
-      .eq('id', orderId)
-      .single();
-
-    if (orderError || !order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    if (order.ambassador_id !== ambassadorId) {
-      return res.status(403).json({ error: 'Order does not belong to this ambassador' });
-    }
-
-    if (order.status === 'CANCELLED_BY_AMBASSADOR' || order.status === 'COMPLETED' || order.status === 'PAID') {
-      return res.status(400).json({
-        error: 'Order cannot be cancelled',
-        details: `Order status is ${order.status}`
-      });
-    }
-
-    // Update order status
-    const { error: updateError } = await dbClient
-      .from('orders')
-      .update({
-        status: 'CANCELLED_BY_AMBASSADOR',
-        cancelled_by: 'ambassador',
-        cancellation_reason: reason.trim(),
-        cancelled_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId);
-
-    if (updateError) {
-      return res.status(500).json({
-        error: 'Failed to cancel order',
-        details: updateError.message
-      });
-    }
-
-    // CRITICAL: Release stock
-    try {
-      await releaseOrderStock(orderId, `Cancelled by ambassador: ${reason.trim()}`);
-    } catch (stockError) {
-      console.error('❌ Error releasing stock on ambassador cancel:', stockError);
-      // Log but don't fail - order is cancelled, stock release is important but non-blocking
-    }
-
-    // Log cancellation
-    try {
-      await dbClient.from('order_logs').insert({
-        order_id: orderId,
-        action: 'cancelled',
-        performed_by: ambassadorId,
-        performed_by_type: 'ambassador',
-        details: { reason: reason.trim(), cancelled_by: 'ambassador' }
-      });
-    } catch (logError) {
-      console.warn('Failed to log cancellation (non-fatal):', logError);
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Order cancelled successfully'
-    });
-
-  } catch (error) {
-    console.error('Error in /api/ambassador/cancel-order:', error);
-    res.status(500).json({
-      error: 'Internal server error',
-      details: error.message
-    });
-  }
+  return handleAmbassadorCancelOrder(req, res, ambassadorExpressDeps);
 });
 
 // GET /api/ambassador/orders - Get ambassador's orders (excludes REMOVED_BY_ADMIN)
 app.get('/api/ambassador/orders', async (req, res) => {
-  try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase not configured' });
-    }
-
-    const { ambassadorId, status, limit = 100, event_id: eventIdQuery } = req.query;
-    const eventId =
-      eventIdQuery != null && String(eventIdQuery).trim() !== ''
-        ? String(eventIdQuery).trim()
-        : null;
-
-    if (!ambassadorId) {
-      return res.status(400).json({
-        error: 'Missing required field',
-        details: 'ambassadorId is required'
-      });
-    }
-
-    const dbClient = supabaseService || supabase;
-
-    // Verify ambassador exists and is approved
-    const { data: ambassador, error: ambassadorError } = await dbClient
-      .from('ambassadors')
-      .select('id, status')
-      .eq('id', ambassadorId)
-      .single();
-
-    if (ambassadorError || !ambassador) {
-      return res.status(404).json({ error: 'Ambassador not found' });
-    }
-
-    if (ambassador.status !== 'approved') {
-      return res.status(403).json({ 
-        error: 'Ambassador not approved',
-        details: 'Only approved ambassadors can access orders'
-      });
-    }
-
-    // Build query - exclude REMOVED_BY_ADMIN by default
-    let query = dbClient
-      .from('orders')
-      .select('*, order_passes (*)')
-      .eq('ambassador_id', ambassadorId)
-      .neq('status', 'REMOVED_BY_ADMIN') // Exclude removed orders
-      .order('created_at', { ascending: false })
-      .limit(parseInt(limit));
-
-    // Apply status filter if provided
-    if (status) {
-      if (status === 'REMOVED_BY_ADMIN') {
-        // If explicitly requesting removed orders, show only those
-        query = dbClient
-          .from('orders')
-          .select('*, order_passes (*)')
-          .eq('ambassador_id', ambassadorId)
-          .eq('status', 'REMOVED_BY_ADMIN')
-          .order('created_at', { ascending: false })
-          .limit(parseInt(limit));
-      } else {
-        query = query.eq('status', status);
-      }
-    }
-
-    if (eventId) {
-      query = query.eq('event_id', eventId);
-    }
-
-    // Check and auto-reject expired orders before fetching (on-demand checking)
-    try {
-      await dbClient.rpc('auto_reject_expired_pending_cash_orders');
-    } catch (rejectError) {
-      // Log but don't fail the request if auto-rejection fails
-      console.warn('Warning: Failed to auto-reject expired orders:', rejectError);
-    }
-
-    const { data: orders, error: ordersError } = await query;
-
-    if (ordersError) {
-      console.error('Error fetching ambassador orders:', ordersError);
-      return res.status(500).json({
-        error: 'Failed to fetch orders',
-        details: ordersError.message
-      });
-    }
-
-    res.json({
-      success: true,
-      data: orders || [],
-      count: orders?.length || 0
-    });
-
-  } catch (error) {
-    console.error('Error in /api/ambassador/orders:', error);
-    res.status(500).json({
-      error: 'Internal server error',
-      details: error.message
-    });
-  }
+  return handleAmbassadorOrders(req, res);
 });
 
 // GET /api/ambassador/performance - Get ambassador performance metrics (excludes REMOVED_BY_ADMIN)
 app.get('/api/ambassador/performance', async (req, res) => {
-  try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase not configured' });
-    }
+  return handleAmbassadorPerformance(req, res);
+});
 
-    const { ambassadorId, event_id: perfEventIdQuery } = req.query;
-    const perfEventId =
-      perfEventIdQuery != null && String(perfEventIdQuery).trim() !== ''
-        ? String(perfEventIdQuery).trim()
-        : null;
+// GET /api/ambassador/me - Session profile
+app.get('/api/ambassador/me', async (req, res) => {
+  return handleAmbassadorMe(req, res);
+});
 
-    if (!ambassadorId) {
-      return res.status(400).json({
-        error: 'Missing required field',
-        details: 'ambassadorId is required'
-      });
-    }
+// POST /api/ambassador-logout
+app.post('/api/ambassador-logout', async (req, res) => {
+  return handleAmbassadorLogout(req, res);
+});
 
-    const dbClient = supabaseService || supabase;
-
-    // Verify ambassador exists and is approved
-    const { data: ambassador, error: ambassadorError } = await dbClient
-      .from('ambassadors')
-      .select('id, status')
-      .eq('id', ambassadorId)
-      .single();
-
-    if (ambassadorError || !ambassador) {
-      return res.status(404).json({ error: 'Ambassador not found' });
-    }
-
-    if (ambassador.status !== 'approved') {
-      return res.status(403).json({ 
-        error: 'Ambassador not approved',
-        details: 'Only approved ambassadors can access performance data'
-      });
-    }
-
-    let perfQuery = dbClient
-      .from('orders')
-      .select('*, order_passes (*)')
-      .eq('ambassador_id', ambassadorId)
-      .neq('status', 'REMOVED_BY_ADMIN');
-
-    if (perfEventId) {
-      perfQuery = perfQuery.eq('event_id', perfEventId);
-    }
-
-    const { data: allOrders, error: ordersError } = await perfQuery;
-
-    if (ordersError) {
-      console.error('Error fetching ambassador orders for performance:', ordersError);
-      return res.status(500).json({
-        error: 'Failed to fetch orders',
-        details: ordersError.message
-      });
-    }
-
-    const activeOrders = allOrders || [];
-
-    // Calculate metrics
-    const total = activeOrders.length;
-    const paid = activeOrders.filter(o => o.status === 'PAID').length;
-    const cancelled = activeOrders.filter(o => 
-      o.status === 'CANCELLED' || 
-      o.status === 'CANCELLED_BY_AMBASSADOR' || 
-      o.status === 'CANCELLED_BY_ADMIN'
-    ).length;
-    const rejected = activeOrders.filter(o => o.status === 'REJECTED').length;
-    const ignored = activeOrders.filter(o => 
-      (o.status === 'PENDING') && 
-      o.assigned_at &&
-      new Date(o.assigned_at).getTime() < Date.now() - 15 * 60 * 1000 &&
-      !o.accepted_at
-    ).length;
-
-    // Calculate revenue from PAID orders only
-    const revenueOrders = activeOrders.filter(o => o.status === 'PAID');
-    let totalRevenue = 0;
-    let totalPassesSold = 0;
-
-    revenueOrders.forEach(order => {
-      if (order.order_passes && Array.isArray(order.order_passes)) {
-        order.order_passes.forEach((pass) => {
-          totalRevenue += parseFloat(pass.price || 0) * parseInt(pass.quantity || 0);
-          totalPassesSold += parseInt(pass.quantity || 0);
-        });
-      } else {
-        // Fallback to total_price if order_passes not available
-        totalRevenue += parseFloat(order.total_price || 0);
-        totalPassesSold += 1;
-      }
-    });
-
-    // Calculate average response time
-    const acceptedOrders = activeOrders.filter(o => o.accepted_at && o.assigned_at);
-    let averageResponseTime = 0;
-    if (acceptedOrders.length > 0) {
-      const totalResponseTime = acceptedOrders.reduce((sum, order) => {
-        const assigned = new Date(order.assigned_at);
-        const accepted = new Date(order.accepted_at);
-        return sum + (accepted.getTime() - assigned.getTime());
-      }, 0);
-      averageResponseTime = totalResponseTime / acceptedOrders.length / 1000 / 60; // Convert to minutes
-    }
-
-    res.json({
-      success: true,
-      data: {
-        total,
-        paid,
-        cancelled,
-        rejected,
-        ignored,
-        totalPassesSold,
-        totalRevenue,
-        averageResponseTime: Math.round(averageResponseTime * 10) / 10 // Round to 1 decimal
-      }
-    });
-
-  } catch (error) {
-    console.error('Error in /api/ambassador/performance:', error);
-    res.status(500).json({
-      error: 'Internal server error',
-      details: error.message
-    });
-  }
+// POST /api/ambassador/confirm-cash
+app.post('/api/ambassador/confirm-cash', async (req, res) => {
+  return handleAmbassadorConfirmCash(req, res, ambassadorExpressDeps);
 });
 
 // POST /api/admin/cancel-order - Cancel order by admin
@@ -7482,300 +7201,12 @@ app.delete('/api/admin/clear-order-expiration', requireAdminAuth, requireAdminPe
 
 // Update ambassador password endpoint
 app.post('/api/ambassador-update-password', authLimiter, async (req, res) => {
-  try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase not configured' });
-    }
-
-    const { ambassadorId, newPassword } = req.body;
-
-    if (!ambassadorId || !newPassword) {
-      return res.status(400).json({ error: 'Ambassador ID and new password are required' });
-    }
-
-    // Validate password length
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-
-    // Hash the password
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
-
-    // Prepare update data (only password, phone cannot be changed)
-    const updateData = { password: hashedPassword };
-
-    // Update the ambassador password
-    const { error } = await supabase
-      .from('ambassadors')
-      .update(updateData)
-      .eq('id', ambassadorId);
-
-    if (error) {
-      console.error('Error updating ambassador password:', error);
-      return res.status(500).json({ error: 'Failed to update password', details: error.message });
-    }
-
-    res.status(200).json({ 
-      success: true, 
-      message: 'Password updated successfully' 
-    });
-  } catch (error) {
-    console.error('Error in ambassador password update:', error);
-    res.status(500).json({ 
-      error: 'Internal server error', 
-      details: error.message 
-    });
-  }
+  return handleAmbassadorUpdatePassword(req, res, ambassadorExpressDeps);
 });
 
 // Ambassador login endpoint
 app.post('/api/ambassador-login', authLimiter, async (req, res) => {
-  try {
-    if (!supabase) {
-      console.error('❌ /api/ambassador-login: Supabase not configured');
-      return res.status(500).json({ 
-        error: 'Server configuration error',
-        details: 'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
-      });
-    }
-
-    const { phone, password, recaptchaToken } = req.body;
-
-    if (!phone || !password) {
-      return res.status(400).json({ error: 'Phone number and password are required' });
-    }
-
-    // Normalize phone number for Tunisian format
-    // Remove spaces, dashes, parentheses, and country code prefixes
-    const normalizePhone = (phoneNum) => {
-      if (!phoneNum) return '';
-      // Remove all non-digit characters
-      let cleaned = phoneNum.replace(/[\s\-\(\)]/g, '').trim();
-      // Remove country code prefixes (+216, 216, 00216)
-      if (cleaned.startsWith('+216')) {
-        cleaned = cleaned.substring(4);
-      } else if (cleaned.startsWith('216')) {
-        cleaned = cleaned.substring(3);
-      } else if (cleaned.startsWith('00216')) {
-        cleaned = cleaned.substring(5);
-      }
-      // Remove leading zeros
-      cleaned = cleaned.replace(/^0+/, '');
-      // Should be exactly 8 digits starting with 2, 4, 5, or 9
-      return cleaned;
-    };
-    
-    const normalizedPhone = normalizePhone(phone);
-    
-    // Validate phone number format (Tunisian: 8 digits starting with 2, 4, 5, or 9)
-    if (!/^[2459]\d{7}$/.test(normalizedPhone)) {
-      console.error('❌ /api/ambassador-login: Invalid phone format:', {
-        original: phone,
-        normalized: normalizedPhone
-      });
-      return res.status(400).json({ 
-        error: 'Invalid phone number format',
-        details: 'Phone number must be 8 digits starting with 2, 4, 5, or 9'
-      });
-    }
-
-    // Verify reCAPTCHA if provided
-    if (recaptchaToken && recaptchaToken !== 'localhost-bypass-token') {
-      const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
-      if (RECAPTCHA_SECRET_KEY) {
-        try {
-          const verifyResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
-          });
-          const verifyData = await verifyResponse.json();
-          if (!verifyData.success) {
-            console.error('❌ /api/ambassador-login: reCAPTCHA verification failed');
-            return res.status(400).json({ error: 'reCAPTCHA verification failed' });
-          }
-        } catch (recaptchaError) {
-          console.error('❌ /api/ambassador-login: reCAPTCHA verification error:', recaptchaError);
-          return res.status(500).json({ error: 'reCAPTCHA verification service unavailable' });
-        }
-      }
-    }
-
-    // Try to find ambassador by phone number (try normalized first, then exact)
-    let ambassador = null;
-    let dbError = null;
-
-    // Strategy 1: Try normalized phone match (most reliable)
-    const { data: ambassadorByNormalized, error: normalizedError } = await supabase
-      .from('ambassadors')
-      .select('*')
-      .eq('phone', normalizedPhone)
-      .maybeSingle();
-
-    if (ambassadorByNormalized) {
-      ambassador = ambassadorByNormalized;
-    } else if (normalizedError && normalizedError.code !== 'PGRST116') {
-      // PGRST116 is "not found" which is OK, other errors are not
-      dbError = normalizedError;
-    } else {
-      // Strategy 2: Try exact phone match (in case it's stored with formatting)
-      const { data: ambassadorByPhone, error: phoneError } = await supabase
-        .from('ambassadors')
-        .select('*')
-        .eq('phone', phone)
-        .maybeSingle();
-
-      if (ambassadorByPhone) {
-        ambassador = ambassadorByPhone;
-      } else if (phoneError && phoneError.code !== 'PGRST116') {
-        dbError = phoneError;
-      } else {
-        // Strategy 3: Fetch all and find by normalized comparison
-        const { data: allAmbassadors, error: fetchError } = await supabase
-          .from('ambassadors')
-          .select('*');
-        
-        if (fetchError) {
-          dbError = fetchError;
-        } else if (allAmbassadors) {
-          ambassador = allAmbassadors.find(amb => {
-            const ambPhone = normalizePhone(amb.phone || '');
-            return ambPhone === normalizedPhone;
-          }) || null;
-        }
-      }
-    }
-
-    if (dbError) {
-      console.error('❌ /api/ambassador-login: Database error:', {
-        error: dbError.message,
-        code: dbError.code,
-        phone: phone
-      });
-      return res.status(500).json({ 
-        error: 'Database error',
-        details: 'Failed to verify ambassador credentials'
-      });
-    }
-
-    if (!ambassador) {
-      console.error('❌ /api/ambassador-login: Ambassador not found:', {
-        originalPhone: phone,
-        normalizedPhone: normalizedPhone,
-        phoneLength: phone.length,
-        normalizedLength: normalizedPhone.length
-      });
-      
-      // Log available ambassadors for debugging (first 5)
-      if (process.env.NODE_ENV === 'development') {
-        const { data: sampleAmbassadors } = await supabase
-          .from('ambassadors')
-          .select('phone, full_name, status')
-          .limit(5);
-      }
-      
-      return res.status(401).json({ 
-        error: 'Invalid phone number or password',
-        details: 'No ambassador found with this phone number. Please check your phone number and try again.'
-      });
-    }
-
-    // Check if ambassador has a password
-    if (!ambassador.password) {
-      console.error('❌ /api/ambassador-login: Ambassador has no password:', {
-        ambassadorId: ambassador.id,
-        phone: ambassador.phone
-      });
-      return res.status(500).json({ 
-        error: 'Account configuration error',
-        details: 'Ambassador account is not properly configured. Please contact support.'
-      });
-    }
-
-    // Verify password
-    let isPasswordValid = false;
-    try {
-      isPasswordValid = await bcrypt.compare(password, ambassador.password);
-    } catch (bcryptError) {
-      console.error('❌ /api/ambassador-login: Password verification error:', {
-        error: bcryptError.message,
-        ambassadorId: ambassador.id
-      });
-      return res.status(500).json({ 
-        error: 'Server error',
-        details: 'Failed to verify password'
-      });
-    }
-
-    if (!isPasswordValid) {
-      console.error('❌ /api/ambassador-login: Invalid password:', {
-        phone: ambassador.phone,
-        ambassadorId: ambassador.id
-      });
-      return res.status(401).json({ error: 'Invalid phone number or password' });
-    }
-
-    // Check application status
-    if (ambassador.status === 'pending') {
-      return res.status(403).json({ 
-        error: 'Your application is under review',
-        details: 'Please wait for your application to be approved before logging in.'
-      });
-    }
-
-    if (ambassador.status === 'rejected') {
-      return res.status(403).json({ 
-        error: 'Your application was not approved',
-        details: 'Your ambassador application was not approved. Please contact support if you believe this is an error.'
-      });
-    }
-
-    if (ambassador.status === 'suspended') {
-      return res.status(403).json({ 
-        error: 'Your account is suspended',
-        details: 'Your ambassador account has been suspended. Please contact support for assistance.'
-      });
-    }
-
-    // Only allow approved ambassadors to login
-    if (ambassador.status !== 'approved') {
-      console.error('❌ /api/ambassador-login: Invalid status:', {
-        phone: ambassador.phone,
-        status: ambassador.status,
-        ambassadorId: ambassador.id
-      });
-      return res.status(403).json({ 
-        error: 'Account not active',
-        details: `Your account status is "${ambassador.status}". Only approved ambassadors can log in.`
-      });
-    }
-
-    // Success - return ambassador data (frontend will handle session storage)
-    res.status(200).json({ 
-      success: true, 
-      ambassador: {
-        id: ambassador.id,
-        full_name: ambassador.full_name,
-        phone: ambassador.phone,
-        email: ambassador.email,
-        status: ambassador.status,
-        city: ambassador.city
-      }
-    });
-  } catch (error) {
-    console.error('❌ /api/ambassador-login: Unexpected error:', {
-      error: error.message,
-      stack: error.stack,
-      phone: req.body?.phone
-    });
-    res.status(500).json({ 
-      error: 'Internal server error', 
-      details: process.env.NODE_ENV === 'production' 
-        ? 'An error occurred. Please try again later.' 
-        : error.message
-    });
-  }
+  return handleAmbassadorLogin(req, res, ambassadorExpressDeps);
 });
 
 // Ambassador application endpoint

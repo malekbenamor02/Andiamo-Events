@@ -210,9 +210,6 @@ const LazyOfficialInvitationsTab = React.lazy(() =>
 const LazyOnlineOrdersTab = React.lazy(() =>
   import("./components/OnlineOrdersTab").then((m) => ({ default: m.OnlineOrdersTab })),
 );
-const LazyAioEventsTab = React.lazy(() =>
-  import("./components/AioEventsTab").then((m) => ({ default: m.AioEventsTab })),
-);
 const LazyLogsTab = React.lazy(() => import("./components/LogsTab").then((m) => ({ default: m.LogsTab })));
 const LazyMarketingTab = React.lazy(() =>
   import("./components/MarketingTab").then((m) => ({ default: m.MarketingTab })),
@@ -503,10 +500,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [cspReports, setCspReports] = useState<any[]>([]);
   const [loadingCspReports, setLoadingCspReports] = useState(false);
   
-  // AIO Events Submissions state
-  const [aioEventsSubmissions, setAioEventsSubmissions] = useState<any[]>([]);
-  const [loadingAioEventsSubmissions, setLoadingAioEventsSubmissions] = useState(false);
-  const [aioEventsPagination, setAioEventsPagination] = useState({ total: 0, limit: 50, offset: 0, hasMore: false });
   // --- Team Members State ---
   const [teamMembers, setTeamMembers] = useState([]);
   const [editingTeamMember, setEditingTeamMember] = useState(null);
@@ -4312,198 +4305,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setCspReports([]);
     } finally {
       setLoadingCspReports(false);
-    }
-  };
-
-  // Export AIO Events Submissions to Excel
-  const exportAioEventsSubmissionsToExcel = async () => {
-    try {
-      setLoadingAioEventsSubmissions(true);
-      
-      // Fetch ALL submissions (no pagination limit)
-      const params = new URLSearchParams();
-      params.append('limit', '10000'); // Large limit to get all
-      params.append('offset', '0');
-      params.append('sortBy', 'submitted_at');
-      params.append('order', 'desc');
-
-      const url = buildFullApiUrl(API_ROUTES.ADMIN_AIO_EVENTS_SUBMISSIONS) + '?' + params.toString();
-      const response = await fetch(url, {
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to fetch submissions');
-      }
-
-      const allSubmissions = data.submissions || [];
-
-      // Create workbook
-      const workbook = await createExcelWorkbook();
-      const worksheet = workbook.addWorksheet('AIO Events Submissions');
-
-      // Define columns with headers
-      worksheet.columns = [
-        { header: 'ID', key: 'id', width: 36 },
-        { header: 'Full Name', key: 'full_name', width: 25 },
-        { header: 'Email', key: 'email', width: 35 },
-        { header: 'Phone', key: 'phone', width: 20 },
-        { header: 'City', key: 'city', width: 15 },
-        { header: 'Ville (Neighborhood)', key: 'ville', width: 20 },
-        { header: 'Event ID', key: 'event_id', width: 36 },
-        { header: 'Event Name', key: 'event_name', width: 30 },
-        { header: 'Event Date', key: 'event_date', width: 20 },
-        { header: 'Event Venue', key: 'event_venue', width: 25 },
-        { header: 'Event City', key: 'event_city', width: 15 },
-        { header: 'Selected Passes', key: 'selected_passes', width: 50 },
-        { header: 'Total Quantity', key: 'total_quantity', width: 15 },
-        { header: 'Total Price (TND)', key: 'total_price', width: 18 },
-        { header: 'Language', key: 'language', width: 10 },
-        { header: 'User Agent', key: 'user_agent', width: 50 },
-        { header: 'IP Address', key: 'ip_address', width: 18 },
-        { header: 'Status', key: 'status', width: 15 },
-        { header: 'Submitted At', key: 'submitted_at', width: 25 },
-        { header: 'Created At', key: 'created_at', width: 25 },
-      ];
-
-      // Style the header row
-      worksheet.getRow(1).font = { bold: true, size: 12 };
-      worksheet.getRow(1).fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE21836' }
-      };
-      worksheet.getRow(1).font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
-      worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
-
-      // Add data rows
-      allSubmissions.forEach((submission: any) => {
-        // Format selected passes
-        let passesStr = 'N/A';
-        if (submission.selected_passes && Array.isArray(submission.selected_passes) && submission.selected_passes.length > 0) {
-          passesStr = submission.selected_passes.map((p: any) => 
-            `${p.name || p.passName || 'Pass'} × ${p.quantity || 1}`
-          ).join(', ');
-        }
-
-        // Format dates
-        const submittedDate = submission.submitted_at ? new Date(submission.submitted_at) : null;
-        const createdDate = submission.created_at ? new Date(submission.created_at) : null;
-        const eventDate = submission.event_date ? new Date(submission.event_date) : null;
-
-        worksheet.addRow({
-          id: submission.id || 'N/A',
-          full_name: submission.full_name || 'N/A',
-          email: submission.email || 'N/A',
-          phone: submission.phone || 'N/A',
-          city: submission.city || 'N/A',
-          ville: submission.ville || 'N/A',
-          event_id: submission.event_id || 'N/A',
-          event_name: submission.event_name || 'N/A',
-          event_date: eventDate ? eventDate.toLocaleDateString(language === 'en' ? 'en-US' : 'fr-FR') + ' ' + eventDate.toLocaleTimeString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
-          event_venue: submission.event_venue || 'N/A',
-          event_city: submission.event_city || 'N/A',
-          selected_passes: passesStr,
-          total_quantity: submission.total_quantity || 0,
-          total_price: submission.total_price ? parseFloat(submission.total_price).toFixed(2) : '0.00',
-          language: submission.language || 'en',
-          user_agent: submission.user_agent || 'N/A',
-          ip_address: submission.ip_address || 'N/A',
-          status: submission.status || 'submitted',
-          submitted_at: submittedDate ? submittedDate.toLocaleDateString(language === 'en' ? 'en-US' : 'fr-FR') + ' ' + submittedDate.toLocaleTimeString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
-          created_at: createdDate ? createdDate.toLocaleDateString(language === 'en' ? 'en-US' : 'fr-FR') + ' ' + createdDate.toLocaleTimeString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
-        });
-      });
-
-      // Generate filename with timestamp
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const filename = `aio-events-submissions-${timestamp}.xlsx`;
-
-      // Download file
-      const buffer = await workbook.xlsx.writeBuffer();   
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const downloadUrl = window.URL.createObjectURL(blob);       
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-
-      toast({
-        title: language === 'en' ? 'Success' : 'Succès',
-        description: language === 'en' 
-          ? `Exported ${allSubmissions.length} submissions to Excel` 
-          : `${allSubmissions.length} soumissions exportées vers Excel`,
-        variant: 'default',
-      });
-    } catch (error: any) {
-      console.error('Error exporting AIO events submissions:', error);
-      toast({
-        title: language === 'en' ? 'Error' : 'Erreur',
-        description: language === 'en' 
-          ? `Failed to export submissions: ${error.message}` 
-          : `Échec de l'exportation: ${error.message}`,
-        variant: 'destructive',
-      });
-    } finally {
-      setLoadingAioEventsSubmissions(false);
-    }
-  };
-
-  // Fetch AIO Events Submissions
-  const fetchAioEventsSubmissions = async (resetOffset = false) => {
-    try {
-      setLoadingAioEventsSubmissions(true);
-      
-      const params = new URLSearchParams();
-      params.append('limit', aioEventsPagination.limit.toString());
-      params.append('offset', resetOffset ? '0' : aioEventsPagination.offset.toString());
-      params.append('sortBy', 'submitted_at');
-      params.append('order', 'desc');
-
-      const url = buildFullApiUrl(API_ROUTES.ADMIN_AIO_EVENTS_SUBMISSIONS) + '?' + params.toString();
-      const response = await fetch(url, {
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.success) {
-        setAioEventsSubmissions(data.submissions);
-        setAioEventsPagination(data.pagination);
-      } else {
-        throw new Error(data.error || 'Failed to fetch AIO events submissions');
-      }
-    } catch (error: any) {
-      console.error('Error fetching AIO events submissions:', error);
-      toast({
-        title: language === 'en' ? 'Error' : 'Erreur',
-        description: language === 'en' 
-          ? `Failed to fetch AIO events submissions: ${error.message}` 
-          : `Échec de la récupération des soumissions AIO Events: ${error.message}`,
-        variant: 'destructive',
-      });
-      setAioEventsSubmissions([]);
-    } finally {
-      setLoadingAioEventsSubmissions(false);
     }
   };
 
@@ -9580,8 +9381,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           fetchPhoneSubscribers={fetchPhoneSubscribers}
           smsLogsCount={smsLogs.length}
           fetchSmsLogs={fetchSmsLogs}
-          aioEventsSubmissionsCount={aioEventsSubmissions.length}
-          fetchAioEventsSubmissions={fetchAioEventsSubmissions}
           consultationInquiriesCount={consultationInquiries.length}
           fetchConsultationInquiries={fetchConsultationInquiries}
           logsCount={logs.length}
@@ -9619,195 +9418,197 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 )}
               </div>
               
-              {/* Event Selector + Notification Center */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0 w-full">
-                {/* First row: Filter by Event + (optional) Reload Data */}
-                <div className="flex flex-1 items-center gap-1 sm:gap-4 min-w-0">
-                  <Label
-                    htmlFor="event-selector"
-                    className="text-sm font-medium shrink-0"
-                    style={{ color: "hsl(var(--muted-foreground))" }}
-                  >
-                    {language === "en"
-                      ? "Filter by Event:"
-                      : "Filtrer par Événement:"}
-                  </Label>
-                  {selectableDashboardEvents.length === 0 ? (
-                    <span
-                      id="event-selector"
-                      className="text-sm px-3 py-2 rounded-md border max-w-[300px] min-w-0 truncate"
-                      style={{
-                        background: "hsl(var(--card))",
-                        borderColor: "hsl(var(--border))",
-                        color: "hsl(var(--muted-foreground))",
-                      }}
-                    >
-                      {language === "en" ? "No events" : "Aucun événement"}
-                    </span>
-                  ) : (
-                    <Select
-                      value={selectedEventId}
-                      onValueChange={setSelectedEventId}
-                    >
-                      <SelectTrigger
-                        id="event-selector"
-                        className="w-[170px] sm:w-[300px] min-w-0"
-                        style={{
-                          background: "hsl(var(--card))",
-                          borderColor: "hsl(var(--border))",
-                          color: "hsl(var(--foreground))",
-                        }}
-                      >
-                        <SelectValue
-                          placeholder={
-                            language === "en"
-                              ? "Select event"
-                              : "Choisir un événement"
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {selectableDashboardEvents.map((event) => (
-                          <SelectItem key={event.id} value={event.id}>
-                            {event.name}
-                            {event.is_test ? " (test)" : ""} —{" "}
-                            {formatDateDMY(event.date, language)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  {selectedEventId && selectableDashboardEvents.length > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        fetchAllData();
-                        fetchAmbassadorSalesData();
-                        fetchOnlineOrders();
-                        void fetchPosOrdersForOverview();
-                      }}
-                      className="flex items-center gap-2 whitespace-nowrap shrink-0"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      {language === "en"
-                        ? "Reload Data"
-                        : "Recharger les Données"}
-                    </Button>
-                  )}
-                </div>
-
-                {/* Second row (mobile): Sound + Notifications */}
-                <div className="flex w-full sm:w-auto items-center justify-end gap-1">
-                  <div className="flex items-center gap-1">
-                    <Label
-                      htmlFor="sound-toggle"
-                      className="text-xs font-medium"
-                      style={{ color: "#B0B0B0" }}
-                    >
-                      {language === "en" ? "Sound" : "Son"}
-                    </Label>
-                    <Switch
-                      id="sound-toggle"
-                      checked={soundEnabled}
-                      onCheckedChange={(checked) => {
-                        const next = Boolean(checked);
-                        setSoundEnabled(next);
-                        if (typeof window !== "undefined") {
-                          try {
-                            window.localStorage.setItem(
-                              "adminNotificationSoundEnabled",
-                              String(next),
-                            );
-                          } catch {
-                            // ignore storage errors
-                          }
-                        }
-                      }}
-                    />
+              {/* Event filter + toolbar utilities */}
+              <div className="admin-dashboard-toolbar w-full min-w-0 rounded-lg border border-border/60 bg-muted/20 p-3 sm:p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                    <p className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {language === "en" ? "Event" : "Événement"}
+                    </p>
+                    <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+                      {selectableDashboardEvents.length === 0 ? (
+                        <span
+                          id="event-selector"
+                          className="inline-flex h-9 min-w-0 items-center truncate rounded-md border border-border bg-background px-3 text-sm text-muted-foreground"
+                        >
+                          {language === "en" ? "No events" : "Aucun événement"}
+                        </span>
+                      ) : (
+                        <Select
+                          value={selectedEventId}
+                          onValueChange={setSelectedEventId}
+                        >
+                          <SelectTrigger
+                            id="event-selector"
+                            className="h-9 w-full min-w-0 bg-background text-sm sm:max-w-lg"
+                          >
+                            <SelectValue
+                              placeholder={
+                                language === "en"
+                                  ? "Select event"
+                                  : "Choisir un événement"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent
+                            className="admin-event-select-content z-[100]"
+                            viewportClassName="!w-auto min-w-[var(--radix-select-trigger-width)] max-w-[min(100vw-2rem,28rem)] !h-auto max-h-[min(24rem,calc(100vh-8rem))]"
+                          >
+                            {selectableDashboardEvents.map((event) => {
+                              const eventName = `${event.name}${event.is_test ? " (test)" : ""}`
+                              const eventDate = formatDateDMY(event.date, language)
+                              return (
+                                <SelectItem
+                                  key={event.id}
+                                  value={event.id}
+                                  textValue={`${eventName} — ${eventDate}`}
+                                  className="admin-event-select-item items-start py-2.5 pl-9 pr-3 [&>span:first-child]:top-2.5 data-[highlighted]:bg-muted data-[state=checked]:bg-muted focus:bg-muted"
+                                >
+                                  <span className="flex min-w-0 flex-col gap-0.5 text-left">
+                                    <span className="line-clamp-2 leading-snug">
+                                      {eventName}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {eventDate}
+                                    </span>
+                                  </span>
+                                </SelectItem>
+                              )
+                            })}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      {selectedEventId && selectableDashboardEvents.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            fetchAllData();
+                            fetchAmbassadorSalesData();
+                            fetchOnlineOrders();
+                            void fetchPosOrdersForOverview();
+                          }}
+                          className="h-9 w-full shrink-0 justify-center gap-1.5 text-xs sm:w-auto sm:min-w-[6.5rem]"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                          {language === "en" ? "Reload" : "Actualiser"}
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="relative"
-                        aria-label={
-                          language === "en"
-                            ? "Notifications"
-                            : "Notifications"
-                        }
+                  <div className="flex items-center justify-between gap-3 border-t border-border/50 pt-3 sm:justify-end lg:border-t-0 lg:pt-0">
+                    <div className="flex items-center gap-2">
+                      <Label
+                        htmlFor="sound-toggle"
+                        className="text-xs text-muted-foreground"
                       >
-                        <Bell className="w-5 h-5" />
-                        {unreadNotifications > 0 && (
-                          <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
-                            {unreadNotifications > 9
-                              ? "9+"
-                              : unreadNotifications}
-                          </span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      align="end"
-                      className="w-80 max-h-96 overflow-y-auto"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold">
-                          {language === "en"
-                            ? "Notifications"
-                            : "Notifications"}
-                        </span>
-                        {notifications.length > 0 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => setUnreadNotifications(0)}
-                          >
+                        {language === "en" ? "Sound" : "Son"}
+                      </Label>
+                      <Switch
+                        id="sound-toggle"
+                        checked={soundEnabled}
+                        onCheckedChange={(checked) => {
+                          const next = Boolean(checked);
+                          setSoundEnabled(next);
+                          if (typeof window !== "undefined") {
+                            try {
+                              window.localStorage.setItem(
+                                "adminNotificationSoundEnabled",
+                                String(next),
+                              );
+                            } catch {
+                              // ignore storage errors
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="relative h-9 w-9 shrink-0"
+                          aria-label={
+                            language === "en"
+                              ? "Notifications"
+                              : "Notifications"
+                          }
+                        >
+                          <Bell className="h-4 w-4" />
+                          {unreadNotifications > 0 && (
+                            <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
+                              {unreadNotifications > 9
+                                ? "9+"
+                                : unreadNotifications}
+                            </span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="end"
+                        className="w-80 max-h-96 overflow-y-auto"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold">
                             {language === "en"
-                              ? "Mark all read"
-                              : "Tout marquer comme lu"}
-                          </Button>
-                        )}
-                      </div>
-                      {notifications.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          {language === "en"
-                            ? "No notifications yet"
-                            : "Aucune notification pour le moment"}
-                        </p>
-                      ) : (
-                        <div className="space-y-3">
-                          {notifications.map((n) => (
-                            <div
-                              key={n.id}
-                              className="rounded-lg border border-border bg-muted/60 px-3 py-2.5 text-xs flex flex-col gap-1"
+                              ? "Notifications"
+                              : "Notifications"}
+                          </span>
+                          {notifications.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setUnreadNotifications(0)}
                             >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-semibold truncate">
-                                  {n.title}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                  {new Date(n.createdAt).toLocaleTimeString(
-                                    language === "en" ? "en-US" : "fr-FR",
-                                    {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    },
-                                  )}
-                                </span>
-                              </div>
-                              <p className="text-muted-foreground text-[11px] leading-snug">
-                                {n.message}
-                              </p>
-                            </div>
-                          ))}
+                              {language === "en"
+                                ? "Mark all read"
+                                : "Tout marquer comme lu"}
+                            </Button>
+                          )}
                         </div>
-                      )}
-                    </PopoverContent>
-                  </Popover>
+                        {notifications.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            {language === "en"
+                              ? "No notifications yet"
+                              : "Aucune notification pour le moment"}
+                          </p>
+                        ) : (
+                          <div className="space-y-3">
+                            {notifications.map((n) => (
+                              <div
+                                key={n.id}
+                                className="rounded-lg border border-border bg-muted/60 px-3 py-2.5 text-xs flex flex-col gap-1"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-semibold truncate">
+                                    {n.title}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                    {new Date(n.createdAt).toLocaleTimeString(
+                                      language === "en" ? "en-US" : "fr-FR",
+                                      {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      },
+                                    )}
+                                  </span>
+                                </div>
+                                <p className="text-muted-foreground text-[11px] leading-snug">
+                                  {n.message}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
               </div>
             </div>
@@ -10251,20 +10052,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   handleSendBulkEmails={handleSendBulkEmails}
                   sendingBulkEmails={sendingBulkEmails}
                   getSourceDisplayName={getSourceDisplayName}
-                  />
-                </Suspense>
-              )}
-
-              {activeTab === "aio-events" && (
-                <Suspense fallback={adminTabSuspenseFallback}>
-                  <LazyAioEventsTab
-                  language={language}
-                  submissions={aioEventsSubmissions}
-                  loading={loadingAioEventsSubmissions}
-                  pagination={aioEventsPagination}
-                  setPagination={setAioEventsPagination}
-                  onExport={exportAioEventsSubmissionsToExcel}
-                  onRefresh={fetchAioEventsSubmissions}
                   />
                 </Suspense>
               )}

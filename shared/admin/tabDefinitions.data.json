@@ -18,7 +18,6 @@
   { "key": "contact", "requiredPermission": "contact:view", "order": 16 },
   { "key": "consultation-inquiries", "requiredPermission": "consultation_inquiries:view", "order": 17 },
   { "key": "suggestions", "requiredPermission": "suggestions:manage", "order": 18 },
-  { "key": "aio-events", "requiredPermission": "aio_events:view", "order": 19 },
   { "key": "logs", "requiredPermission": "logs:view", "order": 20 },
   { "key": "settings", "requiredPermission": "settings:manage", "order": 21, "showInMobileBottomNav": true, "mobileOrder": 8 }
 ]

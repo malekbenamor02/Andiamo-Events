@@ -36,13 +36,13 @@ export function AmbassadorExtraVillesPicker({
   };
 
   return (
-    <div className="space-y-2">
-      <Label>
+    <div className="space-y-1.5">
+      <Label className="text-sm font-normal text-muted-foreground">
         {language === 'en'
-          ? 'Additional coverage villes'
-          : 'Quartiers supplémentaires (couverture)'}
+          ? 'Additional neighborhoods'
+          : 'Quartiers supplémentaires'}
       </Label>
-      <div className="rounded-lg border p-3 space-y-2 max-h-48 overflow-y-auto">
+      <div className="max-h-40 overflow-y-auto rounded-lg border border-border/70 bg-muted/20 p-3 scrollbar-hidden">
         {options.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {language === 'en'
@@ -50,18 +50,20 @@ export function AmbassadorExtraVillesPicker({
               : "Sélectionnez d'abord un quartier principal."}
           </p>
         ) : (
-          options.map((ville) => (
-            <label
-              key={ville}
-              className="flex items-center gap-2 text-sm cursor-pointer"
-            >
-              <Checkbox
-                checked={selected.has(ville)}
-                onCheckedChange={(c) => toggle(ville, c === true)}
-              />
-              <span>{ville}</span>
-            </label>
-          ))
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {options.map((ville) => (
+              <label
+                key={ville}
+                className="flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-0.5 text-sm hover:bg-muted/40"
+              >
+                <Checkbox
+                  checked={selected.has(ville)}
+                  onCheckedChange={(c) => toggle(ville, c === true)}
+                />
+                <span>{ville}</span>
+              </label>
+            ))}
+          </div>
         )}
       </div>
     </div>
