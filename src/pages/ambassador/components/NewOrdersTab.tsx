@@ -15,11 +15,31 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Package, Phone, MapPin, CheckCircle, XCircle } from "lucide-react";
+import { Package, Phone, MapPin, CheckCircle } from "lucide-react";
 import { OrderExpirationTimer } from "./OrderExpirationTimer";
 import type { Order } from "../types";
 import type { AmbassadorTranslations } from "../types";
 import { passTypeBadgeClass } from "../passTypeBadge";
+import { cn } from "@/lib/utils";
+
+const confirmButtonClass =
+  "bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-600/40";
+
+function getCopy(language: "en" | "fr") {
+  return language === "en"
+    ? {
+        stepCall: "Call client",
+        stepCollect: "Collect cash",
+        stepConfirm: "Confirm",
+        timeLeft: "Time left",
+      }
+    : {
+        stepCall: "Appeler",
+        stepCollect: "Encaisser",
+        stepConfirm: "Confirmer",
+        timeLeft: "Temps restant",
+      };
+}
 
 export interface NewOrdersTabProps {
   language: "en" | "fr";
@@ -27,8 +47,106 @@ export interface NewOrdersTabProps {
   newOrders: Order[];
   getOrderPasses: (order: Order) => Array<{ pass_type: string; quantity: number; price: number }>;
   getStatusBadge: (status: string) => React.ReactNode;
-  onConfirmCash: (orderId: string) => void;
+  onConfirmCash: (order: Order) => void;
   onCancelOrder: (order: Order) => void;
+}
+
+function getPassName(
+  passType: string | undefined,
+  t: AmbassadorTranslations
+): string {
+  const k = passType?.toLowerCase();
+  if (k === "vip") return t.vip;
+  if (k === "zone 1") return "Zone 1";
+  if (k === "standard") return t.standard;
+  return passType || t.standard;
+}
+
+function PassTypeCell({
+  order,
+  t,
+  getOrderPasses,
+}: {
+  order: Order;
+  t: AmbassadorTranslations;
+  getOrderPasses: NewOrdersTabProps["getOrderPasses"];
+}) {
+  const passes = getOrderPasses(order);
+  if (passes.length === 0) {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+  if (passes.length === 1) {
+    const pass = passes[0];
+    return (
+      <Badge variant="outline" className={passTypeBadgeClass(pass.pass_type)}>
+        {getPassName(pass.pass_type, t)}
+      </Badge>
+    );
+  }
+  const passBreakdown = passes
+    .map((p) => `${p.quantity}× ${getPassName(p.pass_type, t)}`)
+    .join(" + ");
+  return (
+    <div className="space-y-1">
+      <Badge variant="outline" className="border-border bg-muted/50 text-foreground text-xs">
+        MIXED
+      </Badge>
+      <p className="text-xs text-muted-foreground">{passBreakdown}</p>
+    </div>
+  );
+}
+
+function OrderQuantity({
+  order,
+  getOrderPasses,
+}: {
+  order: Order;
+  getOrderPasses: NewOrdersTabProps["getOrderPasses"];
+}) {
+  const passes = getOrderPasses(order);
+  const total =
+    passes.reduce((sum, p) => sum + (p.quantity || 0), 0) || order.quantity || 0;
+  return <span className="tabular-nums text-foreground">{total}</span>;
+}
+
+function MobilePassDetails({
+  order,
+  t,
+  getOrderPasses,
+}: {
+  order: Order;
+  t: AmbassadorTranslations;
+  getOrderPasses: NewOrdersTabProps["getOrderPasses"];
+}) {
+  const passes = getOrderPasses(order);
+  if (passes.length === 0) {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+  if (passes.length === 1) {
+    const pass = passes[0];
+    return (
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className={passTypeBadgeClass(pass.pass_type)}>
+          {getPassName(pass.pass_type, t)}
+        </Badge>
+        <span className="text-sm text-muted-foreground">× {pass.quantity}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1.5">
+      <Badge variant="outline" className="border-border bg-muted/50 text-foreground text-xs">
+        MIXED
+      </Badge>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
+        {passes.map((p, idx) => (
+          <span key={idx}>
+            {getPassName(p.pass_type, t)} × {p.quantity}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function NewOrdersTab({
@@ -40,153 +158,105 @@ export function NewOrdersTab({
   onConfirmCash,
   onCancelOrder,
 }: NewOrdersTabProps) {
+  const copy = getCopy(language);
+
   return (
-    <Card className="border-border/50 shadow-lg shadow-primary/5 bg-gradient-to-br from-background to-background/95">
-      <CardHeader className="bg-gradient-to-r from-yellow-500/10 via-orange-500/5 to-yellow-500/10 border-b border-border/50 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-gradient-to-br from-yellow-500/20 to-orange-500/20">
-            <Package className="w-5 h-5 text-yellow-400" />
-          </div>
-          <div>
-            <CardTitle className="text-xl sm:text-2xl font-heading bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
-              {language === "en" ? "New Orders" : "Nouvelles Commandes"}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              {language === "en"
-                ? "Contact the client, collect cash payment, then confirm the order"
-                : "Contactez le client, collectez le paiement en espèces, puis confirmez la commande"}
-            </p>
-          </div>
+    <Card className="border-border bg-card shadow-sm">
+      <CardHeader className="space-y-3 border-b border-border px-4 py-4 sm:px-6">
+        <div>
+          <CardTitle className="text-lg font-semibold tracking-tight sm:text-xl">
+            {language === "en" ? "New Orders" : "Nouvelles commandes"}
+          </CardTitle>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+            {language === "en"
+              ? "Contact the client, collect cash, then confirm."
+              : "Contactez le client, collectez le paiement, puis confirmez."}
+          </p>
         </div>
+        <ol className="flex flex-nowrap items-center gap-1.5 overflow-x-auto text-[11px] sm:text-xs scrollbar-hide">
+          <li className="shrink-0 whitespace-nowrap rounded-md border border-border bg-muted/50 px-2 py-1 font-medium text-foreground">
+            1. {copy.stepCall}
+          </li>
+          <li className="shrink-0 text-muted-foreground" aria-hidden>
+            →
+          </li>
+          <li className="shrink-0 whitespace-nowrap rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 font-medium text-amber-800 dark:text-amber-200">
+            2. {copy.stepCollect}
+          </li>
+          <li className="shrink-0 text-muted-foreground" aria-hidden>
+            →
+          </li>
+          <li className="shrink-0 whitespace-nowrap rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 font-medium text-emerald-800 dark:text-emerald-200">
+            3. {copy.stepConfirm}
+          </li>
+        </ol>
       </CardHeader>
       <CardContent className="p-4 sm:p-6">
         {newOrders.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="inline-flex p-4 rounded-full bg-muted/50 mb-4">
-              <Package className="w-8 h-8 text-muted-foreground" />
+          <div className="py-14 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <Package className="h-5 w-5 text-muted-foreground" />
             </div>
-            <p className="text-muted-foreground text-lg font-medium">
+            <p className="font-medium text-foreground">
               {language === "en" ? "No new orders" : "Aucune nouvelle commande"}
             </p>
-            <p className="text-sm text-muted-foreground/80 mt-2">
+            <p className="mt-1 text-sm text-muted-foreground">
               {language === "en"
-                ? "New orders will appear here"
-                : "Les nouvelles commandes apparaîtront ici"}
+                ? "New orders will appear here."
+                : "Les nouvelles commandes apparaîtront ici."}
             </p>
           </div>
         ) : (
           <>
-            {/* Desktop Table View */}
-            <div className="hidden md:block overflow-x-auto rounded-lg border border-border/30">
+            {/* Desktop */}
+            <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gradient-to-r from-muted/50 to-muted/30 border-b-2 border-border/50">
-                    <TableHead className="font-semibold text-foreground/90">{t.customerName}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.phone}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.city}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.passType}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.quantity}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.totalPrice}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">
-                      {language === "en" ? "Time Remaining" : "Temps Restant"}
-                    </TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.status}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.actions}</TableHead>
+                  <TableRow className="border-border bg-muted/40 hover:bg-muted/40">
+                    <TableHead>{t.customerName}</TableHead>
+                    <TableHead>{t.phone}</TableHead>
+                    <TableHead>{t.city}</TableHead>
+                    <TableHead>{t.passType}</TableHead>
+                    <TableHead>{t.quantity}</TableHead>
+                    <TableHead>{t.totalPrice}</TableHead>
+                    <TableHead>{copy.timeLeft}</TableHead>
+                    <TableHead>{t.status}</TableHead>
+                    <TableHead>{t.actions}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {newOrders.map((order, index) => (
-                    <TableRow
-                      key={order.id}
-                      className={`border-border/30 transition-all duration-200 ${
-                        index % 2 === 0 ? "bg-card/30 hover:bg-card/50" : "bg-card/20 hover:bg-card/40"
-                      }`}
-                    >
-                      <TableCell className="font-medium text-foreground">{order.user_name}</TableCell>
-                      <TableCell className="text-foreground/90">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Phone className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-                          <span className="min-w-0 break-all">{order.user_phone}</span>
+                  {newOrders.map((order) => (
+                    <TableRow key={order.id} className="border-border hover:bg-muted/20">
+                      <TableCell className="font-medium">{order.user_name}</TableCell>
+                      <TableCell>
+                        <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                          <Phone className="h-3.5 w-3.5 shrink-0" />
+                          <span className="min-w-0 break-all text-foreground">{order.user_phone}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-foreground/90">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <MapPin className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-                          <span className="min-w-0">
+                      <TableCell>
+                        <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                          <span className="min-w-0 text-foreground">
                             {order.city}
                             {order.ville ? ` – ${order.ville}` : ""}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        {(() => {
-                          const passes = getOrderPasses(order);
-                          if (passes.length === 0) {
-                            return <span className="text-muted-foreground text-sm">-</span>;
-                          }
-                          if (passes.length === 1) {
-                            const pass = passes[0];
-                            const isVip = pass.pass_type?.toLowerCase() === "vip";
-                            const passName = isVip ? t.vip : pass.pass_type || t.standard;
-                            return (
-                              <Badge
-                                variant="outline"
-                                className={passTypeBadgeClass(pass.pass_type)}
-                              >
-                                {passName}
-                              </Badge>
-                            );
-                          }
-                          const passBreakdown = passes
-                            .map((p) => {
-                              const passName =
-                                p.pass_type?.toLowerCase() === "vip"
-                                  ? t.vip
-                                  : p.pass_type?.toLowerCase() === "zone 1"
-                                    ? "Zone 1"
-                                    : p.pass_type?.toLowerCase() === "standard"
-                                      ? t.standard
-                                      : p.pass_type || t.standard;
-                              return `${p.quantity}× ${passName}`;
-                            })
-                            .join(" + ");
-                          return (
-                            <div className="space-y-1">
-                              <Badge
-                                variant="outline"
-                                className="border-primary/30 bg-primary/10 text-primary text-xs"
-                              >
-                                MIXED
-                              </Badge>
-                              <p className="text-xs text-muted-foreground mt-1">{passBreakdown}</p>
-                            </div>
-                          );
-                        })()}
+                        <PassTypeCell order={order} t={t} getOrderPasses={getOrderPasses} />
                       </TableCell>
-                      <TableCell className="text-center">
-                        {(() => {
-                          const passes = getOrderPasses(order);
-                          const totalQuantity =
-                            passes.reduce((sum, p) => sum + (p.quantity || 0), 0) ||
-                            order.quantity ||
-                            0;
-                          return (
-                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold">
-                              {totalQuantity}
-                            </span>
-                          );
-                        })()}
+                      <TableCell>
+                        <OrderQuantity order={order} getOrderPasses={getOrderPasses} />
                       </TableCell>
-                      <TableCell className="font-semibold">
-                        <span className="text-green-400 font-bold">
-                          {order.total_price.toFixed(2)} TND
-                        </span>
+                      <TableCell className="font-medium tabular-nums">
+                        {order.total_price.toFixed(2)} TND
                       </TableCell>
                       <TableCell>
                         {order.expires_at && order.status === "PENDING_CASH" ? (
                           <OrderExpirationTimer expiresAt={order.expires_at} language={language} />
                         ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
+                          <span className="text-sm text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell>{getStatusBadge(order.status)}</TableCell>
@@ -195,20 +265,19 @@ export function NewOrdersTab({
                           {order.status === "PENDING_CASH" && (
                             <Button
                               size="sm"
-                              onClick={() => onConfirmCash(order.id)}
-                              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0 shadow-lg shadow-green-500/30 hover:shadow-green-500/50 transition-all duration-300"
+                              onClick={() => onConfirmCash(order)}
+                              className={confirmButtonClass}
                             >
-                              <CheckCircle className="w-4 h-4 mr-1" />
+                              <CheckCircle className="mr-1.5 h-4 w-4" aria-hidden />
                               {language === "en" ? "Confirm" : "Confirmer"}
                             </Button>
                           )}
                           <Button
                             size="sm"
-                            variant="destructive"
+                            variant="outline"
                             onClick={() => onCancelOrder(order)}
-                            className="bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 shadow-lg shadow-red-500/20 hover:shadow-red-500/30 transition-all duration-300"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                           >
-                            <XCircle className="w-4 h-4 mr-1" />
                             {t.cancel}
                           </Button>
                         </div>
@@ -219,149 +288,74 @@ export function NewOrdersTab({
               </Table>
             </div>
 
-            {/* Mobile Card View */}
-            <div className="md:hidden space-y-4">
+            {/* Mobile */}
+            <div className="space-y-3 md:hidden">
               {newOrders.map((order) => (
-                <Card
+                <article
                   key={order.id}
-                  className="border-2 border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 via-yellow-500/5 to-background shadow-lg transition-all duration-300 hover:shadow-xl hover:scale-[1.02]"
+                  className="overflow-hidden rounded-xl border border-border bg-card"
                 >
-                  <CardContent className="p-4 sm:p-6 space-y-4">
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">{t.customerName}</p>
-                        <p className="font-semibold text-base">{order.user_name}</p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">{t.phone}</p>
-                          <p className="text-sm">{order.user_phone}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">{t.city}</p>
-                          <p className="text-sm">
-                            {order.city}
-                            {order.ville ? ` – ${order.ville}` : ""}
+                  <div className="px-4 py-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-foreground">{order.user_name}</p>
+                        <div className="mt-1.5 space-y-1 text-sm text-muted-foreground">
+                          <p className="flex items-center gap-1.5">
+                            <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                            <span className="break-all">{order.user_phone}</span>
+                          </p>
+                          <p className="flex items-center gap-1.5">
+                            <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                            <span>
+                              {order.city}
+                              {order.ville ? `, ${order.ville}` : ""}
+                            </span>
                           </p>
                         </div>
                       </div>
-                    </div>
-
-                    {/* Pass Details */}
-                    <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
-                      <p className="text-xs text-muted-foreground mb-2">{t.passType}</p>
-                      {(() => {
-                        const passes = getOrderPasses(order);
-                        if (passes.length === 0) {
-                          return <span className="text-muted-foreground text-sm">-</span>;
-                        }
-                        if (passes.length === 1) {
-                          const pass = passes[0];
-                          const isVip = pass.pass_type?.toLowerCase() === "vip";
-                          const passName = isVip ? t.vip : pass.pass_type || t.standard;
-                          return (
-                            <div className="space-y-2">
-                              <Badge
-                                variant="outline"
-                                className={passTypeBadgeClass(pass.pass_type)}
-                              >
-                                {passName}
-                              </Badge>
-                              <div className="flex items-center gap-2">
-                                <p className="text-xs text-muted-foreground">{t.quantity}:</p>
-                                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/20 text-primary font-bold">
-                                  {pass.quantity}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        }
-                        return (
-                          <div className="space-y-2">
-                            <Badge
-                              variant="outline"
-                              className="border-primary/40 bg-primary/10 text-primary text-xs"
-                            >
-                              MIXED
-                            </Badge>
-                            <div className="space-y-1.5 mt-2">
-                              {passes.map((p, idx) => {
-                                const passName =
-                                  p.pass_type?.toLowerCase() === "vip"
-                                    ? t.vip
-                                    : p.pass_type?.toLowerCase() === "zone 1"
-                                      ? "Zone 1"
-                                      : p.pass_type?.toLowerCase() === "standard"
-                                        ? t.standard
-                                        : p.pass_type || t.standard;
-                                return (
-                                  <div
-                                    key={idx}
-                                    className="flex items-center justify-between text-sm bg-background/50 p-2 rounded"
-                                  >
-                                    <span className="font-medium">{passName}</span>
-                                    <span className="text-muted-foreground">× {p.quantity}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <div className="flex items-center gap-2 pt-1 border-t border-border/30">
-                              <p className="text-xs text-muted-foreground">{t.quantity}:</p>
-                              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/20 text-primary font-bold">
-                                {passes.reduce((sum, p) => sum + (p.quantity || 0), 0)}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="p-4 rounded-lg bg-gradient-to-r from-green-500/20 via-green-500/10 to-green-500/20 border border-green-500/30">
-                      <p className="text-xs text-green-300/80 mb-1">{t.totalPrice}</p>
-                      <p className="text-2xl font-bold text-green-400">
-                        {order.total_price.toFixed(2)} TND
-                      </p>
-                    </div>
-
-                    {order.expires_at && order.status === "PENDING_CASH" && (
-                      <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
-                        <p className="text-xs text-muted-foreground mb-2">
-                          {language === "en" ? "Time Remaining" : "Temps Restant"}
+                      <div className="shrink-0 text-right">
+                        <p className="text-lg font-semibold tabular-nums text-foreground">
+                          {order.total_price.toFixed(2)}
                         </p>
-                        <OrderExpirationTimer expiresAt={order.expires_at} language={language} />
-                        {order.expiration_notes && (
-                          <p className="text-xs text-muted-foreground mt-2 italic">
-                            {order.expiration_notes}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="pt-2 border-t border-border/30">
-                      <div className="flex flex-wrap gap-2">
-                        {order.status === "PENDING_CASH" && (
-                          <Button
-                            size="sm"
-                            onClick={() => onConfirmCash(order.id)}
-                            className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0 shadow-lg shadow-green-500/30 hover:shadow-green-500/50 transition-all duration-300"
-                          >
-                            <CheckCircle className="w-4 h-4 mr-1" />
-                            {language === "en" ? "Confirm" : "Confirmer"}
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => onCancelOrder(order)}
-                          className="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 shadow-lg shadow-red-500/20 hover:shadow-red-500/30 transition-all duration-300"
-                        >
-                          <XCircle className="w-4 h-4 mr-1" />
-                          {t.cancel}
-                        </Button>
+                        <p className="text-xs text-muted-foreground">TND</p>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3">
+                    <MobilePassDetails order={order} t={t} getOrderPasses={getOrderPasses} />
+                    {order.expires_at && order.status === "PENDING_CASH" && (
+                      <OrderExpirationTimer expiresAt={order.expires_at} language={language} />
+                    )}
+                  </div>
+
+                  {order.expiration_notes && (
+                    <p className="border-t border-border/60 px-4 py-2 text-xs text-muted-foreground">
+                      {order.expiration_notes}
+                    </p>
+                  )}
+
+                  <div className="flex gap-2 border-t border-border/60 p-3">
+                    {order.status === "PENDING_CASH" && (
+                      <Button
+                        size="sm"
+                        onClick={() => onConfirmCash(order)}
+                        className={cn("flex-1", confirmButtonClass)}
+                      >
+                        <CheckCircle className="mr-1.5 h-4 w-4" aria-hidden />
+                        {language === "en" ? "Confirm" : "Confirmer"}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onCancelOrder(order)}
+                      className="flex-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      {t.cancel}
+                    </Button>
+                  </div>
+                </article>
               ))}
             </div>
           </>

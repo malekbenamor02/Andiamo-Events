@@ -470,12 +470,12 @@ export function AcademyTab({ language }: AcademyTabProps) {
         </TabsContent>
 
         <TabsContent value="promo" className="space-y-4">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-3xl">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end max-w-5xl">
             <div className="space-y-1.5">
               <Label htmlFor="academy-promo-code">{isEn ? 'Promo code' : 'Code promo'}</Label>
               <Input
                 id="academy-promo-code"
-                placeholder={isEn ? 'e.g. SUMMER20' : 'ex. ETE2026'}
+                placeholder={isEn ? 'e.g. ACADEMY10' : 'ex. ETE2026'}
                 value={newPromo.code}
                 onChange={(e) =>
                   setNewPromo((p) => ({ ...p, code: normalizeAcademyPromoCodeInput(e.target.value) }))
@@ -538,10 +538,10 @@ export function AcademyTab({ language }: AcademyTabProps) {
                 onChange={(e) => setNewPromo((p) => ({ ...p, max_uses: e.target.value }))}
               />
             </div>
+            <Button onClick={createPromo} disabled={loading} className="w-full lg:w-auto shrink-0">
+              {isEn ? 'Create code' : 'Créer le code'}
+            </Button>
           </div>
-          <Button onClick={createPromo} disabled={loading}>
-            {isEn ? 'Create code' : 'Créer le code'}
-          </Button>
           {loading ? (
             <AcademyTabLoadingPanel
               compact

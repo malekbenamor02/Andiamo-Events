@@ -20,6 +20,9 @@ ensureSupabaseServerEnv();
 const { fetchAmbassadorSocialLinkFromApplications } = requireFromRoot(
   nodePath.join(__dirname, '_lib', 'ambassador-social-link.cjs')
 );
+const { handleActiveAmbassadorsRequest } = requireFromRoot(
+  nodePath.join(__dirname, '_lib', 'active-ambassadors-handler.cjs')
+);
 
 // Lazy-load ticket email builder so ambassador-sales/orders and other routes don't crash if this file is missing
 let _buildOnlineTicketEmailHtml = null;
@@ -254,26 +257,14 @@ async function getCareerApp() {
     const cookieParser = cookieParserModule.default || cookieParserModule;
     const nodemailer = (await import('nodemailer')).default;
     const { createClient } = await import('@supabase/supabase-js');
-    const jwtModule = await import('jsonwebtoken');
-    const jwt = jwtModule.default;
+    const {
+      requireAdminAuth,
+      requireAdminPermission,
+    } = requireFromRoot(nodePath.join(__dirname, '_lib', 'admin-authorization-express.cjs'));
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
     const supabaseService = process.env.SUPABASE_SERVICE_ROLE_KEY
       ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
       : supabase;
-    function requireAdminAuth(req, res, next) {
-      const token = req.cookies?.adminToken;
-      if (!token) return res.status(401).json({ error: 'Not authenticated', reason: 'No token provided', valid: false });
-      const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
-      try {
-        const decoded = jwt.verify(token, jwtSecret);
-        if (!decoded.id || !decoded.email || !decoded.role) return res.status(401).json({ error: 'Invalid token', valid: false });
-        if (decoded.role !== 'admin' && decoded.role !== 'super_admin') return res.status(403).json({ error: 'Invalid role', valid: false });
-        req.admin = decoded;
-        next();
-      } catch (e) {
-        return res.status(401).json({ error: 'Invalid or expired token', reason: e.message, valid: false });
-      }
-    }
     const careerLimitMap = new Map();
     const CAREER_LIMIT_WINDOW = 60 * 60 * 1000;
     const CAREER_LIMIT_MAX = 5;
@@ -306,7 +297,14 @@ async function getCareerApp() {
     app.use(cookieParser());
     const careerRoutesModule = await import('../careerRoutes.cjs');
     const { registerCareerRoutes } = careerRoutesModule.default || careerRoutesModule;
-    registerCareerRoutes(app, { supabase, supabaseService, requireAdminAuth, careerApplicationLimiter, getEmailTransporter });
+    registerCareerRoutes(app, {
+      supabase,
+      supabaseService,
+      requireAdminAuth,
+      requireAdminPermission,
+      careerApplicationLimiter,
+      getEmailTransporter,
+    });
     return app;
   })();
   return careerAppPromise;
@@ -2168,15 +2166,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           return res.status(500).json({ error: 'Supabase not configured' });
         }
 
-        const { city, ville } = req.query;
-
-        if (!city) {
-          return res.status(400).json({ error: 'City parameter is required' });
-        }
-
-        const normalizedCity = String(city).trim();
-        const normalizedVille = ville && String(ville).trim() !== '' ? String(ville).trim() : null;
-
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(
           process.env.SUPABASE_URL,
@@ -2190,42 +2179,12 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             process.env.SUPABASE_SERVICE_ROLE_KEY
           );
         }
-        
-        let query = dbClient
-          .from('ambassadors')
-          .select('id, full_name, phone, email, city, ville, status')
-          .eq('status', 'approved')
-          .eq('city', normalizedCity);
 
-        // Filter by ville when provided (same behavior for Tunis, Sousse, etc.)
-        if (normalizedVille) {
-          query = query.eq('ville', normalizedVille);
+        const result = await handleActiveAmbassadorsRequest(dbClient, req.query);
+        if (result.status >= 500) {
+          console.error('❌ Error fetching active ambassadors:', result.body?.error);
         }
-        
-        // Remove alphabetical ordering - will randomize instead
-        // query = query.order('full_name'); // REMOVED: Now using random order
-
-        const { data: ambassadors, error } = await query;
-
-        if (error) {
-          console.error('❌ Error fetching active ambassadors:', error);
-          return res.status(500).json({ error: error.message });
-        }
-
-        // Shuffle ambassadors array using Fisher-Yates algorithm for random display
-        const shuffledAmbassadors = shuffleArray(ambassadors || []);
-
-        const ambassadorsWithSocial = await Promise.all(
-          shuffledAmbassadors.map(async (ambassador) => {
-            const social_link = await fetchAmbassadorSocialLinkFromApplications(dbClient, ambassador.phone);
-            return {
-              ...ambassador,
-              social_link: social_link || null,
-            };
-          })
-        );
-
-        return res.json({ success: true, data: ambassadorsWithSocial || [] });
+        return res.status(result.status).json(result.body);
       } catch (error) {
         console.error('❌ Error in ambassadors/active endpoint:', error);
         return res.status(500).json({ error: error.message || 'Failed to fetch active ambassadors' });

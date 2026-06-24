@@ -18,6 +18,7 @@ export interface AmbassadorInfoDialogProps {
     email?: string;
     city?: string;
     ville?: string;
+    extra_villes?: string[];
   } | null;
   language: "en" | "fr";
 }
@@ -103,6 +104,17 @@ export function AmbassadorInfoDialog({
                         {language === "en" ? "Neighborhood" : "Quartier"}
                       </Label>
                       <p className="text-sm font-semibold">{ambassador.ville}</p>
+                    </div>
+                  )}
+                  {ambassador.extra_villes && ambassador.extra_villes.length > 0 && (
+                    <div className="space-y-2 md:col-span-2">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                        <MapPin className="w-4 h-4" />
+                        {language === "en" ? "Additional coverage" : "Couverture supplémentaire"}
+                      </Label>
+                      <p className="text-sm font-semibold">
+                        {ambassador.extra_villes.join(", ")}
+                      </p>
                     </div>
                   )}
                 </div>

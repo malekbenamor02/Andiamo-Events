@@ -123,7 +123,7 @@ function parseAttributionFromBody(req, body) {
     !fbc &&
     !metaEventSourceUrl &&
     !clientUserAgent &&
-    !clientIp
+    !(clientIp && clientIp !== 'unknown')
   ) {
     return null;
   }
@@ -138,6 +138,91 @@ function parseAttributionFromBody(req, body) {
   };
 }
 
+/**
+ * @param {string|undefined|null} ip
+ */
+function isUsableClientIp(ip) {
+  if (!ip || typeof ip !== 'string') return false;
+  const v = ip.trim();
+  return v.length > 0 && v !== 'unknown';
+}
+
+/**
+ * @param {Record<string, unknown>} attr
+ */
+function resolveStoredFbc(attr) {
+  const stored = attr.fbc != null ? attr.fbc : attr.meta_fbc;
+  if (stored == null) return undefined;
+  const s = String(stored).trim();
+  if (s && isValidFbc(s)) return s.slice(0, 256);
+  return undefined;
+}
+
+/**
+ * Merge stored order attribution with request fallbacks for Purchase CAPI.
+ * @param {Record<string, unknown>|null|undefined} attr
+ * @param {import('http').IncomingMessage|null|undefined} req
+ */
+function resolvePurchaseAttribution(attr, req) {
+  const raw = attr && typeof attr === 'object' ? attr : {};
+
+  const eventSourceUrl =
+    raw.eventSourceUrl != null
+      ? String(raw.eventSourceUrl).slice(0, 2048)
+      : raw.event_source_url != null
+        ? String(raw.event_source_url).slice(0, 2048)
+        : undefined;
+
+  const fbclid =
+    (raw.fbclid != null ? String(raw.fbclid).trim() : '') ||
+    (raw.metaFbclid != null ? String(raw.metaFbclid).trim() : '') ||
+    (raw.meta_fbclid != null ? String(raw.meta_fbclid).trim() : '') ||
+    undefined;
+
+  const storedFbc = resolveStoredFbc(raw);
+  const storedFbpRaw = raw.fbp != null ? raw.fbp : raw.meta_fbp;
+  const reqOrStub = req || { headers: {} };
+
+  const fbp = resolveMetaFbp(reqOrStub, storedFbpRaw);
+  const fbc =
+    storedFbc ||
+    resolveMetaFbc(reqOrStub, null, fbclid || undefined, eventSourceUrl) ||
+    undefined;
+
+  let clientIp =
+    raw.clientIp != null
+      ? String(raw.clientIp)
+      : raw.client_ip != null
+        ? String(raw.client_ip)
+        : undefined;
+  if (!isUsableClientIp(clientIp) && req) {
+    const fromReq = getClientIp(req);
+    if (isUsableClientIp(fromReq)) clientIp = fromReq;
+  }
+  if (!isUsableClientIp(clientIp)) clientIp = undefined;
+
+  let clientUserAgent =
+    raw.clientUserAgent != null
+      ? String(raw.clientUserAgent).slice(0, 512)
+      : raw.client_user_agent != null
+        ? String(raw.client_user_agent).slice(0, 512)
+        : undefined;
+  if (!clientUserAgent && req) {
+    clientUserAgent = (req.get?.('user-agent') || req.headers?.['user-agent'] || '')
+      .toString()
+      .slice(0, 512);
+  }
+  if (!clientUserAgent) clientUserAgent = undefined;
+
+  return {
+    ...(fbp ? { fbp } : {}),
+    ...(fbc && isValidFbc(fbc) ? { fbc } : {}),
+    ...(eventSourceUrl ? { eventSourceUrl } : {}),
+    ...(clientIp ? { clientIp } : {}),
+    ...(clientUserAgent ? { clientUserAgent } : {}),
+  };
+}
+
 module.exports = {
   parseRequestCookie,
   isValidFbc,
@@ -146,5 +231,8 @@ module.exports = {
   resolveMetaFbp,
   resolveMetaFbc,
   getClientIp,
+  isUsableClientIp,
+  resolveStoredFbc,
+  resolvePurchaseAttribution,
   parseAttributionFromBody,
 };

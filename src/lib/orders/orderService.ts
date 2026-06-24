@@ -35,6 +35,7 @@ export async function createOrder(
     metaEventId,
     metaFbp,
     metaFbc,
+    metaFbclid,
     metaEventSourceUrl,
     presaleCsrfToken,
     promoCode,
@@ -83,6 +84,7 @@ export async function createOrder(
       metaEventId: metaEventId ?? undefined,
       metaFbp: metaFbp ?? undefined,
       metaFbc: metaFbc ?? undefined,
+      metaFbclid: metaFbclid ?? undefined,
       metaEventSourceUrl: metaEventSourceUrl ?? undefined,
       ...(promoCode ? { promoCode } : {}),
     })

@@ -6,6 +6,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { Ambassador } from '@/types/orders';
 import { AmbassadorStatus } from '@/lib/constants/orderStatuses';
+import { buildVilleCoverageOrFilter } from '@/lib/ambassadors/extraVilles';
 
 /**
  * Fisher-Yates shuffle algorithm for randomizing array order
@@ -36,18 +37,17 @@ export async function getActiveAmbassadorsByLocation(
     // Removed .order('full_name') - now using random order
   
   if (ville) {
-    query = query.eq('ville', ville);
+    query = query.or(buildVilleCoverageOrFilter(ville));
   }
-  
+
   const { data, error } = await query;
-  
+
   if (error) {
     throw new Error(`Failed to fetch active ambassadors: ${error.message}`);
   }
-  
-  // Shuffle the results for random display order
+
   const shuffled = shuffleArray(data || []);
-  
+
   return shuffled as Ambassador[];
 }
 
@@ -99,10 +99,8 @@ export async function hasActiveAmbassadors(city: string, ville?: string): Promis
     .eq('city', city);
   
   if (ville) {
-    query = query.eq('ville', ville);
+    query = query.or(buildVilleCoverageOrFilter(ville));
   }
-  
-  const { count, error } = await query;
   
   if (error) {
     throw new Error(`Failed to check active ambassadors: ${error.message}`);

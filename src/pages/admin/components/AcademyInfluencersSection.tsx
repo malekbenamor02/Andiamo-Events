@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,23 +15,34 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
 import { cn } from '@/lib/utils';
 import Loader from '@/components/ui/Loader';
-import { ChevronRight, Mail, RefreshCw, KeyRound } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { ChevronRight, Copy, Mail, Pencil, RefreshCw, User } from 'lucide-react';
+
+function maskEmail(email: string) {
+  if (!email || !email.includes('@')) return email;
+  const [localPart, domain] = email.split('@');
+  if (localPart.length <= 3) {
+    return `${localPart}***@${domain}`;
+  }
+  const visibleStart = localPart.substring(0, 3);
+  const visibleEnd = domain.substring(domain.length - 4);
+  return `${visibleStart}***@${visibleEnd}`;
+}
 
 type AcademyLanguage = 'en' | 'fr';
 
@@ -174,11 +185,26 @@ function statusDotClass(status: string) {
   return 'bg-gray-500';
 }
 
-function DetailStat({ label, value }: { label: string; value: string }) {
+function DetailStat({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
   return (
-    <div className="rounded-lg border bg-card/40 p-3">
+    <div
+      className={cn(
+        'rounded-lg border p-3',
+        highlight ? 'border-primary/30 bg-primary/5' : 'bg-card/40'
+      )}
+    >
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
-      <p className="text-lg font-semibold tabular-nums">{value}</p>
+      <p className={cn('text-lg font-semibold tabular-nums', highlight && 'text-primary')}>
+        {value}
+      </p>
     </div>
   );
 }
@@ -189,6 +215,9 @@ interface AcademyInfluencersSectionProps {
   onPromoCodesChanged: () => void;
 }
 
+const influencerListCache: { data: AcademyInfluencer[] | null } = { data: null };
+const influencerReportCache = new Map<string, InfluencerSalesReport>();
+
 export function AcademyInfluencersSection({
   language,
   promoCodes,
@@ -196,14 +225,17 @@ export function AcademyInfluencersSection({
 }: AcademyInfluencersSectionProps) {
   const isEn = language === 'en';
   const { toast } = useToast();
-  const [influencers, setInfluencers] = useState<AcademyInfluencer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [influencers, setInfluencers] = useState<AcademyInfluencer[]>(
+    () => influencerListCache.data ?? []
+  );
+  const [loading, setLoading] = useState(!influencerListCache.data);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<AcademyInfluencer | null>(null);
   const [saving, setSaving] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailReport, setDetailReport] = useState<InfluencerSalesReport | null>(null);
+  const listLoadedRef = useRef(!!influencerListCache.data);
   const [form, setForm] = useState({
     full_name: '',
     email: '',
@@ -211,23 +243,41 @@ export function AcademyInfluencersSection({
     promo_code_ids: [] as string[],
   });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (options?: { invalidateReports?: boolean; silent?: boolean }) => {
+    if (options?.invalidateReports) {
+      influencerReportCache.clear();
+    }
+    if (!options?.silent && !options?.invalidateReports && influencerListCache.data) {
+      setInfluencers(influencerListCache.data);
+      listLoadedRef.current = true;
+      setLoading(false);
+      return;
+    }
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       const data = await adminFetch(API_ROUTES.ADMIN_ACADEMY_INFLUENCERS);
-      setInfluencers(data.influencers || []);
+      const list = data.influencers || [];
+      influencerListCache.data = list;
+      setInfluencers(list);
+      listLoadedRef.current = true;
     } catch (e: unknown) {
       toast({
         variant: 'destructive',
         description: e instanceof Error ? e.message : undefined,
       });
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }, [toast]);
 
   useEffect(() => {
-    load();
+    if (!listLoadedRef.current) {
+      load();
+    }
   }, [load]);
 
   const unassignedPromos = useMemo(
@@ -235,13 +285,29 @@ export function AcademyInfluencersSection({
     [promoCodes, editing]
   );
 
+  const cacheReport = (id: string, report: InfluencerSalesReport) => {
+    influencerReportCache.set(id, report);
+    setDetailReport(report);
+  };
+
+  const invalidateReport = (id: string) => {
+    influencerReportCache.delete(id);
+    setDetailReport((current) => (current?.influencer?.id === id ? null : current));
+  };
+
   const openDetail = async (inf: AcademyInfluencer) => {
     setDetailOpen(true);
+    const cached = influencerReportCache.get(inf.id);
+    if (cached) {
+      setDetailReport(cached);
+      setDetailLoading(false);
+      return;
+    }
     setDetailLoading(true);
     setDetailReport(null);
     try {
       const data = await adminFetch(API_ROUTES.ADMIN_ACADEMY_INFLUENCER_SALES(inf.id));
-      setDetailReport(data);
+      cacheReport(inf.id, data);
     } catch (e: unknown) {
       toast({
         variant: 'destructive',
@@ -257,9 +323,10 @@ export function AcademyInfluencersSection({
     if (!detailReport?.influencer?.id) return;
     setDetailLoading(true);
     try {
-      const data = await adminFetch(API_ROUTES.ADMIN_ACADEMY_INFLUENCER_SALES(detailReport.influencer.id));
-      setDetailReport(data);
-      await load();
+      const id = detailReport.influencer.id;
+      const data = await adminFetch(API_ROUTES.ADMIN_ACADEMY_INFLUENCER_SALES(id));
+      cacheReport(id, data);
+      await load({ silent: true });
     } catch (e: unknown) {
       toast({
         variant: 'destructive',
@@ -337,7 +404,10 @@ export function AcademyInfluencersSection({
         });
       }
       setDialogOpen(false);
-      await load();
+      if (editing?.id) {
+        invalidateReport(editing.id);
+      }
+      await load({ silent: !!listLoadedRef.current });
       onPromoCodesChanged();
       if (detailReport?.influencer?.id === editing?.id) {
         await refreshDetail();
@@ -346,27 +416,6 @@ export function AcademyInfluencersSection({
       toast({ variant: 'destructive', description: e instanceof Error ? e.message : undefined });
     } finally {
       setSaving(false);
-    }
-  };
-
-  const resetPassword = async (id: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    try {
-      const data = await adminFetch(API_ROUTES.ADMIN_ACADEMY_INFLUENCER_RESET_PASSWORD(id), {
-        method: 'POST',
-      });
-      toast({
-        title: isEn ? 'Password reset' : 'Mot de passe réinitialisé',
-        description:
-          data.emailSendStatus === 'sent'
-            ? isEn
-              ? 'New temporary password emailed.'
-              : 'Nouveau mot de passe temporaire envoyé.'
-            : undefined,
-      });
-      load();
-    } catch (e: unknown) {
-      toast({ variant: 'destructive', description: e instanceof Error ? e.message : undefined });
     }
   };
 
@@ -385,7 +434,8 @@ export function AcademyInfluencersSection({
               : 'Nouveau mot de passe temporaire envoyé.'
             : undefined,
       });
-      load();
+      invalidateReport(id);
+      load({ silent: true });
     } catch (e: unknown) {
       toast({ variant: 'destructive', description: e instanceof Error ? e.message : undefined });
     }
@@ -394,11 +444,27 @@ export function AcademyInfluencersSection({
   const summary = detailReport?.summary;
   const influencer = detailReport?.influencer;
 
+  const copyEmail = async (email: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(email);
+      toast({
+        title: isEn ? 'Copied' : 'Copié',
+        description: isEn ? 'Email copied to clipboard' : 'Email copié dans le presse-papiers',
+      });
+    } catch {
+      toast({
+        variant: 'destructive',
+        description: isEn ? 'Failed to copy email' : "Échec de la copie de l'email",
+      });
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-end gap-3">
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={() => load({ invalidateReports: true })} disabled={loading}>
             <RefreshCw className="h-4 w-4 mr-1" />
             {isEn ? 'Refresh' : 'Actualiser'}
           </Button>
@@ -414,16 +480,17 @@ export function AcademyInfluencersSection({
         </div>
       ) : (
         <div className="rounded-lg border">
+          <TooltipProvider delayDuration={300}>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{isEn ? 'Name' : 'Nom'}</TableHead>
-                <TableHead>Email</TableHead>
+                <TableHead className="w-[140px]">Email</TableHead>
                 <TableHead>{isEn ? 'Promo codes' : 'Codes promo'}</TableHead>
-                <TableHead>{isEn ? 'Last invite' : 'Dernière invitation'}</TableHead>
-                <TableHead>{isEn ? 'Last login' : 'Dernière connexion'}</TableHead>
+                <TableHead className="whitespace-nowrap">{isEn ? 'Last invite' : 'Dernière invitation'}</TableHead>
+                <TableHead className="whitespace-nowrap">{isEn ? 'Last login' : 'Dernière connexion'}</TableHead>
                 <TableHead>{isEn ? 'Active' : 'Actif'}</TableHead>
-                <TableHead />
+                <TableHead className="w-[1%]" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -446,7 +513,17 @@ export function AcademyInfluencersSection({
                         <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                       </span>
                     </TableCell>
-                    <TableCell>{inf.email}</TableCell>
+                    <TableCell className="max-w-[140px]" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={(e) => copyEmail(inf.email, e)}
+                        className="group inline-flex max-w-full items-center gap-1.5 rounded px-1 -mx-1 text-xs text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        title={isEn ? 'Click to copy full email' : "Cliquer pour copier l'email"}
+                      >
+                        <span className="truncate font-mono">{maskEmail(inf.email)}</span>
+                        <Copy className="h-3.5 w-3.5 shrink-0 opacity-50 transition-opacity group-hover:opacity-100" />
+                      </button>
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {(inf.promo_codes || []).map((p) => (
@@ -466,33 +543,51 @@ export function AcademyInfluencersSection({
                         {inf.is_active ? (isEn ? 'Yes' : 'Oui') : isEn ? 'No' : 'Non'}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
-                        <Button size="sm" variant="outline" onClick={(e) => openEdit(inf, e)}>
-                          {isEn ? 'Edit' : 'Modifier'}
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={(e) => resetPassword(inf.id, e)}>
-                          <KeyRound className="h-3 w-3 mr-1" />
-                          {isEn ? 'Reset' : 'Réinit.'}
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={(e) => resendInvite(inf.id, e)}>
-                          <Mail className="h-3 w-3 mr-1" />
-                          {isEn ? 'Resend' : 'Renvoyer'}
-                        </Button>
-                      </div>
+                    <TableCell className="whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex flex-nowrap items-center justify-end gap-0.5">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 shrink-0"
+                                onClick={(e) => openEdit(inf, e)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                                <span className="sr-only">{isEn ? 'Edit' : 'Modifier'}</span>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{isEn ? 'Edit' : 'Modifier'}</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 shrink-0"
+                                onClick={(e) => resendInvite(inf.id, e)}
+                              >
+                                <Mail className="h-4 w-4" />
+                                <span className="sr-only">{isEn ? 'Resend invite' : "Renvoyer l'invitation"}</span>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{isEn ? 'Resend invite' : "Renvoyer l'invitation"}</TooltipContent>
+                          </Tooltip>
+                        </div>
                     </TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
+          </TooltipProvider>
         </div>
       )}
 
-      <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="w-[min(100%,calc(100vw-1.5rem))] max-w-4xl max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
           {detailLoading && !detailReport ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-20">
+            <div className="flex flex-col items-center justify-center gap-3 py-24 px-6">
               <Loader size="md" />
               <p className="text-sm text-muted-foreground">
                 {isEn ? 'Loading sales report…' : 'Chargement du rapport…'}
@@ -500,13 +595,16 @@ export function AcademyInfluencersSection({
             </div>
           ) : influencer && summary ? (
             <>
-              <SheetHeader className="text-left space-y-1 pr-8">
-                <SheetTitle>{influencer.full_name}</SheetTitle>
-                <SheetDescription>{influencer.email}</SheetDescription>
-              </SheetHeader>
+              <div className="shrink-0 border-b bg-muted/20 px-6 py-5 pr-12">
+                <DialogHeader className="text-left space-y-2">
+                  <DialogTitle className="text-xl flex items-center gap-2">
+                    <User className="h-5 w-5 text-primary shrink-0" />
+                    {influencer.full_name}
+                  </DialogTitle>
+                  <DialogDescription className="text-sm">{influencer.email}</DialogDescription>
+                </DialogHeader>
 
-              <div className="mt-6 space-y-6">
-                <div className="flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-wrap gap-2">
                   <Badge variant={influencer.is_active ? 'default' : 'outline'}>
                     {influencer.is_active ? (isEn ? 'Active' : 'Actif') : isEn ? 'Inactive' : 'Inactif'}
                   </Badge>
@@ -522,72 +620,87 @@ export function AcademyInfluencersSection({
                   ))}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                  <div className="rounded-md border bg-background/60 px-3 py-2">
                     <p className="text-xs text-muted-foreground">{isEn ? 'Created' : 'Créé le'}</p>
-                    <p>{formatDt(influencer.created_at)}</p>
+                    <p className="mt-0.5 text-xs sm:text-sm">{formatDt(influencer.created_at)}</p>
                   </div>
-                  <div>
+                  <div className="rounded-md border bg-background/60 px-3 py-2">
                     <p className="text-xs text-muted-foreground">{isEn ? 'Last invite' : 'Dernière invitation'}</p>
-                    <p>{formatDt(influencer.last_invite_sent_at)}</p>
+                    <p className="mt-0.5 text-xs sm:text-sm">{formatDt(influencer.last_invite_sent_at)}</p>
                   </div>
-                  <div>
+                  <div className="rounded-md border bg-background/60 px-3 py-2">
                     <p className="text-xs text-muted-foreground">{isEn ? 'Last login' : 'Dernière connexion'}</p>
-                    <p>{formatDt(influencer.last_login)}</p>
+                    <p className="mt-0.5 text-xs sm:text-sm">{formatDt(influencer.last_login)}</p>
                   </div>
-                  <div>
+                  <div className="rounded-md border bg-background/60 px-3 py-2">
                     <p className="text-xs text-muted-foreground">{isEn ? 'Password changed' : 'Mot de passe changé'}</p>
-                    <p>{formatDt(influencer.password_changed_at)}</p>
+                    <p className="mt-0.5 text-xs sm:text-sm">{formatDt(influencer.password_changed_at)}</p>
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="mt-4 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={refreshDetail} disabled={detailLoading}>
                     <RefreshCw className={cn('h-4 w-4 mr-1', detailLoading && 'animate-spin')} />
                     {isEn ? 'Refresh' : 'Actualiser'}
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => openEdit(influencer)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setDetailOpen(false);
+                      openEdit(influencer);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4 mr-1" />
                     {isEn ? 'Edit account' : 'Modifier le compte'}
                   </Button>
                 </div>
+              </div>
 
-                <Separator />
-
-                <div>
-                  <h3 className="text-sm font-semibold mb-3">{isEn ? 'Sales summary' : 'Résumé des ventes'}</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    <DetailStat
-                      label={isEn ? 'Total registrations' : 'Total inscriptions'}
-                      value={String(summary.total_registrations)}
-                    />
-                    <DetailStat
-                      label={isEn ? 'Approved sales' : 'Ventes approuvées'}
-                      value={String(summary.approved_count)}
-                    />
-                    <DetailStat
-                      label={isEn ? 'Approved revenue' : 'Revenus approuvés'}
-                      value={formatMoney(summary.approved_revenue_dt)}
-                    />
-                    <DetailStat
-                      label={isEn ? 'Pending' : 'En attente'}
-                      value={String(summary.pending_count)}
-                    />
-                    <DetailStat
-                      label={isEn ? 'Rejected' : 'Refusées'}
-                      value={String(summary.rejected_count)}
-                    />
-                    <DetailStat
-                      label={isEn ? 'Failed / cancelled' : 'Échouées / annulées'}
-                      value={String(summary.failed_count - summary.rejected_count)}
-                    />
-                  </div>
-                </div>
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+                <Card className="border-muted/60 bg-muted/10">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">
+                      {isEn ? 'Sales summary' : 'Résumé des ventes'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <DetailStat
+                        label={isEn ? 'Total registrations' : 'Total inscriptions'}
+                        value={String(summary.total_registrations)}
+                      />
+                      <DetailStat
+                        label={isEn ? 'Approved sales' : 'Ventes approuvées'}
+                        value={String(summary.approved_count)}
+                      />
+                      <DetailStat
+                        label={isEn ? 'Approved revenue' : 'Revenus approuvés'}
+                        value={formatMoney(summary.approved_revenue_dt)}
+                        highlight
+                      />
+                      <DetailStat
+                        label={isEn ? 'Pending' : 'En attente'}
+                        value={String(summary.pending_count)}
+                      />
+                      <DetailStat
+                        label={isEn ? 'Rejected' : 'Refusées'}
+                        value={String(summary.rejected_count)}
+                      />
+                      <DetailStat
+                        label={isEn ? 'Failed / cancelled' : 'Échouées / annulées'}
+                        value={String(summary.failed_count - summary.rejected_count)}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
 
                 <div>
                   <h3 className="text-sm font-semibold mb-3">{isEn ? 'By formula' : 'Par formule'}</h3>
                   <div className="flex flex-wrap gap-2">
                     {(['essentielle', 'pro', 'premium'] as const).map((f) => (
-                      <Badge key={f} variant="outline" className="tabular-nums">
+                      <Badge key={f} variant="outline" className="tabular-nums px-3 py-1">
                         {formulaLabel(f, isEn)}: {summary.by_formule[f] ?? 0}
                       </Badge>
                     ))}
@@ -595,31 +708,34 @@ export function AcademyInfluencersSection({
                 </div>
 
                 {summary.promo_codes.length > 0 && (
-                  <div className="rounded-lg border overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>{isEn ? 'Promo code' : 'Code promo'}</TableHead>
-                          <TableHead>{isEn ? 'Uses' : 'Utilisations'}</TableHead>
-                          <TableHead>{isEn ? 'Registrations' : 'Inscriptions'}</TableHead>
-                          <TableHead>{isEn ? 'Approved' : 'Approuvées'}</TableHead>
-                          <TableHead>{isEn ? 'Revenue' : 'Revenus'}</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {summary.promo_codes.map((p) => (
-                          <TableRow key={p.id}>
-                            <TableCell className="font-mono text-xs">{p.code}</TableCell>
-                            <TableCell className="text-sm tabular-nums">
-                              {p.used_count}/{p.max_uses}
-                            </TableCell>
-                            <TableCell className="tabular-nums">{p.registrations_count}</TableCell>
-                            <TableCell className="tabular-nums">{p.approved_count}</TableCell>
-                            <TableCell className="tabular-nums">{formatMoney(p.approved_revenue_dt)}</TableCell>
+                  <div>
+                    <h3 className="text-sm font-semibold mb-3">{isEn ? 'Promo codes' : 'Codes promo'}</h3>
+                    <div className="rounded-lg border overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{isEn ? 'Promo code' : 'Code promo'}</TableHead>
+                            <TableHead>{isEn ? 'Uses' : 'Utilisations'}</TableHead>
+                            <TableHead>{isEn ? 'Registrations' : 'Inscriptions'}</TableHead>
+                            <TableHead>{isEn ? 'Approved' : 'Approuvées'}</TableHead>
+                            <TableHead>{isEn ? 'Revenue' : 'Revenus'}</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {summary.promo_codes.map((p) => (
+                            <TableRow key={p.id}>
+                              <TableCell className="font-mono text-xs">{p.code}</TableCell>
+                              <TableCell className="text-sm tabular-nums">
+                                {p.used_count}/{p.max_uses}
+                              </TableCell>
+                              <TableCell className="tabular-nums">{p.registrations_count}</TableCell>
+                              <TableCell className="tabular-nums">{p.approved_count}</TableCell>
+                              <TableCell className="tabular-nums">{formatMoney(p.approved_revenue_dt)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
                 )}
 
@@ -685,8 +801,8 @@ export function AcademyInfluencersSection({
               </div>
             </>
           ) : null}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">

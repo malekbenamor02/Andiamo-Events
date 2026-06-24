@@ -12,13 +12,20 @@ interface ActiveAmbassadorsResponse {
   data: Ambassador[];
 }
 
-export function useActiveAmbassadors(city: string, ville?: string) {
+export function useActiveAmbassadors(
+  city: string,
+  ville?: string,
+  options?: { cityWide?: boolean }
+) {
+  const cityWide = options?.cityWide === true;
+  const effectiveVille = cityWide ? undefined : ville;
+
   return useQuery<Ambassador[]>({
-    queryKey: ['active-ambassadors', city, ville],
+    queryKey: ['active-ambassadors', city, effectiveVille, cityWide],
     queryFn: async () => {
       const params = new URLSearchParams({ city });
-      if (ville) {
-        params.append('ville', ville);
+      if (effectiveVille) {
+        params.append('ville', effectiveVille);
       }
       
       try {

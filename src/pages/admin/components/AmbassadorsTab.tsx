@@ -51,6 +51,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
+import { formatAmbassadorLocationLabel } from "@/lib/ambassadors/extraVilles";
+import { AmbassadorExtraVillesPicker } from "./AmbassadorExtraVillesPicker";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type {
@@ -413,6 +415,7 @@ export function AmbassadorsTab({
                               value === "Sousse" || value === "Tunis"
                                 ? prev?.ville ?? ""
                                 : "",
+                            extra_villes: [],
                           }));
                           if (ambassadorErrors.city) {
                             setAmbassadorErrors((prev) => ({
@@ -466,6 +469,9 @@ export function AmbassadorsTab({
                             setEditingAmbassador((prev) => ({
                               ...prev,
                               ville: value,
+                              extra_villes: (prev?.extra_villes ?? []).filter(
+                                (v) => v !== value
+                              ),
                             }));
                             if (ambassadorErrors.ville) {
                               setAmbassadorErrors((prev) => ({
@@ -506,6 +512,20 @@ export function AmbassadorsTab({
                         )}
                       </div>
                     </div>
+                  )}
+                  {(editingAmbassador?.city === "Sousse" ||
+                    editingAmbassador?.city === "Tunis") && (
+                    <AmbassadorExtraVillesPicker
+                      city={editingAmbassador.city}
+                      primaryVille={editingAmbassador.ville}
+                      value={editingAmbassador.extra_villes ?? []}
+                      onChange={(extra_villes) =>
+                        setEditingAmbassador((prev) =>
+                          prev ? { ...prev, extra_villes } : prev
+                        )
+                      }
+                      language={language}
+                    />
                   )}
                   <div>
                     <Label htmlFor="ambassadorSocialLink">
@@ -1202,12 +1222,18 @@ export function AmbassadorsTab({
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  <span className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 shrink-0" />
-                    {ambassador.ville
-                      ? `${ambassador.city}, ${ambassador.ville}`
-                      : ambassador.city}
-                  </span>
+                  {(() => {
+                    const { label, title } = formatAmbassadorLocationLabel(ambassador);
+                    return (
+                      <span
+                        className="flex items-center gap-2"
+                        title={title}
+                      >
+                        <MapPin className="w-4 h-4 shrink-0" />
+                        {label}
+                      </span>
+                    );
+                  })()}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-2">
@@ -1238,6 +1264,7 @@ export function AmbassadorsTab({
                           age: ambassadorAge,
                           social_link:
                             ambassadorSocialLink || ambassador.social_link,
+                          extra_villes: ambassador.extra_villes ?? [],
                         password: "",
                         });
                         setAmbassadorErrors({});

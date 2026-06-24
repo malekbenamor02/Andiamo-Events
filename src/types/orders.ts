@@ -142,6 +142,7 @@ export interface CreateOrderData {
   metaEventId?: string;
   metaFbp?: string;
   metaFbc?: string;
+  metaFbclid?: string;
   metaEventSourceUrl?: string;
   /** Presale checkout: must match active session (server reads HttpOnly cookie). */
   presaleCsrfToken?: string;

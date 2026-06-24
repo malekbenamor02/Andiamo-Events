@@ -104,6 +104,10 @@ export interface AmbassadorTranslations {
   cancelOrder: string;
   cancelReason: string;
   confirmCancel: string;
+  keepOrder: string;
+  confirmOrder: string;
+  confirmPayment: string;
+  goBack: string;
   reasonRequired: string;
   orderAccepted: string;
   orderCancelled: string;

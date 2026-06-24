@@ -110,6 +110,7 @@ export interface Ambassador {
   email?: string;
   city: string;
   ville?: string;
+  extra_villes?: string[];
   status: string;
   password?: string;
   created_at: string;

@@ -16,6 +16,11 @@ const {
   buildContentIdsFromOrderPasses,
   resolvePromoCodeFromOrder,
 } = require('./purchase-payload.cjs');
+const {
+  isValidFbc,
+  isUsableClientIp,
+  resolvePurchaseAttribution,
+} = require('./attribution.cjs');
 
 /**
  * @param {Record<string, unknown>|null|undefined} raw
@@ -67,6 +72,60 @@ function resolveEventId(orderId, attr) {
 }
 
 /**
+ * @param {string|undefined|null} value
+ */
+function parseOrderTimestamp(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.floor(d.getTime() / 1000);
+}
+
+/**
+ * @param {Record<string, unknown>} order
+ */
+function resolvePurchaseEventTime(order) {
+  const method = order.payment_method != null ? String(order.payment_method) : '';
+  const isOnline = method === 'online';
+
+  if (isOnline) {
+    return (
+      parseOrderTimestamp(order.approved_at) ||
+      parseOrderTimestamp(order.updated_at) ||
+      parseOrderTimestamp(order.created_at) ||
+      Math.floor(Date.now() / 1000)
+    );
+  }
+
+  return (
+    parseOrderTimestamp(order.created_at) ||
+    parseOrderTimestamp(order.updated_at) ||
+    Math.floor(Date.now() / 1000)
+  );
+}
+
+/**
+ * @param {Record<string, unknown>} metadata
+ */
+function logPurchaseStructured(tag, metadata) {
+  console.warn(JSON.stringify({ tag, ...metadata, timestamp: new Date().toISOString() }));
+}
+
+/**
+ * @param {ReturnType<typeof buildCanonicalTicketPurchaseEvent>} canonical
+ * @returns {string[]}
+ */
+function buildAttributionWarnings(canonical) {
+  /** @type {string[]} */
+  const warnings = [];
+  if (!canonical?.fbc) warnings.push('missing_fbc');
+  if (!canonical?.fbp) warnings.push('missing_fbp');
+  if (!canonical?.clientIp) warnings.push('missing_ip');
+  if (!canonical?.clientUserAgent) warnings.push('missing_user_agent');
+  return warnings;
+}
+
+/**
  * @param {{
  *   order: Record<string, unknown>;
  *   orderPasses?: Array<Record<string, unknown>>|null;
@@ -90,6 +149,7 @@ function buildCanonicalTicketPurchaseEvent(params) {
   const orderId = String(order.id);
   const attr = parseMetaAttribution(order.meta_attribution);
   const eventId = resolveEventId(orderId, attr);
+  const resolved = resolvePurchaseAttribution(attr, req ?? null);
 
   const promo =
     promoCode != null
@@ -102,33 +162,10 @@ function buildCanonicalTicketPurchaseEvent(params) {
   const contentIds = buildContentIdsFromOrderPasses(passes);
   const numItems = passes.reduce((s, p) => s + (Number(p.quantity) || 0), 0);
 
-  const clientIp =
-    attr.clientIp != null
-      ? String(attr.clientIp)
-      : attr.client_ip != null
-        ? String(attr.client_ip)
-        : undefined;
-
-  const clientUserAgent =
-    attr.clientUserAgent != null
-      ? String(attr.clientUserAgent)
-      : attr.client_user_agent != null
-        ? String(attr.client_user_agent)
-        : req?.headers?.['user-agent']
-          ? String(req.headers['user-agent'])
-          : undefined;
-
-  const eventSourceUrl =
-    attr.eventSourceUrl != null
-      ? String(attr.eventSourceUrl)
-      : attr.event_source_url != null
-        ? String(attr.event_source_url)
-        : undefined;
-
   return {
     eventId,
     eventName: 'Purchase',
-    eventTime: Math.floor(Date.now() / 1000),
+    eventTime: resolvePurchaseEventTime(order),
     orderId,
     orderStatus: order.status != null ? String(order.status) : undefined,
     paymentMethod,
@@ -140,13 +177,14 @@ function buildCanonicalTicketPurchaseEvent(params) {
     contents,
     numItems,
     ...(promo ? { promoCode: promo } : {}),
-    ...(eventSourceUrl ? { eventSourceUrl } : {}),
-    ...(attr.fbp ? { fbp: String(attr.fbp) } : {}),
-    ...(attr.fbc ? { fbc: String(attr.fbc) } : {}),
-    ...(clientIp && clientIp !== 'unknown' ? { clientIp } : {}),
-    ...(clientUserAgent ? { clientUserAgent } : {}),
+    ...(resolved.eventSourceUrl ? { eventSourceUrl: resolved.eventSourceUrl } : {}),
+    ...(resolved.fbp ? { fbp: resolved.fbp } : {}),
+    ...(resolved.fbc ? { fbc: resolved.fbc } : {}),
+    ...(resolved.clientIp ? { clientIp: resolved.clientIp } : {}),
+    ...(resolved.clientUserAgent ? { clientUserAgent: resolved.clientUserAgent } : {}),
     customer: buildCustomerFromOrder(order),
     eventIdWasStored: Boolean(attr.eventId != null || attr.event_id != null),
+    resolvedAttribution: resolved,
   };
 }
 
@@ -237,7 +275,7 @@ function buildCapiServerEventFromCanonical(canonical) {
 }
 
 /**
- * @param {Record<string, unknown>} canonical
+ * @param {ReturnType<typeof buildCanonicalTicketPurchaseEvent>} canonical
  * @param {Record<string, unknown>} capiResult
  */
 function buildSafeTrackingLogMetadata(canonical, capiResult) {
@@ -246,6 +284,7 @@ function buildSafeTrackingLogMetadata(canonical, capiResult) {
     orderId: canonical.orderId,
     eventId: canonical.eventId,
     paymentMethod: canonical.paymentMethod,
+    orderStatus: canonical.orderStatus,
     canonicalCreated: true,
     trackable: true,
     capiAttempted: Boolean(capiResult?.attempted),
@@ -253,10 +292,13 @@ function buildSafeTrackingLogMetadata(canonical, capiResult) {
     capiSkipped: Boolean(capiResult?.skipped),
     ...(capiResult?.error ? { capiError: String(capiResult.error).slice(0, 256) } : {}),
     pixelReturned: true,
+    hasEventId: Boolean(canonical.eventId),
     hasEmail: Boolean(normalizeEmail(customer.email)),
     hasPhone: Boolean(normalizePhone(customer.phone)),
     hasFbp: Boolean(canonical.fbp),
     hasFbc: Boolean(canonical.fbc),
+    hasIp: Boolean(canonical.clientIp),
+    hasUserAgent: Boolean(canonical.clientUserAgent),
   };
 }
 
@@ -292,12 +334,80 @@ async function ensureEventIdInAttribution(db, orderId, eventId, order) {
 /**
  * @param {import('@supabase/supabase-js').SupabaseClient} db
  * @param {string} orderId
+ * @param {Record<string, unknown>|null|undefined} order
+ * @param {ReturnType<typeof resolvePurchaseAttribution>} resolved
+ */
+async function backfillResolvedAttribution(db, orderId, order, resolved) {
+  if (!resolved || typeof resolved !== 'object') return;
+
+  const attr = parseMetaAttribution(order?.meta_attribution);
+  const patch = { ...attr };
+  let changed = false;
+
+  if (resolved.fbp && !attr.fbp) {
+    patch.fbp = resolved.fbp;
+    changed = true;
+  }
+
+  const storedFbcValid =
+    attr.fbc != null && isValidFbc(String(attr.fbc));
+  if (resolved.fbc && isValidFbc(resolved.fbc) && !storedFbcValid) {
+    patch.fbc = resolved.fbc;
+    changed = true;
+  }
+
+  const storedIpUsable = isUsableClientIp(
+    attr.clientIp != null ? String(attr.clientIp) : attr.client_ip != null ? String(attr.client_ip) : undefined
+  );
+  if (resolved.clientIp && isUsableClientIp(resolved.clientIp) && !storedIpUsable) {
+    patch.clientIp = resolved.clientIp;
+    changed = true;
+  }
+
+  if (resolved.clientUserAgent && !attr.clientUserAgent && !attr.client_user_agent) {
+    patch.clientUserAgent = resolved.clientUserAgent;
+    changed = true;
+  }
+
+  if (!changed) return;
+
+  const { error } = await db
+    .from('orders')
+    .update({
+      meta_attribution: patch,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', orderId);
+
+  if (error) {
+    console.warn('[Ticket Meta Tracking] failed to backfill meta_attribution:', error.message);
+  }
+}
+
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} db
+ * @param {string} orderId
  * @param {Record<string, unknown>} canonical
  * @param {Record<string, unknown>} capiResult
  */
 async function writeTrackingLog(db, orderId, canonical, capiResult) {
   const metadata = buildSafeTrackingLogMetadata(canonical, capiResult);
-  console.warn('[Ticket Meta Tracking]', JSON.stringify(metadata));
+  const warnings = buildAttributionWarnings(canonical);
+  if (warnings.length) {
+    logPurchaseStructured('META_PURCHASE_ATTRIBUTION_WARNING', {
+      ...metadata,
+      warnings,
+    });
+  }
+  if (capiResult?.skipped && capiResult?.error === 'already_sent') {
+    logPurchaseStructured('META_PURCHASE_CAPI_SKIPPED', metadata);
+  } else if (capiResult?.ok) {
+    logPurchaseStructured('META_PURCHASE_CAPI_SUCCESS', metadata);
+  } else if (capiResult?.attempted) {
+    logPurchaseStructured('META_PURCHASE_CAPI_FAILED', metadata);
+  } else if (capiResult?.skipped) {
+    logPurchaseStructured('META_PURCHASE_CAPI_SKIPPED', metadata);
+  }
   try {
     await db.from('order_logs').insert({
       order_id: orderId,
@@ -332,16 +442,17 @@ async function processConfirmedTicketPurchaseTracking(db, orderId, options = {})
   }
 
   if (!isTicketOrderTrackable(order)) {
-    const metadata = {
+    logPurchaseStructured('META_PURCHASE_CAPI_SKIPPED', {
       orderId,
       canonicalCreated: false,
       trackable: false,
       pixelReturned: false,
       capiAttempted: false,
       capiOk: false,
-      capiSkipped: true,
-    };
-    console.warn('[Ticket Meta Tracking]', JSON.stringify(metadata));
+      hasEventId: false,
+      orderStatus: order.status != null ? String(order.status) : undefined,
+      paymentMethod: order.payment_method != null ? String(order.payment_method) : undefined,
+    });
     return { trackable: false, pixel: null, capi: { attempted: false, ok: false, skipped: true } };
   }
 
@@ -408,6 +519,14 @@ async function processConfirmedTicketPurchaseTracking(db, orderId, options = {})
               );
             }
             await ensureEventIdInAttribution(db, orderId, canonical.eventId, order);
+            if (canonical.resolvedAttribution) {
+              await backfillResolvedAttribution(
+                db,
+                orderId,
+                order,
+                canonical.resolvedAttribution
+              );
+            }
           }
         }
       } catch (err) {
@@ -417,13 +536,23 @@ async function processConfirmedTicketPurchaseTracking(db, orderId, options = {})
     }
   }
 
+  const pixel = buildPixelPayloadFromCanonical(canonical);
+  if (pixel) {
+    logPurchaseStructured('META_PURCHASE_PIXEL_PAYLOAD_PREPARED', {
+      ...buildSafeTrackingLogMetadata(canonical, capiResult),
+      pixelReturned: true,
+    });
+  }
+
   if (!alreadySent) {
     await writeTrackingLog(db, orderId, canonical, capiResult);
+  } else {
+    logPurchaseStructured('META_PURCHASE_CAPI_SKIPPED', buildSafeTrackingLogMetadata(canonical, capiResult));
   }
 
   return {
     trackable: true,
-    pixel: buildPixelPayloadFromCanonical(canonical),
+    pixel,
     capi: capiResult,
   };
 }
@@ -431,10 +560,12 @@ async function processConfirmedTicketPurchaseTracking(db, orderId, options = {})
 module.exports = {
   parseMetaAttribution,
   isTicketOrderTrackable,
+  resolvePurchaseEventTime,
   buildCanonicalTicketPurchaseEvent,
   buildPixelPayloadFromCanonical,
   buildCapiServerEventFromCanonical,
   buildPixelAdvancedMatchingFromCanonical,
   buildSafeTrackingLogMetadata,
+  backfillResolvedAttribution,
   processConfirmedTicketPurchaseTracking,
 };

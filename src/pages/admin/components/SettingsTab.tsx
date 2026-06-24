@@ -18,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import FileUpload from "@/components/ui/file-upload";
 import { Settings, CheckCircle, XCircle, Clock, Wrench, RefreshCw, Image, Video, Trash2, ArrowUp, ArrowDown, AlertCircle } from "lucide-react";
 import type { HeroImage, AboutImage } from "../types";
+import type { AmbassadorNeighborhoodCity, AmbassadorSelectionSettings } from "@/lib/ambassadorSelectionSettings";
+import { AMBASSADOR_NEIGHBORHOOD_CITIES } from "@/lib/ambassadorSelectionSettings";
 
 export interface ExpirationSetting {
   order_status: string;
@@ -56,6 +58,9 @@ export interface SettingsTabProps {
   updateAmbassadorApplicationSettings: (enabled: boolean, message: string) => void;
   loadingAmbassadorApplicationSettings: boolean;
   setAmbassadorApplicationMessage: (v: string) => void;
+  ambassadorSelectionSettings: AmbassadorSelectionSettings;
+  loadingAmbassadorSelectionSettings: boolean;
+  updateAmbassadorCityWide: (city: AmbassadorNeighborhoodCity, enabled: boolean) => void;
   heroImages: HeroImage[];
   handleUploadHeroImage: (file: File) => void;
   uploadingHeroImage: boolean;
@@ -362,6 +367,40 @@ export function SettingsTab(p: SettingsTabProps) {
                   }}
                   className="min-h-[80px] text-sm bg-background text-foreground"
                 />
+              </div>
+            </div>
+            <div className="h-px bg-border" />
+
+            {/* Ambassador checkout selection */}
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-foreground">
+                  {p.t.ambassadorSelectionSettings}
+                </span>
+                {p.loadingAmbassadorSelectionSettings ? <Loader size="sm" /> : null}
+              </div>
+
+              <div className="space-y-3">
+                {AMBASSADOR_NEIGHBORHOOD_CITIES.map((city) => {
+                  const cityWide = p.ambassadorSelectionSettings.cityWide[city] === true;
+                  return (
+                    <div
+                      key={city}
+                      className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/30 p-3"
+                    >
+                      <p className="text-sm font-medium text-foreground">
+                        {p.language === "en"
+                          ? `Show all ambassadors in ${city}`
+                          : `Afficher tous les ambassadeurs à ${city}`}
+                      </p>
+                      <Switch
+                        checked={cityWide}
+                        disabled={p.loadingAmbassadorSelectionSettings}
+                        onCheckedChange={(checked) => p.updateAmbassadorCityWide(city, checked)}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

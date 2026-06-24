@@ -18,6 +18,7 @@ const SELECT_AMBASSADOR_AR_DESC =
 interface AmbassadorSelectorProps {
   city: string;
   ville?: string;
+  cityWide?: boolean;
   selectedAmbassadorId: string | null;
   onSelect: (ambassadorId: string) => void;
   language?: 'en' | 'fr';
@@ -26,11 +27,12 @@ interface AmbassadorSelectorProps {
 export function AmbassadorSelector({
   city,
   ville,
+  cityWide = false,
   selectedAmbassadorId,
   onSelect,
   language = 'en'
 }: AmbassadorSelectorProps) {
-  const { data: ambassadors, isLoading, error } = useActiveAmbassadors(city, ville);
+  const { data: ambassadors, isLoading, error } = useActiveAmbassadors(city, ville, { cityWide });
 
   const t = language === 'en' ? {
     selectAmbassador: 'Choose Your Ambassador',
@@ -119,7 +121,9 @@ export function AmbassadorSelector({
         onValueChange={onSelect}
       >
         <div className="space-y-3">
-          {ambassadors.map((ambassador) => (
+          {ambassadors.map((ambassador) => {
+            const displayVille = cityWide ? ambassador.ville : (ville || ambassador.ville);
+            return (
             <Card
               key={ambassador.id}
               className={`cursor-pointer transition-all ${
@@ -150,14 +154,15 @@ export function AmbassadorSelector({
                       <MapPin className="w-3 h-3 shrink-0" />
                       <span>
                         {ambassador.city}
-                        {ambassador.ville && `, ${ambassador.ville}`}
+                        {displayVille && `, ${displayVille}`}
                       </span>
                     </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       </RadioGroup>
     </div>

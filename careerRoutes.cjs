@@ -1,6 +1,6 @@
 /**
  * Career / recruitment API routes.
- * Register with: registerCareerRoutes(app, { supabase, supabaseService, requireAdminAuth, careerApplicationLimiter, getEmailTransporter })
+ * Register with: registerCareerRoutes(app, { supabase, supabaseService, requireAdminAuth, requireAdminPermission, careerApplicationLimiter, getEmailTransporter })
  */
 const ExcelJS = require('exceljs');
 const { getBaseEmailHtml } = require('./api/_lib/career-email-base-html.cjs');

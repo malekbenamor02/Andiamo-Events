@@ -3,8 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { CancelOrderDialog } from "./components/CancelOrderDialog";
+import { ConfirmOrderDialog } from "./components/ConfirmOrderDialog";
+import { EditProfileDialog } from "./components/EditProfileDialog";
+import { PaymentConfirmedSuccess } from "./components/PaymentConfirmedSuccess";
+import { OrderCancelledSuccess } from "./components/OrderCancelledSuccess";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -13,11 +16,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AmbassadorTabIndicator,
+  AmbassadorTabLayoutGroup,
+  AmbassadorTabPanel,
+} from "./components/AnimatedTabPanel";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, User, Eye, EyeOff, Save, AlertCircle } from "lucide-react";
+import { LogOut, User, AlertCircle } from "lucide-react";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { fetchSalesSettings, subscribeToSalesSettings } from "@/lib/salesSettings";
 import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
@@ -64,7 +71,18 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   const [performance, setPerformance] = useState<any>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
+  const [paymentSuccessOpen, setPaymentSuccessOpen] = useState(false);
+  const [paymentSuccessSummary, setPaymentSuccessSummary] = useState<{
+    customerName: string;
+    amount: number;
+  } | null>(null);
+  const [cancelSuccessOpen, setCancelSuccessOpen] = useState(false);
+  const [cancelSuccessSummary, setCancelSuccessSummary] = useState<{
+    customerName: string;
+    amount: number;
+  } | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cancellationReason, setCancellationReason] = useState('');
 
@@ -123,7 +141,11 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     save: "Save",
     cancelOrder: "Cancel Order",
     cancelReason: "Cancellation Reason",
-    confirmCancel: "Confirm Cancel",
+    confirmCancel: "Confirm cancellation",
+    keepOrder: "Keep order",
+    confirmOrder: "Confirm order",
+    confirmPayment: "Confirm payment",
+    goBack: "Go back",
     reasonRequired: "Please provide a cancellation reason",
     orderAccepted: "Order accepted successfully",
     orderCancelled: "Order cancelled",
@@ -191,7 +213,11 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     save: "Enregistrer",
     cancelOrder: "Annuler la Commande",
     cancelReason: "Raison d'Annulation",
-    confirmCancel: "Confirmer l'Annulation",
+    confirmCancel: "Confirmer l'annulation",
+    keepOrder: "Garder la commande",
+    confirmOrder: "Confirmer la commande",
+    confirmPayment: "Confirmer le paiement",
+    goBack: "Retour",
     reasonRequired: "Veuillez fournir une raison d'annulation",
     orderAccepted: "Commande acceptée avec succès",
     orderCancelled: "Commande annulée",
@@ -315,7 +341,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   };
 
   const fetchData = useCallback(
-    async (ambassadorId: string) => {
+    async (ambassadorId: string, options?: { silent?: boolean }) => {
       if (eventsFetchState !== "loaded") {
         return;
       }
@@ -324,11 +350,15 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         setNewOrders([]);
         setHistoryOrders([]);
         setPerformance({ ...EMPTY_PERFORMANCE });
-        setLoading(false);
+        if (!options?.silent) {
+          setLoading(false);
+        }
         return;
       }
 
-      setLoading(true);
+      if (!options?.silent) {
+        setLoading(true);
+      }
       const eventQs = `&event_id=${encodeURIComponent(selectedEventFilter)}`;
       try {
         const apiBase = getApiBaseUrl();
@@ -449,7 +479,9 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
           variant: "destructive",
         });
       } finally {
-        setLoading(false);
+        if (!options?.silent) {
+          setLoading(false);
+        }
       }
     },
     [eventsFetchState, selectedEventFilter, t.error, toast]
@@ -494,7 +526,10 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     fetchData,
   ]);
 
-  const handleConfirmCash = async (orderId: string) => {
+  const handleConfirmCash = async () => {
+    if (!selectedOrder) return;
+
+    const orderId = selectedOrder.id;
     // Check if sales are enabled
     if (!salesEnabled) {
       toast({
@@ -525,16 +560,15 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         details: { from_status: 'PENDING_CASH', to_status: 'PENDING_ADMIN_APPROVAL' }
       });
 
-      toast({
-        title: language === 'en' ? 'Cash Confirmed' : 'Paiement Confirmé',
-        description: language === 'en' 
-          ? 'Cash payment confirmed. Waiting for admin approval before tickets are sent.'
-          : 'Paiement en espèces confirmé. En attente de l\'approbation de l\'administrateur avant l\'envoi des billets.',
-        variant: "default"
+      setIsConfirmDialogOpen(false);
+      setPaymentSuccessSummary({
+        customerName: selectedOrder.user_name,
+        amount: selectedOrder.total_price,
       });
+      setPaymentSuccessOpen(true);
+      setSelectedOrder(null);
 
-      // Refresh orders data
-      fetchData(ambassador?.id || '');
+      void fetchData(ambassador?.id || "", { silent: true });
     } catch (error: any) {
       console.error('Error confirming cash:', error);
       const errorMessage = error?.message || error?.error?.message || 'Failed to confirm cash payment.';
@@ -632,15 +666,16 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         // Don't throw - order is cancelled, logging is secondary
       }
 
-      toast({
-        title: t.orderCancelled,
-        variant: "default"
-      });
-
       setIsCancelDialogOpen(false);
+      setCancelSuccessSummary({
+        customerName: selectedOrder.user_name,
+        amount: selectedOrder.total_price,
+      });
+      setCancelSuccessOpen(true);
       setSelectedOrder(null);
-      setCancellationReason('');
-      fetchData(ambassador?.id || '');
+      setCancellationReason("");
+
+      void fetchData(ambassador?.id || "", { silent: true });
     } catch (error: any) {
       console.error('Error cancelling order:', error);
       const errorMessage = error?.message || error?.error?.message || 'Failed to cancel order.';
@@ -1006,160 +1041,186 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          {/* Scrollable Tabs on Mobile */}
-          <div className="overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
-            <TabsList className="inline-flex h-10 items-center justify-start sm:justify-center rounded-lg bg-muted/50 p-1 text-muted-foreground w-full sm:w-auto min-w-full sm:min-w-0 sm:grid sm:grid-cols-4 gap-1 border border-border/30">
-              <TabsTrigger 
+          <AmbassadorTabLayoutGroup>
+            <TabsList className="relative grid h-10 w-full grid-cols-4 gap-0.5 rounded-lg border border-border/30 bg-muted/50 p-1 text-muted-foreground">
+              <TabsTrigger
+                id="tab-new-orders"
                 value="new-orders"
-                className="whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary/20 data-[state=active]:to-secondary/20 data-[state=active]:text-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/30 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-md"
+                className="relative z-10 min-w-0 border border-transparent bg-transparent px-1.5 py-1.5 text-xs font-medium shadow-none transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none sm:px-4 sm:text-sm"
               >
-                {language === 'en' ? 'New Orders' : 'Nouvelles Commandes'}
+                <AmbassadorTabIndicator active={activeTab === "new-orders"} />
+                <span className="relative z-10 truncate sm:hidden">
+                  {language === "en" ? "Orders" : "Nouveau"}
+                </span>
+                <span className="relative z-10 hidden truncate sm:inline">
+                  {language === "en" ? "New Orders" : "Nouvelles Commandes"}
+                </span>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
+                id="tab-history"
                 value="history"
-                className="whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary/20 data-[state=active]:to-secondary/20 data-[state=active]:text-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/30 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-md"
+                className="relative z-10 min-w-0 border border-transparent bg-transparent px-1.5 py-1.5 text-xs font-medium shadow-none transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none sm:px-4 sm:text-sm"
               >
-                {language === 'en' ? 'History' : 'Historique'}
+                <AmbassadorTabIndicator active={activeTab === "history"} />
+                <span className="relative z-10 truncate sm:hidden">
+                  {language === "en" ? "History" : "Hist."}
+                </span>
+                <span className="relative z-10 hidden truncate sm:inline">
+                  {language === "en" ? "History" : "Historique"}
+                </span>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
+                id="tab-performance"
                 value="performance"
-                className="whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary/20 data-[state=active]:to-secondary/20 data-[state=active]:text-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/30 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-md"
+                className="relative z-10 min-w-0 border border-transparent bg-transparent px-1.5 py-1.5 text-xs font-medium shadow-none transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none sm:px-4 sm:text-sm"
               >
-                {t.performance}
+                <AmbassadorTabIndicator active={activeTab === "performance"} />
+                <span className="relative z-10 truncate sm:hidden">
+                  {language === "en" ? "Stats" : "Perf."}
+                </span>
+                <span className="relative z-10 hidden truncate sm:inline">{t.performance}</span>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
+                id="tab-profile"
                 value="profile"
-                className="whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary/20 data-[state=active]:to-secondary/20 data-[state=active]:text-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/30 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-md"
+                className="relative z-10 min-w-0 border border-transparent bg-transparent px-1.5 py-1.5 text-xs font-medium shadow-none transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none sm:px-4 sm:text-sm"
               >
-                {t.profile}
+                <AmbassadorTabIndicator active={activeTab === "profile"} />
+                <span className="relative z-10 truncate">{t.profile}</span>
               </TabsTrigger>
             </TabsList>
-          </div>
+          </AmbassadorTabLayoutGroup>
 
-          {/* New Orders Tab (shows PENDING_CASH orders waiting for cash confirmation) */}
-          <TabsContent value="new-orders" className="mt-6">
-            <NewOrdersTab
-              language={language}
-              t={t}
-              newOrders={newOrders}
-              getOrderPasses={getOrderPasses}
-              getStatusBadge={getStatusBadge}
-              onConfirmCash={handleConfirmCash}
-              onCancelOrder={(order) => { setSelectedOrder(order); setIsCancelDialogOpen(true); }}
-            />
-          </TabsContent>
-
-          {/* History Tab (shows PAID, COMPLETED, CANCELLED orders) */}
-          <TabsContent value="history" className="mt-6">
-            <HistoryTab
-              language={language}
-              t={t}
-              historyOrders={historyOrders}
-              getOrderPasses={getOrderPasses}
-              getStatusBadge={getStatusBadge}
-            />
-          </TabsContent>
-
-          {/* Performance Tab */}
-          <TabsContent value="performance" className="mt-6">
-            <PerformanceTab language={language} t={t} performance={performance} />
-          </TabsContent>
-
-          {/* Profile Tab */}
-          <TabsContent value="profile" className="mt-6">
-            <ProfileTab t={t} ambassador={ambassador} onOpenEditDialog={() => setIsProfileDialogOpen(true)} />
-          </TabsContent>
+          <AmbassadorTabPanel activeTab={activeTab}>
+            <div
+              role="tabpanel"
+              id={`panel-${activeTab}`}
+              aria-labelledby={`tab-${activeTab}`}
+            >
+              {activeTab === "new-orders" && (
+                <NewOrdersTab
+                  language={language}
+                  t={t}
+                  newOrders={newOrders}
+                  getOrderPasses={getOrderPasses}
+                  getStatusBadge={getStatusBadge}
+                  onConfirmCash={(order) => {
+                    setSelectedOrder(order);
+                    setIsConfirmDialogOpen(true);
+                  }}
+                  onCancelOrder={(order) => {
+                    setSelectedOrder(order);
+                    setIsCancelDialogOpen(true);
+                  }}
+                />
+              )}
+              {activeTab === "history" && (
+                <HistoryTab
+                  language={language}
+                  t={t}
+                  historyOrders={historyOrders}
+                  getOrderPasses={getOrderPasses}
+                  getStatusBadge={getStatusBadge}
+                />
+              )}
+              {activeTab === "performance" && (
+                <PerformanceTab language={language} t={t} performance={performance} />
+              )}
+              {activeTab === "profile" && ambassador && (
+                <ProfileTab
+                  t={t}
+                  ambassador={ambassador}
+                  onOpenEditDialog={() => setIsProfileDialogOpen(true)}
+                />
+              )}
+            </div>
+          </AmbassadorTabPanel>
         </Tabs>
 
-        {/* Cancel Order Dialog */}
-        <Dialog open={isCancelDialogOpen} onOpenChange={(open) => {
-          setIsCancelDialogOpen(open);
-          if (!open) {
-            setCancellationReason('');
-          }
-        }}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t.cancelOrder}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>{t.cancelReason} *</Label>
-                <Textarea
-                  value={cancellationReason}
-                  onChange={(e) => setCancellationReason(e.target.value)}
-                  placeholder="Enter cancellation reason..."
-                />
-              </div>
-              <div className="flex justify-end">
-                <Button variant="destructive" onClick={handleCancelOrder}>
-                  {t.confirmCancel}
-                </Button>
-              </div>
-      </div>
-          </DialogContent>
-        </Dialog>
+        <OrderCancelledSuccess
+          open={cancelSuccessOpen}
+          onOpenChange={(open) => {
+            setCancelSuccessOpen(open);
+            if (!open) setCancelSuccessSummary(null);
+          }}
+          language={language}
+          customerName={cancelSuccessSummary?.customerName}
+          amount={cancelSuccessSummary?.amount}
+        />
 
-        {/* Edit Profile Dialog */}
-        <Dialog open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-              <DialogTitle>{t.editProfile}</DialogTitle>
-          </DialogHeader>
-            <div className="space-y-4">
-              <div className="p-3 bg-muted/30 rounded-md border border-border/50">
-                <Label className="text-xs text-muted-foreground mb-1 block">{t.currentPhone}</Label>
-                <p className="text-sm font-medium">{ambassador?.phone}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {language === 'en' 
-                    ? "Phone number cannot be changed" 
-                    : "Le numéro de téléphone ne peut pas être modifié"}
-                </p>
-              </div>
-              <div>
-                <Label>{t.newPassword}</Label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    value={profileForm.password}
-                    onChange={(e) => setProfileForm({ ...profileForm, password: e.target.value })}
-                    placeholder={language === 'en' ? "Enter new password" : "Entrez le nouveau mot de passe"}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <Label>{t.confirmPassword}</Label>
-                <Input
-                  type="password"
-                  value={profileForm.confirmPassword}
-                  onChange={(e) => setProfileForm({ ...profileForm, confirmPassword: e.target.value })}
-                  placeholder={language === 'en' ? "Confirm new password" : "Confirmez le nouveau mot de passe"}
-                />
-          </div>
-          <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => {
-                  setIsProfileDialogOpen(false);
-                  setProfileForm({ password: '', confirmPassword: '' });
-                }}>
-                  {t.cancel}
-                </Button>
-                <Button onClick={handleUpdateProfile}>
-                  <Save className="w-4 h-4 mr-2" />
-                  {t.save}
-                </Button>
-              </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+        <PaymentConfirmedSuccess
+          open={paymentSuccessOpen}
+          onOpenChange={(open) => {
+            setPaymentSuccessOpen(open);
+            if (!open) setPaymentSuccessSummary(null);
+          }}
+          language={language}
+          customerName={paymentSuccessSummary?.customerName}
+          amount={paymentSuccessSummary?.amount}
+        />
+
+        <ConfirmOrderDialog
+          open={isConfirmDialogOpen}
+          onOpenChange={(open) => {
+            setIsConfirmDialogOpen(open);
+            if (!open) setSelectedOrder(null);
+          }}
+          order={selectedOrder}
+          onConfirm={handleConfirmCash}
+          language={language}
+          title={t.confirmOrder}
+          confirmLabel={t.confirmPayment}
+          backLabel={t.goBack}
+        />
+
+        <CancelOrderDialog
+          open={isCancelDialogOpen}
+          onOpenChange={(open) => {
+            setIsCancelDialogOpen(open);
+            if (!open) setCancellationReason("");
+          }}
+          order={selectedOrder}
+          reason={cancellationReason}
+          onReasonChange={setCancellationReason}
+          onConfirm={handleCancelOrder}
+          language={language}
+          title={t.cancelOrder}
+          reasonLabel={t.cancelReason}
+          confirmLabel={t.confirmCancel}
+          keepOrderLabel={t.keepOrder}
+        />
+
+        <EditProfileDialog
+          open={isProfileDialogOpen}
+          onOpenChange={(open) => {
+            setIsProfileDialogOpen(open);
+            if (!open) {
+              setProfileForm({ password: "", confirmPassword: "" });
+              setShowPassword(false);
+            }
+          }}
+          language={language}
+          phone={ambassador?.phone ?? ""}
+          password={profileForm.password}
+          confirmPassword={profileForm.confirmPassword}
+          showPassword={showPassword}
+          onPasswordChange={(value) => setProfileForm({ ...profileForm, password: value })}
+          onConfirmPasswordChange={(value) =>
+            setProfileForm({ ...profileForm, confirmPassword: value })
+          }
+          onToggleShowPassword={() => setShowPassword(!showPassword)}
+          onSave={handleUpdateProfile}
+          onCancel={() => {
+            setIsProfileDialogOpen(false);
+            setProfileForm({ password: "", confirmPassword: "" });
+          }}
+          title={t.editProfile}
+          currentPhoneLabel={t.currentPhone}
+          newPasswordLabel={t.newPassword}
+          confirmPasswordLabel={t.confirmPassword}
+          cancelLabel={t.cancel}
+          saveLabel={t.save}
+        />
       </div>
     </div>
   );

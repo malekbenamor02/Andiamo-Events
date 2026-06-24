@@ -8,6 +8,7 @@ const SITE_CONTENT_KEYS = new Set([
   'maintenance_settings',
   'hero_section',
   'ambassador_application_settings',
+  'ambassador_selection_settings',
   'countdown_banner',
   'countdown_banner_settings',
   'favicon_settings',

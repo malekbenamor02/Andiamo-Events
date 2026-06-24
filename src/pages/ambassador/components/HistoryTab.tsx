@@ -28,6 +28,105 @@ export interface HistoryTabProps {
   getStatusBadge: (status: string) => React.ReactNode;
 }
 
+function getPassName(passType: string | undefined, t: AmbassadorTranslations): string {
+  const k = passType?.toLowerCase();
+  if (k === "vip") return t.vip;
+  if (k === "zone 1") return "Zone 1";
+  if (k === "standard") return t.standard;
+  return passType || t.standard;
+}
+
+function getOrderDate(order: Order): Date {
+  return new Date(order.completed_at || order.cancelled_at || order.updated_at);
+}
+
+function PassTypeCell({
+  order,
+  t,
+  getOrderPasses,
+}: {
+  order: Order;
+  t: AmbassadorTranslations;
+  getOrderPasses: HistoryTabProps["getOrderPasses"];
+}) {
+  const passes = getOrderPasses(order);
+  if (passes.length === 0) {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+  if (passes.length === 1) {
+    const pass = passes[0];
+    return (
+      <Badge variant="outline" className={passTypeBadgeClass(pass.pass_type)}>
+        {getPassName(pass.pass_type, t)}
+      </Badge>
+    );
+  }
+  const passBreakdown = passes
+    .map((p) => `${p.quantity}× ${getPassName(p.pass_type, t)}`)
+    .join(" + ");
+  return (
+    <div className="space-y-1">
+      <Badge variant="outline" className="border-border bg-muted/50 text-foreground text-xs">
+        MIXED
+      </Badge>
+      <p className="text-xs text-muted-foreground">{passBreakdown}</p>
+    </div>
+  );
+}
+
+function OrderQuantity({
+  order,
+  getOrderPasses,
+}: {
+  order: Order;
+  getOrderPasses: HistoryTabProps["getOrderPasses"];
+}) {
+  const passes = getOrderPasses(order);
+  const total =
+    passes.reduce((sum, p) => sum + (p.quantity || 0), 0) || order.quantity || 0;
+  return <span className="tabular-nums text-foreground">{total}</span>;
+}
+
+function MobilePassDetails({
+  order,
+  t,
+  getOrderPasses,
+}: {
+  order: Order;
+  t: AmbassadorTranslations;
+  getOrderPasses: HistoryTabProps["getOrderPasses"];
+}) {
+  const passes = getOrderPasses(order);
+  if (passes.length === 0) {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+  if (passes.length === 1) {
+    const pass = passes[0];
+    return (
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className={passTypeBadgeClass(pass.pass_type)}>
+          {getPassName(pass.pass_type, t)}
+        </Badge>
+        <span className="text-sm text-muted-foreground">× {pass.quantity}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1.5">
+      <Badge variant="outline" className="border-border bg-muted/50 text-foreground text-xs">
+        MIXED
+      </Badge>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
+        {passes.map((p, idx) => (
+          <span key={idx}>
+            {getPassName(p.pass_type, t)} × {p.quantity}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function HistoryTab({
   language,
   t,
@@ -36,165 +135,86 @@ export function HistoryTab({
   getStatusBadge,
 }: HistoryTabProps) {
   return (
-    <Card className="border-border/50 shadow-lg shadow-primary/5 bg-gradient-to-br from-background to-background/95">
-      <CardHeader className="bg-gradient-to-r from-primary/10 via-secondary/5 to-primary/10 border-b border-border/50 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 to-secondary/20">
-            <Package className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <CardTitle className="text-xl sm:text-2xl font-heading bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
-              {language === "en" ? "History" : "Historique"}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              {language === "en"
-                ? "View your completed, paid, and cancelled orders"
-                : "Consultez vos commandes terminées, payées et annulées"}
-            </p>
-          </div>
-        </div>
+    <Card className="border-border bg-card shadow-sm">
+      <CardHeader className="space-y-1 border-b border-border px-4 py-4 sm:px-6">
+        <CardTitle className="text-lg font-semibold tracking-tight sm:text-xl">
+          {language === "en" ? "History" : "Historique"}
+        </CardTitle>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {language === "en"
+            ? "Completed, paid, and cancelled orders."
+            : "Commandes terminées, payées et annulées."}
+        </p>
       </CardHeader>
       <CardContent className="p-4 sm:p-6">
         {historyOrders.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="inline-flex p-4 rounded-full bg-muted/50 mb-4">
-              <Package className="w-8 h-8 text-muted-foreground" />
+          <div className="py-14 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <Package className="h-5 w-5 text-muted-foreground" />
             </div>
-            <p className="text-muted-foreground text-lg font-medium">
+            <p className="font-medium text-foreground">
               {language === "en" ? "No order history" : "Aucun historique de commande"}
             </p>
-            <p className="text-sm text-muted-foreground/80 mt-2">
+            <p className="mt-1 text-sm text-muted-foreground">
               {language === "en"
-                ? "Your completed orders will appear here"
-                : "Vos commandes terminées apparaîtront ici"}
+                ? "Your completed orders will appear here."
+                : "Vos commandes terminées apparaîtront ici."}
             </p>
           </div>
         ) : (
           <>
-            <div className="hidden md:block overflow-x-auto rounded-lg border border-border/30">
+            <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gradient-to-r from-muted/50 to-muted/30 border-b-2 border-border/50">
-                    <TableHead className="font-semibold text-foreground/90">{t.customerName}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.phone}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.city}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.passType}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.quantity}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.totalPrice}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">{t.status}</TableHead>
-                    <TableHead className="font-semibold text-foreground/90">
-                      {language === "en" ? "Date" : "Date"}
-                    </TableHead>
+                  <TableRow className="border-border bg-muted/40 hover:bg-muted/40">
+                    <TableHead>{t.customerName}</TableHead>
+                    <TableHead>{t.phone}</TableHead>
+                    <TableHead>{t.city}</TableHead>
+                    <TableHead>{t.passType}</TableHead>
+                    <TableHead>{t.quantity}</TableHead>
+                    <TableHead>{t.totalPrice}</TableHead>
+                    <TableHead>{t.status}</TableHead>
+                    <TableHead>{language === "en" ? "Date" : "Date"}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {historyOrders.map((order, index) => (
-                    <TableRow
-                      key={order.id}
-                      className={`border-border/30 transition-all duration-200 ${
-                        index % 2 === 0 ? "bg-card/30 hover:bg-card/50" : "bg-card/20 hover:bg-card/40"
-                      }`}
-                    >
-                      <TableCell className="font-medium text-foreground">{order.user_name}</TableCell>
-                      <TableCell className="text-foreground/90">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Phone className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-                          <span className="min-w-0 break-all">{order.user_phone}</span>
+                  {historyOrders.map((order) => (
+                    <TableRow key={order.id} className="border-border hover:bg-muted/20">
+                      <TableCell className="font-medium">{order.user_name}</TableCell>
+                      <TableCell>
+                        <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                          <Phone className="h-3.5 w-3.5 shrink-0" />
+                          <span className="min-w-0 break-all text-foreground">{order.user_phone}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-foreground/90">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <MapPin className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-                          <span className="min-w-0">
+                      <TableCell>
+                        <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                          <span className="min-w-0 text-foreground">
                             {order.city}
                             {order.ville ? ` – ${order.ville}` : ""}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        {(() => {
-                          const passes = getOrderPasses(order);
-                          if (passes.length === 0) {
-                            return <span className="text-muted-foreground text-sm">-</span>;
-                          }
-                          if (passes.length === 1) {
-                            const pass = passes[0];
-                            const isVip = pass.pass_type?.toLowerCase() === "vip";
-                            const passName = isVip ? t.vip : pass.pass_type || t.standard;
-                            return (
-                              <Badge
-                                variant="outline"
-                                className={passTypeBadgeClass(pass.pass_type)}
-                              >
-                                {passName}
-                              </Badge>
-                            );
-                          }
-                          const passBreakdown = passes
-                            .map((p) => {
-                              const passName =
-                                p.pass_type?.toLowerCase() === "vip"
-                                  ? t.vip
-                                  : p.pass_type?.toLowerCase() === "zone 1"
-                                    ? "Zone 1"
-                                    : p.pass_type?.toLowerCase() === "standard"
-                                      ? t.standard
-                                      : p.pass_type || t.standard;
-                              return `${p.quantity}× ${passName}`;
-                            })
-                            .join(" + ");
-                          return (
-                            <div className="space-y-1">
-                              <Badge
-                                variant="outline"
-                                className="border-primary/40 bg-primary/10 text-primary text-xs"
-                              >
-                                MIXED
-                              </Badge>
-                              <p className="text-xs text-muted-foreground mt-1">{passBreakdown}</p>
-                            </div>
-                          );
-                        })()}
+                        <PassTypeCell order={order} t={t} getOrderPasses={getOrderPasses} />
                       </TableCell>
-                      <TableCell className="text-center">
-                        {(() => {
-                          const passes = getOrderPasses(order);
-                          const totalQuantity =
-                            passes.reduce((sum, p) => sum + (p.quantity || 0), 0) ||
-                            order.quantity ||
-                            0;
-                          return (
-                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold">
-                              {totalQuantity}
-                            </span>
-                          );
-                        })()}
+                      <TableCell>
+                        <OrderQuantity order={order} getOrderPasses={getOrderPasses} />
                       </TableCell>
-                      <TableCell className="font-semibold">
-                        <span className="text-green-400 font-bold">
-                          {order.total_price.toFixed(2)} TND
-                        </span>
+                      <TableCell className="font-medium tabular-nums">
+                        {order.total_price.toFixed(2)} TND
                       </TableCell>
                       <TableCell>{getStatusBadge(order.status)}</TableCell>
                       <TableCell>
-                        <div className="text-xs space-y-1">
-                          <div className="font-medium text-foreground/90">
-                            {format(
-                              new Date(
-                                order.completed_at || order.cancelled_at || order.updated_at
-                              ),
-                              "MMM d, yyyy"
-                            )}
-                          </div>
-                          <div className="text-muted-foreground flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {format(
-                              new Date(
-                                order.completed_at || order.cancelled_at || order.updated_at
-                              ),
-                              "HH:mm"
-                            )}
-                          </div>
+                        <div className="text-xs">
+                          <p className="font-medium text-foreground">
+                            {format(getOrderDate(order), "MMM d, yyyy")}
+                          </p>
+                          <p className="mt-0.5 flex items-center gap-1 text-muted-foreground">
+                            <Clock className="h-3 w-3" aria-hidden />
+                            {format(getOrderDate(order), "HH:mm")}
+                          </p>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -203,146 +223,52 @@ export function HistoryTab({
               </Table>
             </div>
 
-            <div className="md:hidden space-y-4">
-              {historyOrders.map((order) => {
-                const isPaid = order.status === "PAID";
-                const isCompleted = order.status === "COMPLETED";
-                const isCancelled =
-                  order.status === "CANCELLED" ||
-                  order.status === "CANCELLED_BY_AMBASSADOR" ||
-                  order.status === "CANCELLED_BY_ADMIN";
-                return (
-                  <Card
-                    key={order.id}
-                    className={`border-2 shadow-lg transition-all duration-300 hover:shadow-xl hover:scale-[1.02] ${
-                      isPaid
-                        ? "bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-background border-blue-500/30"
-                        : isCompleted
-                          ? "bg-gradient-to-br from-green-500/10 via-green-500/5 to-background border-green-500/30"
-                          : isCancelled
-                            ? "bg-gradient-to-br from-red-500/10 via-red-500/5 to-background border-red-500/30"
-                            : "bg-gradient-to-br from-card/50 to-card/30 border-border/50"
-                    }`}
-                  >
-                    <CardContent className="p-5 space-y-4">
-                      <div className="flex items-start justify-between pb-3 border-b border-border/30">
-                        <div className="flex-1">
-                          <h3 className="font-bold text-lg text-foreground mb-1">
-                            {order.user_name}
-                          </h3>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Clock className="w-3.5 h-3.5" />
-                            {format(
-                              new Date(
-                                order.completed_at || order.cancelled_at || order.updated_at
-                              ),
-                              "MMM d, yyyy HH:mm"
-                            )}
-                          </div>
-                        </div>
-                        <div>{getStatusBadge(order.status)}</div>
-                      </div>
+            <div className="space-y-3 md:hidden">
+              {historyOrders.map((order) => (
+                <article
+                  key={order.id}
+                  className="overflow-hidden rounded-xl border border-border bg-card"
+                >
+                  <div className="flex items-start justify-between gap-3 border-b border-border/60 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-foreground">{order.user_name}</p>
+                      <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3 shrink-0" aria-hidden />
+                        {format(getOrderDate(order), "MMM d, yyyy · HH:mm")}
+                      </p>
+                    </div>
+                    <div className="shrink-0">{getStatusBadge(order.status)}</div>
+                  </div>
 
-                      <div className="grid grid-cols-1 gap-3">
-                        <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/30">
-                          <Phone className="w-4 h-4 text-primary/70" />
-                          <div>
-                            <p className="text-xs text-muted-foreground">{t.phone}</p>
-                            <p className="text-sm font-medium text-foreground">
-                              {order.user_phone}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/30">
-                          <MapPin className="w-4 h-4 text-primary/70" />
-                          <div>
-                            <p className="text-xs text-muted-foreground">{t.city}</p>
-                            <p className="text-sm font-medium text-foreground">
-                              {order.city}
-                              {order.ville ? ` – ${order.ville}` : ""}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
-                        <p className="text-xs text-muted-foreground mb-2">{t.passType}</p>
-                        {(() => {
-                          const passes = getOrderPasses(order);
-                          if (passes.length === 0) {
-                            return <span className="text-muted-foreground text-sm">-</span>;
-                          }
-                          if (passes.length === 1) {
-                            const pass = passes[0];
-                            const isVip = pass.pass_type?.toLowerCase() === "vip";
-                            const passName = isVip ? t.vip : pass.pass_type || t.standard;
-                            return (
-                              <div className="space-y-2">
-                                <Badge
-                                  variant="outline"
-                                  className={passTypeBadgeClass(pass.pass_type)}
-                                >
-                                  {passName}
-                                </Badge>
-                                <div className="flex items-center gap-2">
-                                  <p className="text-xs text-muted-foreground">{t.quantity}:</p>
-                                  <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/20 text-primary font-bold">
-                                    {pass.quantity}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-                          return (
-                            <div className="space-y-2">
-                              <Badge
-                                variant="outline"
-                                className="border-primary/40 bg-primary/10 text-primary text-xs"
-                              >
-                                MIXED
-                              </Badge>
-                              <div className="space-y-1.5 mt-2">
-                                {passes.map((p, idx) => {
-                                  const passName =
-                                    p.pass_type?.toLowerCase() === "vip"
-                                      ? t.vip
-                                      : p.pass_type?.toLowerCase() === "zone 1"
-                                        ? "Zone 1"
-                                        : p.pass_type?.toLowerCase() === "standard"
-                                          ? t.standard
-                                          : p.pass_type || t.standard;
-                                  return (
-                                    <div
-                                      key={idx}
-                                      className="flex items-center justify-between text-sm bg-background/50 p-2 rounded"
-                                    >
-                                      <span className="font-medium">{passName}</span>
-                                      <span className="text-muted-foreground">× {p.quantity}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              <div className="flex items-center gap-2 pt-1 border-t border-border/30">
-                                <p className="text-xs text-muted-foreground">{t.quantity}:</p>
-                                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/20 text-primary font-bold">
-                                  {passes.reduce((sum, p) => sum + (p.quantity || 0), 0)}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-
-                      <div className="p-4 rounded-lg bg-gradient-to-r from-green-500/20 via-green-500/10 to-green-500/20 border border-green-500/30">
-                        <p className="text-xs text-green-300/80 mb-1">{t.totalPrice}</p>
-                        <p className="text-2xl font-bold text-green-400">
-                          {order.total_price.toFixed(2)} TND
+                  <div className="px-4 py-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-1 text-sm text-muted-foreground">
+                        <p className="flex items-center gap-1.5">
+                          <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                          <span className="break-all text-foreground">{order.user_phone}</span>
+                        </p>
+                        <p className="flex items-center gap-1.5">
+                          <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                          <span className="text-foreground">
+                            {order.city}
+                            {order.ville ? `, ${order.ville}` : ""}
+                          </span>
                         </p>
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                      <div className="shrink-0 text-right">
+                        <p className="text-lg font-semibold tabular-nums text-foreground">
+                          {order.total_price.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">TND</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border/60 px-4 py-3">
+                    <MobilePassDetails order={order} t={t} getOrderPasses={getOrderPasses} />
+                  </div>
+                </article>
+              ))}
             </div>
           </>
         )}

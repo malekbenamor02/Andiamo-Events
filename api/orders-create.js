@@ -36,9 +36,15 @@ function orderErr(res, status, errorKey, details, logDetails) {
 const requireCjs = createRequire(import.meta.url);
 const { buildOrderConfirmationEmailHtml } = requireCjs('./_lib/order-confirmation-email-html.cjs');
 const { fetchAmbassadorSocialLinkFromApplications } = requireCjs('./_lib/ambassador-social-link.cjs');
+const { validateAmbassadorCashLocation } = requireCjs('./_lib/ambassador-extra-villes.cjs');
+const {
+  fetchAmbassadorSelectionSettings,
+  isAmbassadorCityWide,
+} = requireCjs('./_lib/ambassador-selection-settings.cjs');
 const { computeOnlinePaymentFees } = requireCjs('./_lib/online-payment-fee.cjs');
 const { sendTransactionalEmail } = requireCjs('./_lib/transactional-email.cjs');
 const { processConfirmedTicketPurchaseTracking } = requireCjs('./_lib/meta/ticket-purchase-tracking.cjs');
+const { parseAttributionFromBody } = requireCjs('./_lib/meta/attribution.cjs');
 
 async function runTicketMetaTrackingSafe(dbClient, orderId, req) {
   try {
@@ -279,10 +285,6 @@ export default async (req, res) => {
       eventId,
       recaptchaToken,
       idempotencyKey,
-      metaEventId,
-      metaFbp,
-      metaFbc,
-      metaEventSourceUrl,
     } = bodyData;
 
     // reCAPTCHA: bypass if localhost-bypass-token or RECAPTCHA_SECRET_KEY not set
@@ -360,7 +362,7 @@ export default async (req, res) => {
     if (paymentMethod === 'ambassador_cash' && ambassadorId) {
       const { data: ambassador, error: ambassadorError } = await dbClient
         .from('ambassadors')
-        .select('id, status')
+        .select('id, status, city, ville, extra_villes')
         .eq('id', ambassadorId)
         .single();
       if (ambassadorError || !ambassador) {
@@ -371,6 +373,19 @@ export default async (req, res) => {
       if (!activeStatuses.includes(ambassador.status)) {
         await logOrderCreateFailure(dbClient, req, 400, { error: 'Ambassador cannot receive orders' });
         return orderErr(res, 400, 'This ambassador cannot receive new orders', 'The selected ambassador is paused or not active.');
+      }
+
+      const selectionSettings = await fetchAmbassadorSelectionSettings(dbClient);
+      const cityWide = isAmbassadorCityWide(customerInfo.city, selectionSettings);
+      const locationCheck = validateAmbassadorCashLocation({
+        ambassador,
+        customerCity: customerInfo.city,
+        customerVille: customerInfo.ville,
+        cityWide,
+      });
+      if (!locationCheck.ok) {
+        await logOrderCreateFailure(dbClient, req, 400, { error: locationCheck.error });
+        return orderErr(res, 400, locationCheck.error, locationCheck.details);
       }
     }
 
@@ -835,25 +850,7 @@ export default async (req, res) => {
 
     // STEP 6: Create order
     const isOnline = paymentMethod !== 'ambassador_cash';
-    const clientIp = getClientIp(req);
-    const clientUserAgentRaw = req.headers['user-agent'];
-    const clientUserAgent =
-      typeof clientUserAgentRaw === 'string'
-        ? clientUserAgentRaw.slice(0, 512)
-        : Array.isArray(clientUserAgentRaw)
-          ? String(clientUserAgentRaw[0] || '').slice(0, 512)
-          : null;
-    const metaAttribution =
-      metaEventId || metaFbp || metaFbc || metaEventSourceUrl || clientUserAgent || clientIp
-        ? {
-            ...(metaEventId ? { eventId: String(metaEventId).slice(0, 128) } : {}),
-            ...(metaFbp ? { fbp: String(metaFbp).slice(0, 256) } : {}),
-            ...(metaFbc ? { fbc: String(metaFbc).slice(0, 256) } : {}),
-            ...(metaEventSourceUrl ? { eventSourceUrl: String(metaEventSourceUrl).slice(0, 2048) } : {}),
-            ...(clientUserAgent ? { clientUserAgent } : {}),
-            ...(clientIp ? { clientIp } : {}),
-          }
-        : null;
+    const metaAttribution = parseAttributionFromBody(req, bodyData);
     const orderData = {
       source: paymentMethod === 'ambassador_cash' ? 'platform_cod' : 'platform_online',
       user_name: customerInfo.full_name.trim(),

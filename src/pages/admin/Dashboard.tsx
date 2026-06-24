@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, Suspense } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -44,6 +44,14 @@ import {
   fetchCountdownBannerSettings,
   upsertCountdownBannerSettings,
 } from "@/lib/countdownBannerSettings";
+import {
+  AMBASSADOR_SELECTION_SETTINGS_KEY,
+  fetchAmbassadorSelectionSettings,
+  normalizeAmbassadorSelectionSettings,
+  upsertAmbassadorSelectionSettings,
+  type AmbassadorNeighborhoodCity,
+  type AmbassadorSelectionSettings,
+} from "@/lib/ambassadorSelectionSettings";
 import {
   CheckCircle,
   XCircle,
@@ -162,6 +170,10 @@ import type { MarketingTabProps } from "./components/MarketingTab";
 import { peekAndConsumeAdminVerifyCache } from "@/lib/admin-verify-cache";
 import { filterAmbassadorApplications } from "./lib/filterApplications";
 import { exportAmbassadorApplicationsListExcel, formatInstagramLink } from "./lib/exportAmbassadorApplicationsExcel";
+import {
+  getAllowedVillesForCity,
+  normalizeExtraVilles,
+} from "@/lib/ambassadors/extraVilles";
 
 const LazyReportsAnalytics = React.lazy(() =>
   import("@/components/admin/analytics/ReportsAnalytics").then((m) => ({ default: m.ReportsAnalytics })),
@@ -242,9 +254,9 @@ const EVENTS_ADMIN_LIST_COLUMNS =
 const APPLICATIONS_LIST_COLUMNS =
   "id, full_name, age, phone_number, email, city, ville, social_link, motivation, status, created_at, reapply_delay_date, manually_added, reviewed_by_admin_id, reviewed_at, reviewed_by_name";
 
-/** DB columns only â€” `age` / `social_link` live on applications, not on `ambassadors`. */
+/** DB columns only — `age` / `social_link` live on applications, not on `ambassadors`. */
 const AMBASSADORS_LIST_COLUMNS =
-  "id, full_name, phone, email, city, ville, status, password, created_at, updated_at";
+  "id, full_name, phone, email, city, ville, extra_villes, status, password, created_at, updated_at";
 import { AmbassadorInfoDialog } from "./components/AmbassadorInfoDialog";
 import { OnlineOrderDetailsDialog } from "./components/OnlineOrderDetailsDialog";
 import { OrderDetailsDialog } from "./components/OrderDetailsDialog";
@@ -389,6 +401,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [ambassadorApplicationEnabled, setAmbassadorApplicationEnabled] = useState(true);
   const [ambassadorApplicationMessage, setAmbassadorApplicationMessage] = useState("");
   const [loadingAmbassadorApplicationSettings, setLoadingAmbassadorApplicationSettings] = useState(false);
+
+  const [ambassadorSelectionSettings, setAmbassadorSelectionSettings] =
+    useState<AmbassadorSelectionSettings>(normalizeAmbassadorSelectionSettings({}));
+  const [loadingAmbassadorSelectionSettings, setLoadingAmbassadorSelectionSettings] = useState(false);
 
   // Default hero typewriter texts (mirror frontend defaults so super admin can edit them)
   const defaultHeroTypewriterTexts = {
@@ -631,7 +647,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         let passTypesStr = 'N/A';
         if (passes.length > 0) {
           passTypesStr = passes.map((p: any) => 
-            `${p.pass_type || p.passName || 'Unknown'} Ã—${p.quantity || 1}`
+            `${p.pass_type || p.passName || 'Unknown'} ×${p.quantity || 1}`
           ).join(', ');
         }
 
@@ -644,19 +660,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         // Format status text
         const statusText = order.status === 'PENDING_CASH'
-          ? (language === 'en' ? 'Pending Cash' : 'En attente espÃ¨ces')
+          ? (language === 'en' ? 'Pending Cash' : 'En attente espèces')
           : order.status === 'PAID'
-          ? (language === 'en' ? 'Paid' : 'PayÃ©')
+          ? (language === 'en' ? 'Paid' : 'Payé')
           : order.status === 'CANCELLED'
-          ? (language === 'en' ? 'Cancelled' : 'AnnulÃ©')
+          ? (language === 'en' ? 'Cancelled' : 'Annulé')
           : order.status === 'PENDING_ADMIN_APPROVAL'
           ? (language === 'en' ? 'Pending Approval' : 'En Attente')
           : order.status === 'APPROVED'
-          ? (language === 'en' ? 'Approved' : 'ApprouvÃ©')
+          ? (language === 'en' ? 'Approved' : 'Approuvé')
           : order.status === 'REJECTED'
-          ? (language === 'en' ? 'Rejected' : 'RejetÃ©')
+          ? (language === 'en' ? 'Rejected' : 'Rejeté')
           : order.status === 'REMOVED_BY_ADMIN'
-          ? (language === 'en' ? 'Removed by Admin' : "RetirÃ© par l'administrateur")
+          ? (language === 'en' ? 'Removed by Admin' : "Retiré par l'administrateur")
           : order.status || 'N/A';
 
         const row = worksheet.addRow({
@@ -720,19 +736,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.URL.revokeObjectURL(url);
 
       toast({
-        title: language === 'en' ? 'Export Successful' : 'Export rÃ©ussi',
+        title: language === 'en' ? 'Export Successful' : 'Export réussi',
         description: language === 'en' 
           ? `${codAmbassadorOrders.length} orders exported to ${filename}`
-          : `${codAmbassadorOrders.length} commandes exportÃ©es vers ${filename}`,
+          : `${codAmbassadorOrders.length} commandes exportées vers ${filename}`,
         duration: 3000,
       });
     } catch (error) {
       console.error('Error exporting orders:', error);
       toast({
-        title: language === 'en' ? 'Export Failed' : "Ã‰chec de l'export",
+        title: language === 'en' ? 'Export Failed' : "Échec de l'export",
         description: language === 'en' 
           ? 'Failed to export orders. Please try again.'
-          : "Ã‰chec de l'exportation des commandes. Veuillez rÃ©essayer.",
+          : "Échec de l'exportation des commandes. Veuillez réessayer.",
         variant: 'destructive',
       });
     }
@@ -903,7 +919,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }, [applications, codAmbassadorOrders, onlineOrdersForChart, events]);
 
   /**
-   * Header event selector: all events. Test events (`is_test`) only on localhost / local dev â€” same as public listings.
+   * Header event selector: all events. Test events (`is_test`) only on localhost / local dev — same as public listings.
    */
   const selectableDashboardEvents = useMemo(() => {
     const showTest = isLocalhostClient();
@@ -966,14 +982,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       );
     };
 
-    // Ambassador orders (already filtered by selected event when fetched) â€” paid = collected cash only
+    // Ambassador orders (already filtered by selected event when fetched) — paid = collected cash only
     const ambPaid = codAmbassadorOrders.filter((o: any) => PAID_AMB.includes(o.status));
     const ambPending = codAmbassadorOrders.filter((o: any) => PENDING_AMB.includes(o.status));
     const ambPaidRevenue = ambPaid.reduce((s, o) => s + getOrderLineRevenue(o), 0);
     const ambPendingRevenue = ambPending.reduce((s, o) => s + getOrderLineRevenue(o), 0);
     const ambSoldTickets = ambPaid.reduce((s, o) => s + getOrderTicketsAndRevenue(o).tickets, 0);
 
-    // Online: align with Reports (line-item revenue + same â€œpaidâ€ rules as status / payment_status)
+    // Online: align with Reports (line-item revenue + same “paid” rules as status / payment_status)
     const onlinePaid = onlineOrders.filter((o: any) => isOnlinePaid(o));
     const onlinePending = onlineOrders.filter((o: any) => isOnlinePendingRevenue(o));
     const onlinePaidRevenue = onlinePaid.reduce((s, o) => s + getOrderReportRevenue(o), 0);
@@ -1245,8 +1261,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       typeof total === "number" ? `${total.toFixed(2)} TND` : "";
 
     return totalText
-      ? `${buyerName} â€” ${passesText} â€¢ Total ${totalText}`
-      : `${buyerName} â€” ${passesText}`;
+      ? `${buyerName} — ${passesText} • Total ${totalText}`
+      : `${buyerName} — ${passesText}`;
   };
 
   const pushNotification = (payload: {
@@ -1366,6 +1382,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       disableAmbassadorApplication: "Disable Applications",
       ambassadorApplicationMessage: "Application Closed Message",
       ambassadorApplicationMessagePlaceholder: "Enter a custom message for when applications are closed (optional)",
+      ambassadorSelectionSettings: "Ambassador Selection",
       heroImagesSettings: "Hero Images & Videos",
       heroImagesSettingsDescription: "",
       uploadHeroImage: "Upload",
@@ -1376,14 +1393,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     },
     fr: {
       title: "Tableau de Bord Admin",
-      subtitle: "GÃ©rer tout - Ã©vÃ©nements, ambassadeurs, candidatures",
-      overview: "AperÃ§u",
-      events: "Ã‰vÃ©nements",
+      subtitle: "Gérer tout - événements, ambassadeurs, candidatures",
+      overview: "Aperçu",
+      events: "Événements",
       ambassadors: "Ambassadeurs",
       applications: "Candidatures",
       pendingApplications: "Candidatures en Attente",
-      approvedApplications: "Candidatures approuvÃ©es",
-      totalEvents: "Total Ã©vÃ©nements",
+      approvedApplications: "Candidatures approuvées",
+      totalEvents: "Total événements",
       totalRevenue: "Revenus Totaux",
       approve: "Approuver",
       reject: "Rejeter",
@@ -1392,48 +1409,48 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       add: "Ajouter",
       save: "Enregistrer",
       cancel: "Annuler",
-      approved: "ApprouvÃ©",
-      rejected: "RejetÃ©",
+      approved: "Approuvé",
+      rejected: "Rejeté",
       pending: "En Attente",
       processing: "Traitement...",
-      noApplications: "Aucune candidature trouvÃ©e",
-      noEvents: "Aucun Ã©vÃ©nement trouvÃ©",
-      noAmbassadors: "Aucun ambassadeur trouvÃ©",
-      approvalSuccess: "Candidature approuvÃ©e avec succÃ¨s!",
-      rejectionSuccess: "Candidature rejetÃ©e avec succÃ¨s!",
-      eventSaved: "Ã‰vÃ©nement enregistrÃ© avec succÃ¨s!",
-      ambassadorSaved: "Ambassadeur enregistrÃ© avec succÃ¨s!",
-      emailSent: "E-mail de notification envoyÃ©",
+      noApplications: "Aucune candidature trouvée",
+      noEvents: "Aucun événement trouvé",
+      noAmbassadors: "Aucun ambassadeur trouvé",
+      approvalSuccess: "Candidature approuvée avec succès!",
+      rejectionSuccess: "Candidature rejetée avec succès!",
+      eventSaved: "Événement enregistré avec succès!",
+      ambassadorSaved: "Ambassadeur enregistré avec succès!",
+      emailSent: "E-mail de notification envoyé",
       error: "Une erreur s'est produite",
-      logout: "DÃ©connexion",
-      eventName: "Nom de l'Ã©vÃ©nement",
-      eventDate: "Date de l'Ã©vÃ©nement",
+      logout: "Déconnexion",
+      eventName: "Nom de l'événement",
+      eventDate: "Date de l'événement",
       eventVenue: "Lieu",
       eventCity: "Ville",
       eventDescription: "Description",
       eventPoster: "URL de l'Affiche",
       eventSeatingChart: "Plan de salle (optionnel)",
-      eventSeatingChartHint: "AffichÃ© sur la page d'achat de passes. Laissez vide pour masquer la section.",
+      eventSeatingChartHint: "Affiché sur la page d'achat de passes. Laissez vide pour masquer la section.",
       eventInstagramLink: "Lien Instagram",
-      eventFeatured: "Ã‰vÃ©nement en vedette",
+      eventFeatured: "Événement en vedette",
       eventStandardPrice: "Prix Standard (TND)",
       eventVipPrice: "Prix VIP (TND)",
-      eventType: "Type d'Ã©vÃ©nement",
-      eventTypeUpcoming: "Ã‰vÃ©nement Ã  venir",
-      eventTypeGallery: "Ã‰vÃ©nement galerie (Ã©vÃ©nement passÃ©)",
-      eventStatus: "Statut de l'Ã©vÃ©nement",
-      eventStatusActive: "Actif â€” vente de passes ouverte",
-      eventStatusCompleted: "TerminÃ© â€” ventes fermÃ©es, page galerie",
-      eventStatusCancelled: "AnnulÃ©",
+      eventType: "Type d'événement",
+      eventTypeUpcoming: "Événement à venir",
+      eventTypeGallery: "Événement galerie (événement passé)",
+      eventStatus: "Statut de l'événement",
+      eventStatusActive: "Actif — vente de passes ouverte",
+      eventStatusCompleted: "Terminé — ventes fermées, page galerie",
+      eventStatusCancelled: "Annulé",
       eventStatusCompletedHint:
-        "Ferme l'achat de passes et le bouton RÃ©server. L'Ã©vÃ©nement devient une page galerie : ajoutez photos, vidÃ©os et texte ci-dessous (enregistrez puis modifiez Ã  nouveau pour tÃ©lÃ©verser si besoin).",
+        "Ferme l'achat de passes et le bouton Réserver. L'événement devient une page galerie : ajoutez photos, vidéos et texte ci-dessous (enregistrez puis modifiez à nouveau pour téléverser si besoin).",
       galleryImages: "Images de Galerie",
-      galleryVideos: "VidÃ©os de galerie",
-      uploadGalleryFiles: "TÃ©lÃ©verser des fichiers de galerie",
+      galleryVideos: "Vidéos de galerie",
+      uploadGalleryFiles: "Téléverser des fichiers de galerie",
       addGalleryFile: "Ajouter un Fichier",
       removeGalleryFile: "Supprimer",
       ambassadorName: "Nom Complet",
-      ambassadorPhone: "TÃ©lÃ©phone",
+      ambassadorPhone: "Téléphone",
       ambassadorEmail: "Email",
       ambassadorCity: "Ville",
       ambassadorStatus: "Statut",
@@ -1443,48 +1460,49 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       ambassadorOrdersPending: "Commandes Ambassadeurs en Attente",
       passPurchases: "Achats de Passes",
       totalPurchases: "Total des Achats",
-      purchaseDetails: "DÃ©tails de l'achat",
+      purchaseDetails: "Détails de l'achat",
       customerInfo: "Informations Client",
       purchaseStatus: "Statut de l'Achat",
-      noPurchases: "Aucun achat trouvÃ©",
-      settings: "ParamÃ¨tres",
-      salesSettings: "ParamÃ¨tres de ventes",
+      noPurchases: "Aucun achat trouvé",
+      settings: "Paramètres",
+      salesSettings: "Paramètres de ventes",
       enableSales: "Activer les Ventes",
-      disableSales: "DÃ©sactiver les ventes",
-      salesEnabled: "Les ventes sont actuellement activÃ©es",
-      salesDisabled: "Les ventes sont actuellement dÃ©sactivÃ©es",
+      disableSales: "Désactiver les ventes",
+      salesEnabled: "Les ventes sont actuellement activées",
+      salesDisabled: "Les ventes sont actuellement désactivées",
       salesSettingsDescription:
-        "ContrÃ´lez si les ambassadeurs peuvent ajouter des ventes. Lorsqu'elle est dÃ©sactivÃ©e, les ambassadeurs verront un message indiquant que les ventes ne sont pas encore ouvertes.",
+        "Contrôlez si les ambassadeurs peuvent ajouter des ventes. Lorsqu'elle est désactivée, les ambassadeurs verront un message indiquant que les ventes ne sont pas encore ouvertes.",
       maintenanceSettings: "Mode Maintenance",
       enableMaintenance: "Activer le Mode Maintenance",
-      disableMaintenance: "DÃ©sactiver le mode maintenance",
+      disableMaintenance: "Désactiver le mode maintenance",
       maintenanceEnabled: "Le mode maintenance est actuellement actif",
       maintenanceDisabled: "Le mode maintenance est actuellement inactif",
       maintenanceSettingsDescription:
-        "ContrÃ´lez le mode maintenance du site web. Lorsqu'il est activÃ©, les utilisateurs verront un message de maintenance et ne pourront pas accÃ©der au site. L'accÃ¨s administrateur est toujours autorisÃ©.",
+        "Contrôlez le mode maintenance du site web. Lorsqu'il est activé, les utilisateurs verront un message de maintenance et ne pourront pas accéder au site. L'accès administrateur est toujours autorisé.",
       maintenanceMessage: "Message de Maintenance",
-      maintenanceMessagePlaceholder: "Entrez un message de maintenance personnalisÃ© (optionnel)",
+      maintenanceMessagePlaceholder: "Entrez un message de maintenance personnalisé (optionnel)",
       allowAmbassadorApplication: "Autoriser la Page de Candidature d'Ambassadeur",
       allowAmbassadorApplicationDescription:
-        "Lorsqu'elle est activÃ©e, la page de candidature d'ambassadeur restera accessible pendant le mode maintenance.",
-      ambassadorApplicationSettings: "ParamÃ¨tres de candidature d'ambassadeur",
+        "Lorsqu'elle est activée, la page de candidature d'ambassadeur restera accessible pendant le mode maintenance.",
+      ambassadorApplicationSettings: "Paramètres de candidature d'ambassadeur",
       ambassadorApplicationSettingsDescription:
-        "ContrÃ´lez si les utilisateurs peuvent soumettre des candidatures d'ambassadeur. Lorsqu'elle est dÃ©sactivÃ©e, les utilisateurs verront un message indiquant que les candidatures sont fermÃ©es.",
+        "Contrôlez si les utilisateurs peuvent soumettre des candidatures d'ambassadeur. Lorsqu'elle est désactivée, les utilisateurs verront un message indiquant que les candidatures sont fermées.",
       ambassadorApplicationEnabled: "Les candidatures sont actuellement ouvertes",
-      ambassadorApplicationDisabled: "Les candidatures sont actuellement fermÃ©es",
+      ambassadorApplicationDisabled: "Les candidatures sont actuellement fermées",
       enableAmbassadorApplication: "Ouvrir les Candidatures",
       disableAmbassadorApplication: "Fermer les Candidatures",
-      ambassadorApplicationMessage: "Message de candidature fermÃ©e",
+      ambassadorApplicationMessage: "Message de candidature fermée",
       ambassadorApplicationMessagePlaceholder:
-        "Entrez un message personnalisÃ© lorsque les candidatures sont fermÃ©es (optionnel)",
-      heroImagesSettings: "Images et vidÃ©os hero",
+        "Entrez un message personnalisé lorsque les candidatures sont fermées (optionnel)",
+      ambassadorSelectionSettings: "Sélection ambassadeur",
+      heroImagesSettings: "Images et vidéos hero",
       heroImagesSettingsDescription:
-        "GÃ©rez les images et vidÃ©os hero affichÃ©es sur la page d'accueil. Vous pouvez ajouter, supprimer et rÃ©organiser les fichiers multimÃ©dias.",
-      uploadHeroImage: "TÃ©lÃ©verser une image ou vidÃ©o hero",
+        "Gérez les images et vidéos hero affichées sur la page d'accueil. Vous pouvez ajouter, supprimer et réorganiser les fichiers multimédias.",
+      uploadHeroImage: "Téléverser une image ou vidéo hero",
       deleteHeroImage: "Supprimer",
-      noHeroImages: "Aucun mÃ©dia hero pour le moment. TÃ©lÃ©versez une image ou une vidÃ©o pour commencer.",
+      noHeroImages: "Aucun média hero pour le moment. Téléversez une image ou une vidéo pour commencer.",
       heroImageAlt: "Texte Alternatif de l'Image",
-      reorderImages: "RÃ©organiser en faisant glisser"
+      reorderImages: "Réorganiser en faisant glisser"
     }
   };
 
@@ -1538,7 +1556,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   ? "Ambassador application"
                   : "Candidature ambassadeur",
               message: cityVille
-                ? `${asApp.full_name} â€” ${cityVille}`
+                ? `${asApp.full_name} — ${cityVille}`
                 : asApp.full_name,
             });
           } else if (eventType === 'UPDATE' && newRecord?.id) {
@@ -1568,7 +1586,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Orders realtime disabled (RLS Wave B): refresh after mutations and on event change.
   // Tradeoff: no live INSERT notifications; lower risk than anon realtime on privileged table.
 
-  // Realtime: career applications â€” notify so admin gets alerts even when not on Career tab
+  // Realtime: career applications — notify so admin gets alerts even when not on Career tab
   useEffect(() => {
     const channel = supabase
       .channel("admin-career-applications-realtime")
@@ -1589,7 +1607,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             message:
               language === "en"
                 ? "A new career application has been submitted."
-                : "Une nouvelle candidature a Ã©tÃ© envoyÃ©e.",
+                : "Une nouvelle candidature a été envoyée.",
           });
         }
       )
@@ -1809,7 +1827,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           description:
             language === 'en'
               ? `Could not load expiration settings: ${detail}`
-              : `Impossible de charger les paramÃ¨tres d'expiration : ${detail}`,
+              : `Impossible de charger les paramètres d'expiration : ${detail}`,
           variant: 'destructive',
         });
       }
@@ -1817,7 +1835,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error fetching expiration settings:', err);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: language === 'en' ? 'Failed to fetch expiration settings' : 'Ã‰chec de la rÃ©cupÃ©ration des paramÃ¨tres d\'expiration',
+        description: language === 'en' ? 'Failed to fetch expiration settings' : 'Échec de la récupération des paramètres d\'expiration',
         variant: 'destructive',
       });
     } finally {
@@ -1861,10 +1879,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (result.success) {
         const count = result.rejected_count || 0;
         toast({
-          title: language === 'en' ? 'Expired Orders Processed' : 'Commandes ExpirÃ©es TraitÃ©es',
+          title: language === 'en' ? 'Expired Orders Processed' : 'Commandes Expirées Traitées',
           description: language === 'en' 
             ? `Successfully rejected ${count} expired order(s). Stock has been released.` 
-            : `${count} commande(s) expirÃ©e(s) rejetÃ©e(s) avec succÃ¨s. Le stock a Ã©tÃ© libÃ©rÃ©.`,
+            : `${count} commande(s) expirée(s) rejetée(s) avec succès. Le stock a été libéré.`,
         });
         
         // Refresh orders after a short delay
@@ -1878,7 +1896,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error triggering auto-reject:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to reject expired orders. Check console for details.' : 'Ã‰chec du rejet des commandes expirÃ©es. VÃ©rifiez la console pour plus de dÃ©tails.'),
+        description: error.message || (language === 'en' ? 'Failed to reject expired orders. Check console for details.' : 'Échec du rejet des commandes expirées. Vérifiez la console pour plus de détails.'),
         variant: 'destructive'
       });
     } finally {
@@ -1916,8 +1934,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         const filteredData = (result.data || []).filter((setting: any) => setting.order_status === 'PENDING_CASH');
         setExpirationSettings(filteredData);
         toast({
-          title: language === 'en' ? 'Settings Updated' : 'ParamÃ¨tres Mis Ã  Jour',
-          description: language === 'en' ? 'Expiration settings updated successfully. Refreshing orders...' : 'ParamÃ¨tres d\'expiration mis Ã  jour avec succÃ¨s. Actualisation des commandes...',
+          title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
+          description: language === 'en' ? 'Expiration settings updated successfully. Refreshing orders...' : 'Paramètres d\'expiration mis à jour avec succès. Actualisation des commandes...',
         });
         
         // Wait a moment for database updates to complete, then refresh order data
@@ -1943,7 +1961,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error updating expiration settings:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to update expiration settings' : 'Ã‰chec de la mise Ã  jour des paramÃ¨tres d\'expiration'),
+        description: error.message || (language === 'en' ? 'Failed to update expiration settings' : 'Échec de la mise à jour des paramètres d\'expiration'),
         variant: 'destructive'
       });
     } finally {
@@ -2020,6 +2038,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  const fetchAmbassadorSelectionSettingsState = async () => {
+    try {
+      const settings = await fetchAmbassadorSelectionSettings();
+      setAmbassadorSelectionSettings(settings);
+    } catch (error) {
+      console.error('Error fetching ambassador selection settings:', error);
+      setAmbassadorSelectionSettings(normalizeAmbassadorSelectionSettings({}));
+    }
+  };
+
   // Fetch hero images
   const fetchHeroImages = async () => {
     try {
@@ -2091,10 +2119,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       setHeroImages(images);
       toast({
-        title: language === 'en' ? 'Hero Images Updated' : 'Images Hero Mises Ã  Jour',
+        title: language === 'en' ? 'Hero Images Updated' : 'Images Hero Mises à Jour',
         description: language === 'en' 
           ? 'Hero images have been updated successfully' 
-          : 'Les images hero ont Ã©tÃ© mises Ã  jour avec succÃ¨s',
+          : 'Les images hero ont été mises à jour avec succès',
       });
     } catch (error) {
       console.error('Error saving hero images:', error);
@@ -2121,7 +2149,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Large File Warning' : 'Avertissement Fichier Volumineux',
           description: language === 'en' 
             ? 'Video file is larger than 2MB. For best performance, videos should be under 2MB (5-10 seconds, H.264).' 
-            : 'Le fichier vidÃ©o est supÃ©rieur Ã  2MB. Pour de meilleures performances, les vidÃ©os doivent faire moins de 2MB (5-10 secondes, H.264).',
+            : 'Le fichier vidéo est supérieur à 2MB. Pour de meilleures performances, les vidéos doivent faire moins de 2MB (5-10 secondes, H.264).',
           variant: 'default',
           duration: 5000,
         });
@@ -2137,11 +2165,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (isVideo) {
         toast({
-          title: language === 'en' ? 'Optimizing video...' : 'Optimisation de la vidÃ©o...',
+          title: language === 'en' ? 'Optimizing video...' : 'Optimisation de la vidéo...',
           description:
             language === 'en'
               ? 'Converting to MP4 (H.264) before upload.'
-              : 'Conversion en MP4 (H.264) avant le tÃ©lÃ©chargement.',
+              : 'Conversion en MP4 (H.264) avant le téléchargement.',
           duration: 3500,
         });
         const { transcodeHeroVideoToMp4 } = await loadHeroMediaPreprocess();
@@ -2163,11 +2191,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
       } else {
         toast({
-          title: language === 'en' ? 'Optimizing image...' : 'Optimisation de lâ€™image...',
+          title: language === 'en' ? 'Optimizing image...' : 'Optimisation de l’image...',
           description:
             language === 'en'
               ? 'Compressing and generating WebP variants.'
-              : 'Compression et gÃ©nÃ©ration des variantes WebP.',
+              : 'Compression et génération des variantes WebP.',
           duration: 3500,
         });
 
@@ -2232,10 +2260,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await saveHeroImages(updatedImages);
       
       toast({
-        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+        title: language === 'en' ? 'Success' : 'Succès',
         description: language === 'en' 
           ? `${fileType === 'video' ? 'Video' : 'Image'} uploaded successfully` 
-          : `${fileType === 'video' ? 'VidÃ©o' : 'Image'} tÃ©lÃ©chargÃ©e avec succÃ¨s`,
+          : `${fileType === 'video' ? 'Vidéo' : 'Image'} téléchargée avec succès`,
         duration: 3000,
       });
     } catch (error) {
@@ -2246,13 +2274,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           : typeof error === 'string'
             ? error
             : 'Unknown error';
-      const shortDetail = detail.length > 220 ? `${detail.slice(0, 217)}â€¦` : detail;
+      const shortDetail = detail.length > 220 ? `${detail.slice(0, 217)}…` : detail;
       toast({
         title: t.error,
         description:
           language === 'en'
             ? `Failed to upload hero media: ${shortDetail}`
-            : `Ã‰chec du tÃ©lÃ©chargement du mÃ©dia hero : ${shortDetail}`,
+            : `Échec du téléchargement du média hero : ${shortDetail}`,
         variant: 'destructive',
       });
     } finally {
@@ -2289,13 +2317,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           : typeof error === 'string'
             ? error
             : 'Unknown error';
-      const shortDetail = detail.length > 220 ? `${detail.slice(0, 217)}â€¦` : detail;
+      const shortDetail = detail.length > 220 ? `${detail.slice(0, 217)}…` : detail;
       toast({
         title: t.error,
         description:
           language === 'en'
             ? `Failed to delete hero image: ${shortDetail}`
-            : `Ã‰chec de la suppression de l'image hero : ${shortDetail}`,
+            : `Échec de la suppression de l'image hero : ${shortDetail}`,
         variant: 'destructive',
       });
     }
@@ -2318,7 +2346,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         description:
           language === 'en'
             ? `Failed to save hero order: ${detail}`
-            : `Ã‰chec de l'enregistrement de l'ordre hero : ${detail}`,
+            : `Échec de l'enregistrement de l'ordre hero : ${detail}`,
         variant: 'destructive',
       });
     }
@@ -2351,11 +2379,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       setHeroTypewriterTexts(newTexts);
       toast({
-        title: language === 'en' ? 'Hero texts updated' : 'Textes du hero mis Ã  jour',
+        title: language === 'en' ? 'Hero texts updated' : 'Textes du hero mis à jour',
         description:
           language === 'en'
             ? 'Hero typing texts have been updated successfully'
-            : 'Les textes du hero ont Ã©tÃ© mis Ã  jour avec succÃ¨s',
+            : 'Les textes du hero ont été mis à jour avec succès',
       });
     } catch (error) {
       console.error('Error saving hero typewriter texts:', error);
@@ -2364,7 +2392,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         description:
           language === 'en'
             ? 'Failed to save hero typing texts'
-            : 'Ã‰chec de la sauvegarde des textes du hero',
+            : 'Échec de la sauvegarde des textes du hero',
         variant: 'destructive',
       });
     }
@@ -2532,7 +2560,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setAllAmbassadorOrders([]);
       setCodOrders([]);
       setOrderLogs([]);
-      const description = error?.message || (language === 'en' ? 'Failed to fetch sales data' : 'Ã‰chec de la rÃ©cupÃ©ration des donnÃ©es de vente');
+      const description = error?.message || (language === 'en' ? 'Failed to fetch sales data' : 'Échec de la récupération des données de vente');
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description,
@@ -2592,7 +2620,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error fetching online orders:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Ã‰chec du chargement des commandes en ligne'),
+        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Échec du chargement des commandes en ligne'),
         variant: "destructive",
       });
     } finally {
@@ -2648,7 +2676,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error fetching online orders:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Ã‰chec du chargement des commandes en ligne'),
+        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Échec du chargement des commandes en ligne'),
         variant: "destructive",
       });
     } finally {
@@ -2664,10 +2692,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       await adminOrdersApi.approveEmailSmsDelivery(orderId);
       toast({
-        title: language === 'en' ? 'Email/SMS Sent' : 'Email/SMS EnvoyÃ©',
+        title: language === 'en' ? 'Email/SMS Sent' : 'Email/SMS Envoyé',
         description: language === 'en'
           ? 'Tickets generated and email sent to customer successfully'
-          : 'Tickets gÃ©nÃ©rÃ©s et email envoyÃ© au client avec succÃ¨s',
+          : 'Tickets générés et email envoyé au client avec succès',
         variant: 'default',
       });
       fetchAmbassadorSalesData();
@@ -2680,7 +2708,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           error.message ||
           (language === 'en'
             ? 'Failed to approve email/SMS delivery'
-            : "Ã‰chec de l'approbation de la livraison email/SMS"),
+            : "Échec de l'approbation de la livraison email/SMS"),
         variant: 'destructive',
       });
     }
@@ -2715,10 +2743,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       const data = await response.json();
       toast({
-        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+        title: language === 'en' ? 'Success' : 'Succès',
         description: language === 'en'
           ? `Order approved successfully. Tickets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Sent' : 'Failed'}, SMS: ${data.smsSent ? 'Sent' : 'Failed'}`
-          : `Commande approuvÃ©e avec succÃ¨s. Billets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'EnvoyÃ©' : 'Ã‰chouÃ©'}, SMS: ${data.smsSent ? 'EnvoyÃ©' : 'Ã‰chouÃ©'}`,
+          : `Commande approuvée avec succès. Billets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Envoyé' : 'Échoué'}, SMS: ${data.smsSent ? 'Envoyé' : 'Échoué'}`,
         variant: 'default',
       });
       fetchAmbassadorSalesData();
@@ -2727,7 +2755,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error approving order:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to approve order' : "Ã‰chec de l'approbation de la commande"),
+        description: error.message || (language === 'en' ? 'Failed to approve order' : "Échec de l'approbation de la commande"),
         variant: 'destructive',
       });
     }
@@ -2745,8 +2773,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       await adminOrdersApi.rejectOrder(orderId, rejectionReason.trim());
       toast({
-        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
-        description: language === 'en' ? 'Order rejected' : 'Commande rejetÃ©e',
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' ? 'Order rejected' : 'Commande rejetée',
         variant: 'default',
       });
       fetchAmbassadorSalesData();
@@ -2755,7 +2783,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error rejecting COD ambassador order:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to reject order' : 'Ã‰chec du rejet de la commande'),
+        description: error.message || (language === 'en' ? 'Failed to reject order' : 'Échec du rejet de la commande'),
         variant: 'destructive',
       });
     }
@@ -2790,8 +2818,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       toast({
-        title: language === 'en' ? 'Order Removed' : 'Commande RetirÃ©e',
-        description: language === 'en' ? 'Order has been removed successfully' : 'La commande a Ã©tÃ© retirÃ©e avec succÃ¨s',
+        title: language === 'en' ? 'Order Removed' : 'Commande Retirée',
+        description: language === 'en' ? 'Order has been removed successfully' : 'La commande a été retirée avec succès',
         variant: 'default'
       });
       
@@ -2805,7 +2833,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error removing order:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to remove order' : 'Ã‰chec du retrait de la commande'),
+        description: error.message || (language === 'en' ? 'Failed to remove order' : 'Échec du retrait de la commande'),
         variant: 'destructive'
       });
       throw error;
@@ -2840,25 +2868,25 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // Handle rate limiting (429)
         if (response.status === 429) {
           toast({
-            title: language === 'en' ? 'Rate Limit Exceeded' : 'Limite de Taux DÃ©passÃ©e',
+            title: language === 'en' ? 'Rate Limit Exceeded' : 'Limite de Taux Dépassée',
             description: language === 'en' 
               ? 'Too many requests. Please try again later.'
-              : 'Trop de demandes. Veuillez rÃ©essayer plus tard.',
+              : 'Trop de demandes. Veuillez réessayer plus tard.',
             variant: 'destructive'
           });
           return;
         }
 
         // Handle validation errors
-        throw new Error(data.details || data.error || (language === 'en' ? 'Failed to skip ambassador confirmation' : 'Ã‰chec de la confirmation de l\'ambassadeur'));
+        throw new Error(data.details || data.error || (language === 'en' ? 'Failed to skip ambassador confirmation' : 'Échec de la confirmation de l\'ambassadeur'));
       }
 
       // Success
       toast({
-        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+        title: language === 'en' ? 'Success' : 'Succès',
         description: language === 'en'
           ? `Order approved successfully. Tickets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Sent' : 'Failed'}, SMS: ${data.smsSent ? 'Sent' : 'Failed'}`
-          : `Commande approuvÃ©e avec succÃ¨s. Billets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'EnvoyÃ©' : 'Ã‰chouÃ©'}, SMS: ${data.smsSent ? 'EnvoyÃ©' : 'Ã‰chouÃ©'}`,
+          : `Commande approuvée avec succès. Billets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Envoyé' : 'Échoué'}, SMS: ${data.smsSent ? 'Envoyé' : 'Échoué'}`,
         variant: 'default'
       });
 
@@ -2872,7 +2900,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error skipping ambassador confirmation:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to skip ambassador confirmation' : 'Ã‰chec de la confirmation de l\'ambassadeur'),
+        description: error.message || (language === 'en' ? 'Failed to skip ambassador confirmation' : 'Échec de la confirmation de l\'ambassadeur'),
         variant: 'destructive'
       });
       throw error;
@@ -2905,26 +2933,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // Handle rate limiting (429)
         if (response.status === 429) {
           toast({
-            title: language === 'en' ? 'Rate Limit Exceeded' : 'Limite de Taux DÃ©passÃ©e',
+            title: language === 'en' ? 'Rate Limit Exceeded' : 'Limite de Taux Dépassée',
             description: language === 'en' 
               ? 'Too many resend requests for this order. Please wait before trying again (max 5 per hour).'
-              : 'Trop de demandes de renvoi pour cette commande. Veuillez attendre avant de rÃ©essayer (max 5 par heure).',
+              : 'Trop de demandes de renvoi pour cette commande. Veuillez attendre avant de réessayer (max 5 par heure).',
             variant: 'destructive'
           });
           return;
         }
 
         // Handle validation errors
-        const errorMessage = data.details || data.error || (language === 'en' ? 'Failed to resend ticket email' : 'Ã‰chec du renvoi de l\'email des billets');
+        const errorMessage = data.details || data.error || (language === 'en' ? 'Failed to resend ticket email' : 'Échec du renvoi de l\'email des billets');
         throw new Error(errorMessage);
       }
 
       // Success
       toast({
-        title: language === 'en' ? 'Email Resent' : 'Email RenvoyÃ©',
+        title: language === 'en' ? 'Email Resent' : 'Email Renvoyé',
         description: language === 'en'
           ? `Ticket email resent successfully. Tickets: ${data.ticketsCount || 0}`
-          : `Email de billet renvoyÃ© avec succÃ¨s. Billets: ${data.ticketsCount || 0}`,
+          : `Email de billet renvoyé avec succès. Billets: ${data.ticketsCount || 0}`,
         variant: 'default'
       });
 
@@ -2948,7 +2976,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error resending ticket email:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to resend ticket email' : 'Ã‰chec du renvoi de l\'email des billets'),
+        description: error.message || (language === 'en' ? 'Failed to resend ticket email' : 'Échec du renvoi de l\'email des billets'),
         variant: 'destructive'
       });
     } finally {
@@ -2987,8 +3015,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       );
 
       toast({
-        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
-        description: language === 'en' ? `Order status updated to ${newStatus}` : `Statut de la commande mis Ã  jour vers ${newStatus}`,
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' ? `Order status updated to ${newStatus}` : `Statut de la commande mis à jour vers ${newStatus}`,
         variant: "default",
       });
 
@@ -3004,7 +3032,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error updating order status:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to update order status' : 'Ã‰chec de la mise Ã  jour du statut'),
+        description: error.message || (language === 'en' ? 'Failed to update order status' : 'Échec de la mise à jour du statut'),
         variant: "destructive",
       });
     }
@@ -3105,10 +3133,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       setAboutImages(images);
       toast({
-        title: language === 'en' ? 'About Images Updated' : 'Images Ã€ Propos Mises Ã  Jour',
+        title: language === 'en' ? 'About Images Updated' : 'Images À Propos Mises à Jour',
         description: language === 'en' 
           ? 'About images have been updated successfully' 
-          : 'Les images de la page Ã€ propos ont Ã©tÃ© mises Ã  jour avec succÃ¨s',
+          : 'Les images de la page À propos ont été mises à jour avec succès',
       });
     } catch (error) {
       console.error('Error saving about images:', error);
@@ -3116,7 +3144,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description: language === 'en' 
           ? 'Failed to save about images' 
-          : 'Ã‰chec de la sauvegarde des images Ã€ propos',
+          : 'Échec de la sauvegarde des images À propos',
         variant: 'destructive',
       });
     }
@@ -3150,7 +3178,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description: language === 'en' 
           ? 'Failed to upload about image' 
-          : 'Ã‰chec du tÃ©lÃ©chargement de l\'image Ã€ propos',
+          : 'Échec du téléchargement de l\'image À propos',
         variant: 'destructive',
       });
     } finally {
@@ -3177,7 +3205,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description: language === 'en' 
           ? 'Failed to delete about image' 
-          : 'Ã‰chec de la suppression de l\'image Ã€ propos',
+          : 'Échec de la suppression de l\'image À propos',
         variant: 'destructive',
       });
     }
@@ -3245,10 +3273,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (!applications || applications.length === 0) {
         toast({
-          title: language === 'en' ? 'No Data' : 'Aucune DonnÃ©e',
+          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
           description: language === 'en' 
             ? 'No ambassador applications found with phone numbers'
-            : 'Aucune candidature d\'ambassadeur trouvÃ©e avec numÃ©ros de tÃ©lÃ©phone',
+            : 'Aucune candidature d\'ambassadeur trouvée avec numéros de téléphone',
           variant: 'default'
         });
         return;
@@ -3266,10 +3294,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (phonesToImport.length === 0) {
         toast({
-          title: language === 'en' ? 'No Data' : 'Aucune DonnÃ©e',
+          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
           description: language === 'en' 
             ? 'No valid phone numbers found in applications'
-            : 'Aucun numÃ©ro de tÃ©lÃ©phone valide trouvÃ© dans les candidatures',
+            : 'Aucun numéro de téléphone valide trouvé dans les candidatures',
           variant: 'default'
         });
         return;
@@ -3391,10 +3419,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchPhoneSubscribers();
 
       toast({
-        title: language === 'en' ? 'Import Complete' : 'Importation terminÃ©e',
+        title: language === 'en' ? 'Import Complete' : 'Importation terminée',
         description: language === 'en'
           ? `Imported: ${results.length}, Duplicates: ${duplicates}, Errors: ${errors.length}`
-          : `ImportÃ© : ${results.length}, Doublons : ${duplicates}, Erreurs : ${errors.length}`,
+          : `Importé : ${results.length}, Doublons : ${duplicates}, Erreurs : ${errors.length}`,
         variant: results.length > 0 ? 'default' : 'destructive'
       });
 
@@ -3405,7 +3433,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error importing from applications:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : 'Ã‰chec de l\'importation des numÃ©ros'),
+        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : 'Échec de l\'importation des numéros'),
         variant: 'destructive'
       });
     } finally {
@@ -3418,10 +3446,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       if (phoneSubscribers.length === 0) {
         toast({
-          title: language === 'en' ? 'No Data' : 'Aucune DonnÃ©e',
+          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
           description: language === 'en' 
             ? 'No phone numbers to export'
-            : 'Aucun numÃ©ro de tÃ©lÃ©phone Ã  exporter',
+            : 'Aucun numéro de téléphone à exporter',
           variant: 'default'
         });
         return;
@@ -3466,17 +3494,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.URL.revokeObjectURL(url);
 
       toast({
-        title: language === 'en' ? 'Export Successful' : 'Exportation RÃ©ussie',
+        title: language === 'en' ? 'Export Successful' : 'Exportation Réussie',
         description: language === 'en' 
           ? `Exported ${phoneSubscribers.length} phone numbers`
-          : `${phoneSubscribers.length} numÃ©ros exportÃ©s`,
+          : `${phoneSubscribers.length} numéros exportés`,
         variant: 'default'
       });
     } catch (error: any) {
       console.error('Error exporting phone numbers:', error);
       toast({
-        title: language === 'en' ? 'Export Failed' : 'Ã‰chec de l\'Exportation',
-        description: error.message || (language === 'en' ? 'Failed to export phone numbers' : 'Ã‰chec de l\'exportation des numÃ©ros'),
+        title: language === 'en' ? 'Export Failed' : 'Échec de l\'Exportation',
+        description: error.message || (language === 'en' ? 'Failed to export phone numbers' : 'Échec de l\'exportation des numéros'),
         variant: 'destructive'
       });
     }
@@ -3502,10 +3530,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     const label = importLabel.trim();
     if (!label) {
       toast({
-        title: language === 'en' ? 'Label required' : 'LibellÃ© requis',
+        title: language === 'en' ? 'Label required' : 'Libellé requis',
         description: language === 'en'
           ? 'Enter a label for this import (e.g. Old Event Summer 2024)'
-          : 'Saisissez un libellÃ© pour cet import (ex. Ancien Ã©vÃ©nement Ã©tÃ© 2024)',
+          : 'Saisissez un libellé pour cet import (ex. Ancien événement été 2024)',
         variant: 'destructive',
       });
       return;
@@ -3547,10 +3575,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (phoneNumbers.length === 0) {
         toast({
-          title: language === 'en' ? 'No Valid Numbers' : 'Aucun NumÃ©ro Valide',
+          title: language === 'en' ? 'No Valid Numbers' : 'Aucun Numéro Valide',
           description: language === 'en' 
             ? 'No valid phone numbers found in Excel file'
-            : 'Aucun numÃ©ro de tÃ©lÃ©phone valide trouvÃ© dans le fichier Excel',
+            : 'Aucun numéro de téléphone valide trouvé dans le fichier Excel',
           variant: 'destructive'
         });
         return;
@@ -3584,7 +3612,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'All Duplicates' : 'Tous Doublons',
           description: language === 'en' 
             ? `All ${phoneNumbers.length} phone numbers already exist in database`
-            : `Tous les ${phoneNumbers.length} numÃ©ros existent dÃ©jÃ  dans la base de donnÃ©es`,
+            : `Tous les ${phoneNumbers.length} numéros existent déjà dans la base de données`,
           variant: 'default'
         });
         return;
@@ -3642,10 +3670,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchPhoneSubscribers();
 
       toast({
-        title: language === 'en' ? 'Import Complete' : 'Importation TerminÃ©e',
+        title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
         description: language === 'en'
-          ? `Label "${label}" â€” Imported: ${results.length}, Skipped duplicates: ${duplicatesCount}, Errors: ${errors.length}`
-          : `LibellÃ© Â« ${label} Â» â€” ImportÃ©: ${results.length}, Doublons ignorÃ©s: ${duplicatesCount}, Erreurs: ${errors.length}`,
+          ? `Label "${label}" — Imported: ${results.length}, Skipped duplicates: ${duplicatesCount}, Errors: ${errors.length}`
+          : `Libellé Â« ${label} Â» — Importé: ${results.length}, Doublons ignorés: ${duplicatesCount}, Erreurs: ${errors.length}`,
         variant: results.length > 0 ? 'default' : 'destructive'
       });
 
@@ -3658,8 +3686,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     } catch (error: any) {
       console.error('Error importing from Excel:', error);
       toast({
-        title: language === 'en' ? 'Import Failed' : 'Ã‰chec de l\'Importation',
-        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : 'Ã‰chec de l\'importation des numÃ©ros'),
+        title: language === 'en' ? 'Import Failed' : 'Échec de l\'Importation',
+        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : 'Échec de l\'importation des numéros'),
         variant: 'destructive'
       });
     } finally {
@@ -3714,10 +3742,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       if (emailSubscribers.length === 0) {
         toast({
-          title: language === 'en' ? 'No Data' : 'Aucune DonnÃ©e',
+          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
           description: language === 'en' 
             ? 'No email addresses to export'
-            : 'Aucune adresse email Ã  exporter',
+            : 'Aucune adresse email à exporter',
           variant: 'default'
         });
         return;
@@ -3758,17 +3786,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.URL.revokeObjectURL(url);
 
       toast({
-        title: language === 'en' ? 'Export Successful' : 'Exportation RÃ©ussie',
+        title: language === 'en' ? 'Export Successful' : 'Exportation Réussie',
         description: language === 'en' 
           ? `Exported ${emailSubscribers.length} email addresses`
-          : `${emailSubscribers.length} adresses email exportÃ©es`,
+          : `${emailSubscribers.length} adresses email exportées`,
         variant: 'default'
       });
     } catch (error: any) {
       console.error('Error exporting email addresses:', error);
       toast({
-        title: language === 'en' ? 'Export Failed' : 'Ã‰chec de l\'Exportation',
-        description: error.message || (language === 'en' ? 'Failed to export email addresses' : 'Ã‰chec de l\'exportation des adresses email'),
+        title: language === 'en' ? 'Export Failed' : 'Échec de l\'Exportation',
+        description: error.message || (language === 'en' ? 'Failed to export email addresses' : 'Échec de l\'exportation des adresses email'),
         variant: 'destructive'
       });
     }
@@ -3784,10 +3812,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     const label = importLabel.trim();
     if (!label) {
       toast({
-        title: language === 'en' ? 'Label required' : 'LibellÃ© requis',
+        title: language === 'en' ? 'Label required' : 'Libellé requis',
         description: language === 'en'
           ? 'Enter a label for this import (e.g. Old Event Summer 2024)'
-          : 'Saisissez un libellÃ© pour cet import (ex. Ancien Ã©vÃ©nement Ã©tÃ© 2024)',
+          : 'Saisissez un libellé pour cet import (ex. Ancien événement été 2024)',
         variant: 'destructive',
       });
       return;
@@ -3833,7 +3861,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'No Valid Emails' : 'Aucun Email Valide',
           description: language === 'en' 
             ? 'No valid email addresses found in Excel file'
-            : 'Aucune adresse email valide trouvÃ©e dans le fichier Excel',
+            : 'Aucune adresse email valide trouvée dans le fichier Excel',
           variant: 'destructive'
         });
         return;
@@ -3868,7 +3896,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'All Duplicates' : 'Tous Doublons',
           description: language === 'en' 
             ? `All ${emails.length} email addresses already exist in database`
-            : `Toutes les ${emails.length} adresses email existent dÃ©jÃ  dans la base de donnÃ©es`,
+            : `Toutes les ${emails.length} adresses email existent déjà dans la base de données`,
           variant: 'default'
         });
         return;
@@ -3923,10 +3951,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchEmailSubscribers();
 
       toast({
-        title: language === 'en' ? 'Import Complete' : 'Importation TerminÃ©e',
+        title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
         description: language === 'en'
-          ? `Label "${label}" â€” Imported: ${results.length}, Skipped duplicates: ${duplicatesCount}, Errors: ${errors.length}`
-          : `LibellÃ© Â« ${label} Â» â€” ImportÃ©: ${results.length}, Doublons ignorÃ©s: ${duplicatesCount}, Erreurs: ${errors.length}`,
+          ? `Label "${label}" — Imported: ${results.length}, Skipped duplicates: ${duplicatesCount}, Errors: ${errors.length}`
+          : `Libellé Â« ${label} Â» — Importé: ${results.length}, Doublons ignorés: ${duplicatesCount}, Erreurs: ${errors.length}`,
         variant: results.length > 0 ? 'default' : 'destructive'
       });
 
@@ -3939,8 +3967,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     } catch (error: any) {
       console.error('Error importing from Excel:', error);
       toast({
-        title: language === 'en' ? 'Import Failed' : 'Ã‰chec de l\'Importation',
-        description: error.message || (language === 'en' ? 'Failed to import email addresses' : 'Ã‰chec de l\'importation des adresses email'),
+        title: language === 'en' ? 'Import Failed' : 'Échec de l\'Importation',
+        description: error.message || (language === 'en' ? 'Failed to import email addresses' : 'Échec de l\'importation des adresses email'),
         variant: 'destructive'
       });
     } finally {
@@ -4021,17 +4049,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       toast({
-        title: language === 'en' ? 'Test Email Sent' : 'Email de Test EnvoyÃ©',
+        title: language === 'en' ? 'Test Email Sent' : 'Email de Test Envoyé',
         description: language === 'en'
           ? `Test email sent successfully to ${testEmailAddress.trim()}`
-          : `Email de test envoyÃ© avec succÃ¨s Ã  ${testEmailAddress.trim()}`,
+          : `Email de test envoyé avec succès à ${testEmailAddress.trim()}`,
         variant: 'default'
       });
     } catch (error: any) {
       console.error('Error sending test email:', error);
       toast({
-        title: language === 'en' ? 'Test Email Failed' : 'Ã‰chec de l\'Email de Test',
-        description: error.message || (language === 'en' ? 'Failed to send test email' : 'Ã‰chec de l\'envoi de l\'email de test'),
+        title: language === 'en' ? 'Test Email Failed' : 'Échec de l\'Email de Test',
+        description: error.message || (language === 'en' ? 'Failed to send test email' : 'Échec de l\'envoi de l\'email de test'),
         variant: 'destructive'
       });
     } finally {
@@ -4068,7 +4096,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'No email subscribers available' 
-          : 'Aucun abonnÃ© email disponible',
+          : 'Aucun abonné email disponible',
         variant: 'destructive',
       });
       return;
@@ -4121,10 +4149,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const failCount = results.filter(r => !r.success).length;
 
       toast({
-        title: language === 'en' ? 'Bulk Email Complete' : 'Envoi en Masse TerminÃ©',
+        title: language === 'en' ? 'Bulk Email Complete' : 'Envoi en Masse Terminé',
         description: language === 'en'
           ? `Sent: ${successCount}, Failed: ${failCount}`
-          : `EnvoyÃ©: ${successCount}, Ã‰chouÃ©: ${failCount}`,
+          : `Envoyé: ${successCount}, Échoué: ${failCount}`,
         variant: failCount === 0 ? 'default' : 'destructive'
       });
 
@@ -4137,7 +4165,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error sending bulk emails:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to send bulk emails' : 'Ã‰chec de l\'envoi en masse'),
+        description: error.message || (language === 'en' ? 'Failed to send bulk emails' : 'Échec de l\'envoi en masse'),
         variant: 'destructive'
       });
     } finally {
@@ -4195,7 +4223,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'Failed to fetch site logs' 
-          : 'Ã‰chec de la rÃ©cupÃ©ration des logs du site',
+          : 'Échec de la récupération des logs du site',
         variant: 'destructive',
       });
     } finally {
@@ -4258,7 +4286,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? `Failed to fetch logs: ${error.message}` 
-          : `Ã‰chec de la rÃ©cupÃ©ration des logs: ${error.message}`,
+          : `Échec de la récupération des logs: ${error.message}`,
         variant: 'destructive',
       });
       setLogs([]);
@@ -4363,7 +4391,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         let passesStr = 'N/A';
         if (submission.selected_passes && Array.isArray(submission.selected_passes) && submission.selected_passes.length > 0) {
           passesStr = submission.selected_passes.map((p: any) => 
-            `${p.name || p.passName || 'Pass'} Ã— ${p.quantity || 1}`
+            `${p.name || p.passName || 'Pass'} × ${p.quantity || 1}`
           ).join(', ');
         }
 
@@ -4413,10 +4441,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.URL.revokeObjectURL(downloadUrl);
 
       toast({
-        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+        title: language === 'en' ? 'Success' : 'Succès',
         description: language === 'en' 
           ? `Exported ${allSubmissions.length} submissions to Excel` 
-          : `${allSubmissions.length} soumissions exportÃ©es vers Excel`,
+          : `${allSubmissions.length} soumissions exportées vers Excel`,
         variant: 'default',
       });
     } catch (error: any) {
@@ -4425,7 +4453,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? `Failed to export submissions: ${error.message}` 
-          : `Ã‰chec de l'exportation: ${error.message}`,
+          : `Échec de l'exportation: ${error.message}`,
         variant: 'destructive',
       });
     } finally {
@@ -4470,7 +4498,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? `Failed to fetch AIO events submissions: ${error.message}` 
-          : `Ã‰chec de la rÃ©cupÃ©ration des soumissions AIO Events: ${error.message}`,
+          : `Échec de la récupération des soumissions AIO Events: ${error.message}`,
         variant: 'destructive',
       });
       setAioEventsSubmissions([]);
@@ -4528,7 +4556,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           // Only show toast if API is configured but returned an error
         toast({
             title: language === 'en' ? 'Warning' : 'Avertissement',
-            description: data.error || data.message || (language === 'en' ? 'Unable to fetch SMS balance' : 'Impossible de rÃ©cupÃ©rer le solde SMS'),
+            description: data.error || data.message || (language === 'en' ? 'Unable to fetch SMS balance' : 'Impossible de récupérer le solde SMS'),
             variant: 'default',
           });
         }
@@ -4544,7 +4572,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to fetch SMS balance' : 'Ã‰chec de la rÃ©cupÃ©ration du solde SMS'),
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to fetch SMS balance' : 'Échec de la récupération du solde SMS'),
         variant: 'destructive',
       });
     } finally {
@@ -4559,7 +4587,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'Please enter phone numbers' 
-          : 'Veuillez entrer des numÃ©ros de tÃ©lÃ©phone',
+          : 'Veuillez entrer des numéros de téléphone',
         variant: 'destructive',
       });
       return;
@@ -4579,7 +4607,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? 'No valid phone numbers found' 
-            : 'Aucun numÃ©ro de tÃ©lÃ©phone valide trouvÃ©',
+            : 'Aucun numéro de téléphone valide trouvé',
           variant: 'destructive',
         });
         return;
@@ -4598,7 +4626,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (text.includes('<!DOCTYPE') || text.includes('<html')) {
           errorMsg = language === 'en' 
             ? 'API route not found. Please restart the backend server (npm run server) to load the new routes.'
-            : 'Route API introuvable. Veuillez redÃ©marrer le serveur backend (npm run server) pour charger les nouvelles routes.';
+            : 'Route API introuvable. Veuillez redémarrer le serveur backend (npm run server) pour charger les nouvelles routes.';
         } else {
           errorMsg += `. ${text.substring(0, 200)}`;
         }
@@ -4611,7 +4639,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         const text = await response.text();
         let errorMsg = language === 'en'
           ? 'API route not found. Please restart the backend server (npm run server) to load the new routes.'
-          : 'Route API introuvable. Veuillez redÃ©marrer le serveur backend (npm run server) pour charger les nouvelles routes.';
+          : 'Route API introuvable. Veuillez redémarrer le serveur backend (npm run server) pour charger les nouvelles routes.';
         if (!text.includes('<!DOCTYPE') && !text.includes('<html')) {
           errorMsg = `Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`;
         }
@@ -4622,10 +4650,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (data.success) {
         toast({
-          title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+          title: language === 'en' ? 'Success' : 'Succès',
           description: language === 'en' 
             ? `${data.inserted} phone numbers added. ${data.duplicates} duplicates skipped. ${data.invalid} invalid numbers.`
-            : `${data.inserted} numÃ©ros ajoutÃ©s. ${data.duplicates} doublons ignorÃ©s. ${data.invalid} numÃ©ros invalides.`,
+            : `${data.inserted} numéros ajoutés. ${data.duplicates} doublons ignorés. ${data.invalid} numéros invalides.`,
         });
         setBulkPhonesInput('');
         await fetchPhoneSubscribers();
@@ -4636,7 +4664,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error adding bulk phones:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to add phone numbers' : 'Ã‰chec de l\'ajout des numÃ©ros'),
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to add phone numbers' : 'Échec de l\'ajout des numéros'),
         variant: 'destructive',
       });
     } finally {
@@ -4662,7 +4690,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'Please enter a phone number' 
-          : 'Veuillez entrer un numÃ©ro de tÃ©lÃ©phone',
+          : 'Veuillez entrer un numéro de téléphone',
         variant: 'destructive',
       });
       return;
@@ -4676,7 +4704,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'Please enter a valid 8-digit phone number (e.g., 21234567)' 
-          : 'Veuillez entrer un numÃ©ro de tÃ©lÃ©phone valide Ã  8 chiffres (ex: 21234567)',
+          : 'Veuillez entrer un numéro de téléphone valide à 8 chiffres (ex: 21234567)',
         variant: 'destructive',
       });
       return;
@@ -4689,7 +4717,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const confirmSend = window.confirm(
         language === 'en' 
           ? 'âš ï¸ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
-          : 'âš ï¸ Avertissement: Votre solde SMS semble Ãªtre de 0. Les messages peuvent Ã©chouer. Voulez-vous continuer?'
+          : 'âš ï¸ Avertissement: Votre solde SMS semble être de 0. Les messages peuvent échouer. Voulez-vous continuer?'
       );
       if (!confirmSend) {
         return;
@@ -4747,10 +4775,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
 
         toast({
-          title: language === 'en' ? 'Test SMS Sent' : 'SMS Test EnvoyÃ©',
+          title: language === 'en' ? 'Test SMS Sent' : 'SMS Test Envoyé',
           description: language === 'en' 
             ? `Test SMS sent successfully to +216 ${phoneToSend}`
-            : `SMS test envoyÃ© avec succÃ¨s Ã  +216 ${phoneToSend}`,
+            : `SMS test envoyé avec succès à +216 ${phoneToSend}`,
         });
         
         await fetchSmsLogs();
@@ -4766,7 +4794,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
     } catch (error) {
       console.error('Error sending test SMS:', error);
-      const errorMessage = error instanceof Error ? error.message : (language === 'en' ? 'Failed to send test SMS' : 'Ã‰chec de l\'envoi du SMS test');
+      const errorMessage = error instanceof Error ? error.message : (language === 'en' ? 'Failed to send test SMS' : 'Échec de l\'envoi du SMS test');
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description: errorMessage,
@@ -4796,7 +4824,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'No subscribers available' 
-          : 'Aucun abonnÃ© disponible',
+          : 'Aucun abonné disponible',
         variant: 'destructive',
       });
       return;
@@ -4807,7 +4835,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const confirmSend = window.confirm(
         language === 'en' 
           ? 'âš ï¸ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
-          : 'âš ï¸ Avertissement: Votre solde SMS semble Ãªtre de 0. Les messages peuvent Ã©chouer. Voulez-vous continuer?'
+          : 'âš ï¸ Avertissement: Votre solde SMS semble être de 0. Les messages peuvent échouer. Voulez-vous continuer?'
       );
       if (!confirmSend) {
         return;
@@ -4843,10 +4871,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (data.success) {
         toast({
-          title: language === 'en' ? 'SMS Broadcast Sent' : 'Diffusion SMS EnvoyÃ©e',
+          title: language === 'en' ? 'SMS Broadcast Sent' : 'Diffusion SMS Envoyée',
           description: language === 'en' 
             ? `Sent: ${data.sent}, Failed: ${data.failed} out of ${data.total}`
-            : `EnvoyÃ©: ${data.sent}, Ã‰chouÃ©: ${data.failed} sur ${data.total}`,
+            : `Envoyé: ${data.sent}, Échoué: ${data.failed} sur ${data.total}`,
         });
         
         await fetchSmsLogs();
@@ -4859,7 +4887,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error sending SMS broadcast:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send SMS' : 'Ã‰chec de l\'envoi du SMS'),
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send SMS' : 'Échec de l\'envoi du SMS'),
         variant: 'destructive',
       });
     } finally {
@@ -4885,7 +4913,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'Please select a city' 
-          : 'Veuillez sÃ©lectionner une ville',
+          : 'Veuillez sélectionner une ville',
         variant: 'destructive',
       });
       return;
@@ -4893,10 +4921,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
     if (targetedCount === 0) {
       toast({
-        title: language === 'en' ? 'No Numbers' : 'Aucun NumÃ©ro',
+        title: language === 'en' ? 'No Numbers' : 'Aucun Numéro',
         description: language === 'en' 
           ? `No phone numbers found for city: ${targetedCity}`
-          : `Aucun numÃ©ro de tÃ©lÃ©phone trouvÃ© pour la ville: ${targetedCity}`,
+          : `Aucun numéro de téléphone trouvé pour la ville: ${targetedCity}`,
         variant: 'destructive',
       });
       return;
@@ -4907,7 +4935,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const confirmSend = window.confirm(
         language === 'en' 
           ? 'âš ï¸ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
-          : 'âš ï¸ Avertissement: Votre solde SMS semble Ãªtre de 0. Les messages peuvent Ã©chouer. Voulez-vous continuer?'
+          : 'âš ï¸ Avertissement: Votre solde SMS semble être de 0. Les messages peuvent échouer. Voulez-vous continuer?'
       );
       if (!confirmSend) {
         return;
@@ -4958,10 +4986,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (responseData.success) {
         toast({
-          title: language === 'en' ? 'Targeted SMS Sent' : 'SMS CiblÃ© EnvoyÃ©',
+          title: language === 'en' ? 'Targeted SMS Sent' : 'SMS Ciblé Envoyé',
           description: language === 'en' 
             ? `Sent: ${responseData.sent}, Failed: ${responseData.failed} out of ${responseData.total}`
-            : `EnvoyÃ©: ${responseData.sent}, Ã‰chouÃ©: ${responseData.failed} sur ${responseData.total}`,
+            : `Envoyé: ${responseData.sent}, Échoué: ${responseData.failed} sur ${responseData.total}`,
         });
         
         await fetchSmsLogs();
@@ -4974,7 +5002,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error sending targeted SMS:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send SMS' : 'Ã‰chec de l\'envoi du SMS'),
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send SMS' : 'Échec de l\'envoi du SMS'),
         variant: 'destructive',
       });
     } finally {
@@ -5075,7 +5103,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             // Show alert if role is not super_admin but user expects it
             if (role !== 'super_admin') {
               console.warn('âš ï¸ Current role is:', role, '- Expected: super_admin');
-              console.warn('Ã°Å¸â€™Â¡ If you should be super_admin, run FIX_SUPER_ADMIN_ROLE.sql and log out/in');
+              console.warn('ðÅ¸’Â¡ If you should be super_admin, run FIX_SUPER_ADMIN_ROLE.sql and log out/in');
             }
           } else {
             // Check if it's a clear token expiration (not a server error)
@@ -5270,17 +5298,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (emailResult.success) {
         toast({
-          title: language === 'en' ? 'Admin Created' : 'Admin CrÃ©Ã©',
+          title: language === 'en' ? 'Admin Created' : 'Admin Créé',
           description: language === 'en'
             ? `Admin account created successfully. Credentials sent to ${newAdminData.email}`
-            : `Compte admin crÃ©Ã© avec succÃ¨s. Identifiants envoyÃ©s Ã  ${newAdminData.email}`,
+            : `Compte admin créé avec succès. Identifiants envoyés à ${newAdminData.email}`,
         });
       } else {
         toast({
-          title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin CrÃ©Ã© - Email Ã‰chouÃ©',
+          title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin Créé - Email Échoué',
           description: language === 'en'
             ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Please check the password manually.`
-            : `Compte admin crÃ©Ã©, mais l'email a Ã©chouÃ©: ${emailResult.error || 'Erreur inconnue'}. Veuillez vÃ©rifier le mot de passe manuellement.`,
+            : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Veuillez vérifier le mot de passe manuellement.`,
           variant: 'destructive',
           duration: 10000,
         });
@@ -5305,12 +5333,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error creating admin:', error);
       const err = error as { message?: string; code?: string };
       let errorMessage =
-        language === 'en' ? 'Failed to create admin account' : 'Ã‰chec de la crÃ©ation du compte admin';
+        language === 'en' ? 'Failed to create admin account' : 'Échec de la création du compte admin';
       if (err?.message?.includes('duplicate') || err?.message?.includes('unique')) {
         errorMessage =
           language === 'en'
             ? 'An admin with this email already exists.'
-            : 'Un admin avec cet email existe dÃ©jÃ .';
+            : 'Un admin avec cet email existe déjà.';
       } else if (err?.message) {
         errorMessage = err.message;
       }
@@ -5353,10 +5381,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await adminApi.updateAdmin(editingAdmin.id, updatePayload);
 
       toast({
-        title: language === 'en' ? 'Admin Updated' : 'Admin ModifiÃ©',
+        title: language === 'en' ? 'Admin Updated' : 'Admin Modifié',
         description: language === 'en'
           ? 'Admin account updated successfully'
-          : 'Compte admin modifiÃ© avec succÃ¨s',
+          : 'Compte admin modifié avec succès',
       });
 
       setEditingAdmin(null);
@@ -5390,16 +5418,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error updating admin:', error);
       const err = error as { message?: string; code?: string };
 
-      let errorMessage = language === 'en' ? 'Failed to update admin account' : 'Ã‰chec de la modification du compte admin';
+      let errorMessage = language === 'en' ? 'Failed to update admin account' : 'Échec de la modification du compte admin';
 
       if (err?.code === '42501' || err?.message?.includes('policy') || err?.message?.includes('permission')) {
         errorMessage = language === 'en'
           ? 'Permission denied. Please check your admin permissions.'
-          : 'Permission refusÃ©e. Veuillez vÃ©rifier vos permissions d\'admin.';
+          : 'Permission refusée. Veuillez vérifier vos permissions d\'admin.';
       } else if (err?.code === '23505' || err?.message?.includes('duplicate') || err?.message?.includes('unique')) {
         errorMessage = language === 'en'
           ? 'An admin with this email already exists.'
-          : 'Un admin avec cet email existe dÃ©jÃ .';
+          : 'Un admin avec cet email existe déjà.';
       } else if (err?.message) {
         errorMessage = err.message;
       }
@@ -5441,16 +5469,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         logAdminAction({ adminId: currentAdminId, adminName: currentAdminName || 'Unknown', adminEmail: currentAdminEmail, action: 'admin.deleted', targetType: 'admin', targetId: adminId, details: { target_name: target?.name, target_email: target?.email } }).catch(() => {});
       }
       toast({
-        title: language === 'en' ? 'Admin Deleted' : 'Admin SupprimÃ©',
-        description: language === 'en' ? 'Admin account deleted successfully' : 'Compte admin supprimÃ© avec succÃ¨s',
+        title: language === 'en' ? 'Admin Deleted' : 'Admin Supprimé',
+        description: language === 'en' ? 'Admin account deleted successfully' : 'Compte admin supprimé avec succès',
       });
       await fetchAdmins();
       await fetchAdminLogs();
     } catch (error: any) {
       console.error('Error deleting admin:', error);
-      let errorMessage = language === 'en' ? 'Failed to delete admin account' : 'Ã‰chec de la suppression du compte admin';
+      let errorMessage = language === 'en' ? 'Failed to delete admin account' : 'Échec de la suppression du compte admin';
       if (error?.code === '42501' || error?.message?.includes('policy') || error?.message?.includes('permission')) {
-        errorMessage = language === 'en' ? 'Permission denied. Please check your admin permissions.' : 'Permission refusÃ©e. Veuillez vÃ©rifier vos permissions d\'admin.';
+        errorMessage = language === 'en' ? 'Permission denied. Please check your admin permissions.' : 'Permission refusée. Veuillez vérifier vos permissions d\'admin.';
       } else if (error?.message) {
         errorMessage = error.message;
       }
@@ -5483,13 +5511,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setPassesForManagement(passesWithStock);
       }
       toast({
-        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
-        description: language === 'en' ? 'Pass deleted successfully' : 'Pass supprimÃ© avec succÃ¨s',
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' ? 'Pass deleted successfully' : 'Pass supprimé avec succès',
       });
     } catch (error: any) {
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error?.message || (language === 'en' ? 'Failed to delete pass' : 'Ã‰chec de la suppression du pass'),
+        description: error?.message || (language === 'en' ? 'Failed to delete pass' : 'Échec de la suppression du pass'),
         variant: "destructive",
       });
     }
@@ -5753,6 +5781,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             fetchSalesSettingsData(),
             fetchMaintenanceSettings(),
             fetchAmbassadorApplicationSettings(),
+            fetchAmbassadorSelectionSettingsState(),
             fetchHeroImages(),
             fetchAboutImages(),
           ]);
@@ -5766,7 +5795,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error fetching data:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to load data" : "Ã‰chec du chargement des donnÃ©es",
+        description: language === 'en' ? "Failed to load data" : "Échec du chargement des données",
         variant: "destructive",
       });
       window.clearTimeout(safetyTimer);
@@ -5846,7 +5875,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         console.error('Error updating application status:', errorData);
-        let errorMessage = language === 'en' ? 'Failed to approve application' : 'Ã‰chec de l\'approbation';
+        let errorMessage = language === 'en' ? 'Failed to approve application' : 'Échec de l\'approbation';
         if (errorData.details) {
           errorMessage = errorData.details;
         } else if (errorData.error) {
@@ -5963,10 +5992,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
         // Show additional warning toast
         toast({
-          title: language === 'en' ? 'âš ï¸ Email Delivery Failed' : 'âš ï¸ Ã‰chec de l\'envoi de l\'email',
+          title: language === 'en' ? 'âš ï¸ Email Delivery Failed' : 'âš ï¸ Échec de l\'envoi de l\'email',
           description: language === 'en' 
             ? `The approval email could not be sent to ${application.email || application.phone_number}. Please use the 'Resend Email' button to retry.`
-            : `L'email d'approbation n'a pas pu Ãªtre envoyÃ© Ã  ${application.email || application.phone_number}. Veuillez utiliser le bouton 'Renvoyer l'email' pour rÃ©essayer.`,
+            : `L'email d'approbation n'a pas pu être envoyé à ${application.email || application.phone_number}. Veuillez utiliser le bouton 'Renvoyer l'email' pour réessayer.`,
           variant: "destructive",
         });
       }
@@ -6009,7 +6038,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error approving application:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to approve application" : "Ã‰chec de l'approbation",
+        description: language === 'en' ? "Failed to approve application" : "Échec de l'approbation",
         variant: "destructive",
       });
     } finally {
@@ -6040,7 +6069,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const titleRow = worksheet.getRow(1);
       titleRow.height = 30;
       const titleCell = worksheet.getCell('A1');
-      titleCell.value = 'ANDIAMO EVENTS â€“ APPROVED AMBASSADORS LIST';
+      titleCell.value = 'ANDIAMO EVENTS – APPROVED AMBASSADORS LIST';
       titleCell.font = { name: 'Arial', size: 16, bold: true, color: white };
       titleCell.fill = {
         type: 'pattern',
@@ -6212,18 +6241,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.URL.revokeObjectURL(url);
 
       toast({
-        title: language === 'en' ? 'Export Successful' : 'Exportation rÃ©ussie',
+        title: language === 'en' ? 'Export Successful' : 'Exportation réussie',
         description: language === 'en' 
           ? `Exported ${approvedAmbassadors.length} approved ambassadors to Excel`
-          : `${approvedAmbassadors.length} ambassadeurs approuvÃ©s exportÃ©s vers Excel`,
+          : `${approvedAmbassadors.length} ambassadeurs approuvés exportés vers Excel`,
       });
     } catch (error) {
       console.error('Error exporting to Excel:', error);
       toast({
-        title: language === 'en' ? 'Export Failed' : 'Ã‰chec de l\'exportation',
+        title: language === 'en' ? 'Export Failed' : 'Échec de l\'exportation',
         description: language === 'en' 
           ? 'Failed to export ambassadors list. Please try again.'
-          : 'Ã‰chec de l\'exportation de la liste des ambassadeurs. Veuillez rÃ©essayer.',
+          : 'Échec de l\'exportation de la liste des ambassadeurs. Veuillez réessayer.',
         variant: 'destructive',
       });
     }
@@ -6238,18 +6267,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
 
       toast({
-        title: language === 'en' ? 'Export Successful' : 'Exportation rÃ©ussie',
+        title: language === 'en' ? 'Export Successful' : 'Exportation réussie',
         description: language === 'en' 
           ? `Exported ${count} ambassadors to Excel`
-          : `${count} ambassadeurs exportÃ©s vers Excel`,
+          : `${count} ambassadeurs exportés vers Excel`,
       });
     } catch (error) {
       console.error('Error exporting to Excel:', error);
       toast({
-        title: language === 'en' ? 'Export Failed' : 'Ã‰chec de l\'exportation',
+        title: language === 'en' ? 'Export Failed' : 'Échec de l\'exportation',
         description: language === 'en' 
           ? 'Failed to export ambassadors list. Please try again.'
-          : 'Ã‰chec de l\'exportation de la liste des ambassadeurs. Veuillez rÃ©essayer.',
+          : 'Échec de l\'exportation de la liste des ambassadeurs. Veuillez réessayer.',
         variant: 'destructive',
       });
     }
@@ -6339,7 +6368,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: t.error,
           description: language === 'en' 
             ? `Ambassador not found for phone ${application.phone_number}. Please verify the ambassador exists and try again, or approve the application again if needed.` 
-            : `Ambassadeur introuvable pour le tÃ©lÃ©phone ${application.phone_number}. Veuillez vÃ©rifier que l'ambassadeur existe et rÃ©essayer, ou approuver Ã  nouveau la candidature si nÃ©cessaire.`,
+            : `Ambassadeur introuvable pour le téléphone ${application.phone_number}. Veuillez vérifier que l'ambassadeur existe et réessayer, ou approuver à nouveau la candidature si nécessaire.`,
           variant: "destructive",
         });
         setProcessingId(null);
@@ -6355,7 +6384,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? "âŒ Email Address Required" : "âŒ Adresse email requise",
           description: language === 'en' 
             ? "No email address found for this ambassador. Please add an email address to the ambassador record or application before resending."
-            : "Aucune adresse email trouvÃ©e pour cet ambassadeur. Veuillez ajouter une adresse email Ã  l'enregistrement de l'ambassadeur ou Ã  la candidature avant de renvoyer.",
+            : "Aucune adresse email trouvée pour cet ambassadeur. Veuillez ajouter une adresse email à l'enregistrement de l'ambassadeur ou à la candidature avant de renvoyer.",
           variant: "destructive",
         });
         setProcessingId(null);
@@ -6406,7 +6435,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             title: t.error,
             description: language === 'en' 
               ? "Failed to update ambassador password. Please try again." 
-              : "Ã‰chec de la mise Ã  jour du mot de passe de l'ambassadeur. Veuillez rÃ©essayer.",
+              : "Échec de la mise à jour du mot de passe de l'ambassadeur. Veuillez réessayer.",
             variant: "destructive",
           });
           setProcessingId(null);
@@ -6465,14 +6494,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           }));
 
           toast({
-            title: language === 'en' ? "âœ… Email Sent Successfully" : "âœ… Email envoyÃ© avec succÃ¨s",
+            title: language === 'en' ? "âœ… Email Sent Successfully" : "âœ… Email envoyé avec succès",
             description: language === 'en' 
               ? needsPasswordUpdate
                 ? `Approval email with new credentials has been successfully delivered to ${emailToUse}`
                 : `Approval email has been successfully delivered to ${emailToUse}`
               : needsPasswordUpdate
-                ? `L'email d'approbation avec de nouvelles identifiants a Ã©tÃ© envoyÃ© avec succÃ¨s Ã  ${emailToUse}`
-                : `L'email d'approbation a Ã©tÃ© envoyÃ© avec succÃ¨s Ã  ${emailToUse}`,
+                ? `L'email d'approbation avec de nouvelles identifiants a été envoyé avec succès à ${emailToUse}`
+                : `L'email d'approbation a été envoyé avec succès à ${emailToUse}`,
           });
         } else {
           // Update status to failed
@@ -6491,10 +6520,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           const errorMessage = emailError || 'Email delivery failed. Please check the email address and try again.';
 
           toast({
-            title: language === 'en' ? "âŒ Email Failed to Send" : "âŒ Ã‰chec de l'envoi de l'email",
+            title: language === 'en' ? "âŒ Email Failed to Send" : "âŒ Échec de l'envoi de l'email",
             description: language === 'en' 
               ? `The email could not be sent to ${emailToUse}. ${errorMessage}`
-              : `L'email n'a pas pu Ãªtre envoyÃ© Ã  ${emailToUse}. ${errorMessage}`,
+              : `L'email n'a pas pu être envoyé à ${emailToUse}. ${errorMessage}`,
             variant: "destructive",
           });
         }
@@ -6515,7 +6544,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? "âŒ Email Error" : "âŒ Erreur d'email",
           description: language === 'en' 
             ? `Failed to send email: ${emailError}`
-            : `Ã‰chec de l'envoi de l'email : ${emailError}`,
+            : `Échec de l'envoi de l'email : ${emailError}`,
           variant: "destructive",
         });
       }
@@ -6544,7 +6573,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description: language === 'en' 
           ? "An unexpected error occurred while resending the email. Please try again."
-          : "Une erreur inattendue s'est produite lors de la nouvelle tentative d'envoi. Veuillez rÃ©essayer.",
+          : "Une erreur inattendue s'est produite lors de la nouvelle tentative d'envoi. Veuillez réessayer.",
         variant: "destructive",
       });
     } finally {
@@ -6558,15 +6587,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await updateSalesSettings(enabled);
       setSalesEnabled(enabled);
       toast({
-        title: language === 'en' ? 'Settings Updated' : 'ParamÃ¨tres Mis Ã  Jour',
+        title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
         description: enabled
-          ? (language === 'en' ? 'Sales are now enabled for ambassadors' : 'Les ventes sont maintenant activÃ©es pour les ambassadeurs')
-          : (language === 'en' ? 'Sales are now disabled for ambassadors' : 'Les ventes sont maintenant dÃ©sactivÃ©es pour les ambassadeurs'),
+          ? (language === 'en' ? 'Sales are now enabled for ambassadors' : 'Les ventes sont maintenant activées pour les ambassadeurs')
+          : (language === 'en' ? 'Sales are now disabled for ambassadors' : 'Les ventes sont maintenant désactivées pour les ambassadeurs'),
       });
       await fetchSalesSettingsData();
     } catch (error: any) {
       console.error('Error updating sales settings:', error);
-      const errorMessage = error.message || (language === 'en' ? 'Failed to update settings' : 'Ã‰chec de la mise Ã  jour des paramÃ¨tres');
+      const errorMessage = error.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres');
       toast({
         title: t.error,
         description: errorMessage,
@@ -6592,7 +6621,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           ? error.message
           : language === "en"
             ? "Failed to save countdown banner text"
-            : "Ã‰chec de l'enregistrement du texte de la banniÃ¨re";
+            : "Échec de l'enregistrement du texte de la bannière";
       toast({
         title: t.error,
         description: errorMessage,
@@ -6618,15 +6647,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
       setCountdownBannerEnabled(enabled);
       toast({
-        title: language === "en" ? "Settings updated" : "ParamÃ¨tres mis Ã  jour",
+        title: language === "en" ? "Settings updated" : "Paramètres mis à jour",
         description:
           language === "en"
             ? enabled
               ? "The countdown banner is visible on the site when events qualify."
               : "The countdown banner is hidden on the public site."
             : enabled
-              ? "La banniÃ¨re compte Ã  rebours sâ€™affiche sur le site lorsque les Ã©vÃ©nements sont Ã©ligibles."
-              : "La banniÃ¨re compte Ã  rebours est masquÃ©e sur le site public.",
+              ? "La bannière compte à rebours s’affiche sur le site lorsque les événements sont éligibles."
+              : "La bannière compte à rebours est masquée sur le site public.",
       });
       await queryClient.invalidateQueries({ queryKey: ["site_content", COUNTDOWN_BANNER_SETTINGS_KEY] });
       const countdown = await fetchCountdownBannerSettings();
@@ -6640,7 +6669,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           ? error.message
           : language === "en"
             ? "Failed to update settings"
-            : "Ã‰chec de la mise Ã  jour des paramÃ¨tres";
+            : "Échec de la mise à jour des paramètres";
       toast({
         title: t.error,
         description: errorMessage,
@@ -6668,17 +6697,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setAllowAmbassadorApplication(allowAmbassador);
       }
       toast({
-        title: language === 'en' ? 'Settings Updated' : 'ParamÃ¨tres Mis Ã  Jour',
+        title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
         description: enabled
-          ? (language === 'en' ? 'Maintenance mode is now enabled. Users will see the maintenance message.' : 'Le mode maintenance est maintenant activÃ©. Les utilisateurs verront le message de maintenance.')
-          : (language === 'en' ? 'Maintenance mode is now disabled. The site is accessible to all users.' : 'Le mode maintenance est maintenant dÃ©sactivÃ©. Le site est accessible Ã  tous les utilisateurs.'),
+          ? (language === 'en' ? 'Maintenance mode is now enabled. Users will see the maintenance message.' : 'Le mode maintenance est maintenant activé. Les utilisateurs verront le message de maintenance.')
+          : (language === 'en' ? 'Maintenance mode is now disabled. The site is accessible to all users.' : 'Le mode maintenance est maintenant désactivé. Le site est accessible à tous les utilisateurs.'),
       });
       
       // Refresh the settings to ensure sync
       await fetchMaintenanceSettings();
     } catch (error: any) {
       console.error('Error updating maintenance settings:', error);
-      const errorMessage = error.message || (language === 'en' ? 'Failed to update settings' : 'Ã‰chec de la mise Ã  jour des paramÃ¨tres');
+      const errorMessage = error.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres');
       toast({
         title: t.error,
         description: errorMessage,
@@ -6719,10 +6748,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         message: message || "",
       });
       toast({
-        title: language === 'en' ? 'Settings Updated' : 'ParamÃ¨tres Mis Ã  Jour',
+        title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
         description: enabled
           ? (language === 'en' ? 'Ambassador applications are now open. Users can submit applications.' : 'Les candidatures ambassadeur sont maintenant ouvertes. Les utilisateurs peuvent soumettre des candidatures.')
-          : (language === 'en' ? 'Ambassador applications are now closed. Users will see the closed message.' : 'Les candidatures ambassadeur sont maintenant fermÃ©es. Les utilisateurs verront le message de fermeture.'),
+          : (language === 'en' ? 'Ambassador applications are now closed. Users will see the closed message.' : 'Les candidatures ambassadeur sont maintenant fermées. Les utilisateurs verront le message de fermeture.'),
       });
 
       setTimeout(() => {
@@ -6738,7 +6767,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       toast({
         title: t.error,
-        description: error?.message || (language === 'en' ? 'Failed to update settings' : 'Ã‰chec de la mise Ã  jour des paramÃ¨tres'),
+        description: error?.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres'),
         variant: 'destructive',
       });
     } finally {
@@ -6748,6 +6777,54 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
       // Force state update using functional form
       setLoadingAmbassadorApplicationSettings(() => false);
+    }
+  };
+
+  const updateAmbassadorCityWide = async (city: AmbassadorNeighborhoodCity, enabled: boolean) => {
+    if (loadingAmbassadorSelectionSettings) return;
+
+    setLoadingAmbassadorSelectionSettings(true);
+    const previous = ambassadorSelectionSettings;
+
+    const cityWide = { ...ambassadorSelectionSettings.cityWide };
+    if (enabled) {
+      cityWide[city] = true;
+    } else {
+      delete cityWide[city];
+    }
+    const nextSettings: AmbassadorSelectionSettings = { cityWide };
+    setAmbassadorSelectionSettings(nextSettings);
+
+    try {
+      await upsertAmbassadorSelectionSettings(nextSettings);
+      await queryClient.invalidateQueries({
+        queryKey: ['site_content', AMBASSADOR_SELECTION_SETTINGS_KEY],
+      });
+      toast({
+        title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
+        description: enabled
+          ? (language === 'en'
+              ? `Checkout will show all ambassadors in ${city}.`
+              : `Le paiement affichera tous les ambassadeurs à ${city}.`)
+          : (language === 'en'
+              ? `Checkout will filter ambassadors by neighborhood in ${city}.`
+              : `Le paiement filtrera les ambassadeurs par quartier à ${city}.`),
+      });
+    } catch (error: unknown) {
+      console.error('Error updating ambassador selection settings:', error);
+      setAmbassadorSelectionSettings(previous);
+      toast({
+        title: t.error,
+        description:
+          error instanceof Error
+            ? error.message
+            : language === 'en'
+              ? 'Failed to update settings'
+              : 'Échec de la mise à jour des paramètres',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingAmbassadorSelectionSettings(false);
     }
   };
 
@@ -6795,7 +6872,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (!credentials) {
         toast({
           title: t.error,
-          description: language === 'en' ? "No credentials found for this application" : "Aucune information d'identification trouvÃ©e",
+          description: language === 'en' ? "No credentials found for this application" : "Aucune information d'identification trouvée",
           variant: "destructive",
         });
         return;
@@ -6806,14 +6883,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await navigator.clipboard.writeText(credentialsText);
       
       toast({
-        title: language === 'en' ? "Credentials copied" : "Informations d'identification copiÃ©es",
-        description: language === 'en' ? "Credentials copied to clipboard. You can now paste them in a message." : "Informations copiÃ©es dans le presse-papiers. Vous pouvez maintenant les coller dans un message.",
+        title: language === 'en' ? "Credentials copied" : "Informations d'identification copiées",
+        description: language === 'en' ? "Credentials copied to clipboard. You can now paste them in a message." : "Informations copiées dans le presse-papiers. Vous pouvez maintenant les coller dans un message.",
       });
     } catch (error) {
       console.error('Error copying credentials:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to copy credentials" : "Ã‰chec de la copie des informations",
+        description: language === 'en' ? "Failed to copy credentials" : "Échec de la copie des informations",
         variant: "destructive",
       });
     }
@@ -6844,7 +6921,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         console.error('Error updating application status:', errorData);
-        let errorMessage = language === 'en' ? 'Failed to reject application' : 'Ã‰chec du rejet';
+        let errorMessage = language === 'en' ? 'Failed to reject application' : 'Échec du rejet';
         if (errorData.details) {
           errorMessage = errorData.details;
         } else if (errorData.error) {
@@ -6899,7 +6976,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error rejecting application:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to reject application" : "Ã‰chec du rejet",
+        description: language === 'en' ? "Failed to reject application" : "Échec du rejet",
         variant: "destructive",
       });
     } finally {
@@ -6912,7 +6989,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const isCompleted = event.event_status === 'completed';
       const effectiveEventType = isCompleted ? 'gallery' : (event.event_type || 'upcoming');
 
-      // Gallery conversion only allowed after the event date has passed (unless admin marked completed â€” then gallery is allowed anytime)
+      // Gallery conversion only allowed after the event date has passed (unless admin marked completed — then gallery is allowed anytime)
       if (effectiveEventType === 'gallery' && event.date && !isCompleted) {
         const eventDate = new Date(event.date);
         const now = new Date();
@@ -6921,7 +6998,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             title: t.error,
             description: language === 'en' 
               ? "Cannot set as gallery event until after the event date, or mark the event as Completed." 
-              : "Impossible de passer en galerie avant la date de l'Ã©vÃ©nement, ou marquez l'Ã©vÃ©nement comme TerminÃ©.",
+              : "Impossible de passer en galerie avant la date de l'événement, ou marquez l'événement comme Terminé.",
             variant: "destructive",
           });
           return false;
@@ -6943,7 +7020,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (uploadResult.error) {
           toast({
             title: t.error,
-            description: language === 'en' ? `Failed to upload image: ${uploadResult.error}` : `Ã‰chec du tÃ©lÃ©chargement: ${uploadResult.error}`,
+            description: language === 'en' ? `Failed to upload image: ${uploadResult.error}` : `Échec du téléchargement: ${uploadResult.error}`,
             variant: "destructive",
           });
           setUploadingImage(false);
@@ -6962,7 +7039,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (seatingUpload.error) {
           toast({
             title: t.error,
-            description: language === 'en' ? `Failed to upload seating plan: ${seatingUpload.error}` : `Ã‰chec du tÃ©lÃ©chargement du plan de salle: ${seatingUpload.error}`,
+            description: language === 'en' ? `Failed to upload seating plan: ${seatingUpload.error}` : `Échec du téléchargement du plan de salle: ${seatingUpload.error}`,
             variant: "destructive",
           });
           setUploadingImage(false);
@@ -6993,10 +7070,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         } catch (error) {
           console.error('Error uploading gallery files:', error);
           toast({
-            title: language === 'en' ? "Upload failed" : "Ã‰chec du tÃ©lÃ©chargement",
+            title: language === 'en' ? "Upload failed" : "Échec du téléchargement",
             description: language === 'en' 
               ? "Failed to upload gallery files" 
-              : "Ã‰chec du tÃ©lÃ©chargement des fichiers de galerie",
+              : "Échec du téléchargement des fichiers de galerie",
             variant: "destructive",
           });
           setUploadingGallery(false);
@@ -7016,7 +7093,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           description:
             language === "en"
               ? "Event date is required."
-              : "La date de l'Ã©vÃ©nement est requise.",
+              : "La date de l'événement est requise.",
           variant: "destructive",
         });
         return false;
@@ -7028,7 +7105,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           description:
             language === "en"
               ? "Invalid event date. Use the date picker or correct the value."
-              : "Date d'Ã©vÃ©nement invalide. Utilisez le sÃ©lecteur ou corrigez la valeur.",
+              : "Date d'événement invalide. Utilisez le sélecteur ou corrigez la valeur.",
           variant: "destructive",
         });
         return false;
@@ -7072,7 +7149,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             typeof result?.message === 'string' ? result.message : '',
           ]
             .filter(Boolean)
-            .join(' â€” ');
+            .join(' — ');
           throw new Error(apiMsg || 'Failed to update event');
         }
         newEventData = result?.data || null;
@@ -7091,7 +7168,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             typeof result?.message === 'string' ? result.message : '',
           ]
             .filter(Boolean)
-            .join(' â€” ');
+            .join(' — ');
           throw new Error(apiMsg || 'Failed to create event');
         }
         newEventData = result?.data || null;
@@ -7102,7 +7179,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Show success immediately and update UI optimistically
       toast({
         title: t.eventSaved,
-        description: language === 'en' ? "Event saved successfully" : "Ã‰vÃ©nement enregistrÃ© avec succÃ¨s",
+        description: language === 'en' ? "Event saved successfully" : "Événement enregistré avec succès",
       });
 
       // Update local state immediately for instant UI feedback
@@ -7174,7 +7251,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description:
           description ||
-          (language === 'en' ? "Failed to save event" : "Ã‰chec de l'enregistrement"),
+          (language === 'en' ? "Failed to save event" : "Échec de l'enregistrement"),
         variant: "destructive",
       });
       return false;
@@ -7271,10 +7348,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           console.error('Error updating application status:', updateAppError);
           // Show warning but continue - ambassador update succeeded
           toast({
-            title: language === 'en' ? 'âš ï¸ Partial Update' : 'âš ï¸ Mise Ã  Jour Partielle',
+            title: language === 'en' ? 'âš ï¸ Partial Update' : 'âš ï¸ Mise à Jour Partielle',
             description: language === 'en' 
               ? `Ambassador status updated, but application status update failed: ${updateAppError.message}`
-              : `Statut de l'ambassadeur mis Ã  jour, mais la mise Ã  jour du statut de la candidature a Ã©chouÃ© : ${updateAppError.message}`,
+              : `Statut de l'ambassadeur mis à jour, mais la mise à jour du statut de la candidature a échoué : ${updateAppError.message}`,
             variant: 'destructive',
           });
         } else {
@@ -7300,18 +7377,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       ));
 
       toast({
-        title: language === 'en' ? 'Status Updated' : 'Statut Mis Ã  Jour',
+        title: language === 'en' ? 'Status Updated' : 'Statut Mis à Jour',
         description: language === 'en' 
           ? `Ambassador ${newStatus === 'suspended' ? 'paused' : 'activated'} successfully`
-          : `Ambassadeur ${newStatus === 'suspended' ? 'mis en pause' : 'activÃ©'} avec succÃ¨s`,
+          : `Ambassadeur ${newStatus === 'suspended' ? 'mis en pause' : 'activé'} avec succès`,
       });
     } catch (error) {
       console.error('Error toggling ambassador status:', error);
       toast({
-        title: language === 'en' ? 'Update Failed' : 'Ã‰chec de la Mise Ã  Jour',
+        title: language === 'en' ? 'Update Failed' : 'Échec de la Mise à Jour',
         description: language === 'en' 
           ? 'Failed to update ambassador status. Please try again.'
-          : 'Ã‰chec de la mise Ã  jour du statut. Veuillez rÃ©essayer.',
+          : 'Échec de la mise à jour du statut. Veuillez réessayer.',
         variant: 'destructive',
       });
     } finally {
@@ -7327,11 +7404,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (ambassador.age !== undefined && (ambassador.age < 16 || ambassador.age > 99)) {
           toast({
             title: language === 'en' ? "Validation Error" : "Erreur de validation",
-            description: language === 'en' ? "Age must be between 16 and 99" : "L'Ã¢ge doit Ãªtre entre 16 et 99",
+            description: language === 'en' ? "Age must be between 16 and 99" : "L'âge doit être entre 16 et 99",
             variant: "destructive",
           });
           return;
         }
+
+        const primaryVille =
+          ambassador.city === 'Sousse' || ambassador.city === 'Tunis'
+            ? ambassador.ville?.trim() || null
+            : null;
 
         // Update existing ambassador
         const updateData: any = {
@@ -7339,7 +7421,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             phone: ambassador.phone,
             email: ambassador.email,
             city: ambassador.city,
-            ville: (ambassador.city === 'Sousse' || ambassador.city === 'Tunis') ? (ambassador.ville?.trim() || null) : null,
+            ville: primaryVille,
+            extra_villes:
+              ambassador.city === 'Sousse' || ambassador.city === 'Tunis'
+                ? normalizeExtraVilles({
+                    primaryVille,
+                    extraVilles: ambassador.extra_villes,
+                    allowedVilles: getAllowedVillesForCity(ambassador.city),
+                  })
+                : [],
             status: ambassador.status,
             updated_at: new Date().toISOString()
         };
@@ -7361,7 +7451,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           if (!validatePassword(ambassador.password)) {
             toast({
               title: language === 'en' ? "Validation Error" : "Erreur de validation",
-              description: language === 'en' ? "Password must be at least 6 characters long" : "Le mot de passe doit contenir au moins 6 caractÃ¨res",
+              description: language === 'en' ? "Password must be at least 6 characters long" : "Le mot de passe doit contenir au moins 6 caractères",
               variant: "destructive",
             });
             return;
@@ -7405,7 +7495,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               title: language === 'en' ? "Warning" : "Avertissement",
               description: language === 'en' 
                 ? "Ambassador updated, but synchronization with application may have failed" 
-                : "Ambassadeur mis Ã  jour, mais la synchronisation avec la candidature a peut-Ãªtre Ã©chouÃ©",
+                : "Ambassadeur mis à jour, mais la synchronisation avec la candidature a peut-être échoué",
               variant: "default",
             });
           }
@@ -7413,7 +7503,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       toast({
         title: t.ambassadorSaved,
-          description: language === 'en' ? "Ambassador updated successfully" : "Ambassadeur mis Ã  jour avec succÃ¨s",
+          description: language === 'en' ? "Ambassador updated successfully" : "Ambassadeur mis à jour avec succès",
         });
 
         setEditingAmbassador(null);
@@ -7441,10 +7531,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       if (!newAmbassadorForm.age || !newAmbassadorForm.age.trim()) {
-        errors.full_name = language === 'en' ? "Age is required" : "L'Ã¢ge est requis";
+        errors.full_name = language === 'en' ? "Age is required" : "L'âge est requis";
         hasErrors = true;
       } else if (isNaN(parseInt(newAmbassadorForm.age)) || parseInt(newAmbassadorForm.age) < 16 || parseInt(newAmbassadorForm.age) > 99) {
-        errors.full_name = language === 'en' ? "Age must be between 16 and 99" : "L'Ã¢ge doit Ãªtre entre 16 et 99";
+        errors.full_name = language === 'en' ? "Age must be between 16 and 99" : "L'âge doit être entre 16 et 99";
         hasErrors = true;
       }
 
@@ -7459,10 +7549,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       // Validate phone
       if (!newAmbassadorForm.phone_number || !newAmbassadorForm.phone_number.trim()) {
-        errors.phone = language === 'en' ? "Phone number is required" : "Le numÃ©ro de tÃ©lÃ©phone est requis";
+        errors.phone = language === 'en' ? "Phone number is required" : "Le numéro de téléphone est requis";
         hasErrors = true;
       } else if (!validatePhone(newAmbassadorForm.phone_number)) {
-        errors.phone = language === 'en' ? "Phone number must be 8 digits starting with 2, 4, 9, or 5" : "Le numÃ©ro de tÃ©lÃ©phone doit contenir 8 chiffres commenÃ§ant par 2, 4, 9 ou 5";
+        errors.phone = language === 'en' ? "Phone number must be 8 digits starting with 2, 4, 9, or 5" : "Le numéro de téléphone doit contenir 8 chiffres commençant par 2, 4, 9 ou 5";
         hasErrors = true;
       }
 
@@ -7471,7 +7561,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         errors.city = language === 'en' ? "City is required" : "La ville est requise";
         hasErrors = true;
       } else if (!CITIES.includes(newAmbassadorForm.city as any)) {
-        errors.city = language === 'en' ? "Please select a valid city from the list" : "Veuillez sÃ©lectionner une ville valide dans la liste";
+        errors.city = language === 'en' ? "Please select a valid city from the list" : "Veuillez sélectionner une ville valide dans la liste";
         hasErrors = true;
       }
 
@@ -7513,8 +7603,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (existingAmbByPhone) {
         toast({
-          title: language === 'en' ? "Duplicate Phone Number" : "NumÃ©ro de tÃ©lÃ©phone dupliquÃ©",
-          description: language === 'en' ? "An ambassador with this phone number already exists" : "Un ambassadeur avec ce numÃ©ro de tÃ©lÃ©phone existe dÃ©jÃ ",
+          title: language === 'en' ? "Duplicate Phone Number" : "Numéro de téléphone dupliqué",
+          description: language === 'en' ? "An ambassador with this phone number already exists" : "Un ambassadeur avec ce numéro de téléphone existe déjà",
           variant: "destructive",
         });
         return;
@@ -7530,10 +7620,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (existingAppByPhone) {
         toast({
-          title: language === 'en' ? "Duplicate Phone Number" : "NumÃ©ro de tÃ©lÃ©phone dupliquÃ©",
+          title: language === 'en' ? "Duplicate Phone Number" : "Numéro de téléphone dupliqué",
           description: language === 'en' 
             ? `An application with this phone number already exists with status: ${existingAppByPhone.status}`
-            : `Une candidature avec ce numÃ©ro de tÃ©lÃ©phone existe dÃ©jÃ  avec le statut : ${existingAppByPhone.status}`,
+            : `Une candidature avec ce numéro de téléphone existe déjà avec le statut : ${existingAppByPhone.status}`,
           variant: "destructive",
         });
         return;
@@ -7549,8 +7639,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         if (existingAmbByEmail) {
           toast({
-            title: language === 'en' ? "Duplicate Email" : "Email dupliquÃ©",
-            description: language === 'en' ? "An ambassador with this email already exists" : "Un ambassadeur avec cet email existe dÃ©jÃ ",
+            title: language === 'en' ? "Duplicate Email" : "Email dupliqué",
+            description: language === 'en' ? "An ambassador with this email already exists" : "Un ambassadeur avec cet email existe déjà",
             variant: "destructive",
           });
           return;
@@ -7566,10 +7656,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         if (existingAppByEmail) {
           toast({
-            title: language === 'en' ? "Duplicate Email" : "Email dupliquÃ©",
+            title: language === 'en' ? "Duplicate Email" : "Email dupliqué",
             description: language === 'en' 
               ? `An application with this email already exists with status: ${existingAppByEmail.status}`
-              : `Une candidature avec cet email existe dÃ©jÃ  avec le statut : ${existingAppByEmail.status}`,
+              : `Une candidature avec cet email existe déjà avec le statut : ${existingAppByEmail.status}`,
             variant: "destructive",
           });
           return;
@@ -7615,7 +7705,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         city: newAmbassadorForm.city.trim(),
         ville: newAmbassadorForm.city === 'Tunis' ? newAmbassadorForm.ville.trim() : null,
         social_link: newAmbassadorForm.social_link?.trim() || null,
-        motivation: newAmbassadorForm.motivation?.trim() || (language === 'en' ? 'Manually added by admin' : 'AjoutÃ© manuellement par l\'administrateur'),
+        motivation: newAmbassadorForm.motivation?.trim() || (language === 'en' ? 'Manually added by admin' : 'Ajouté manuellement par l\'administrateur'),
         status: 'approved'
       };
 
@@ -7647,7 +7737,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         
         throw new Error(language === 'en' 
           ? `Failed to create application record: ${finalAppError.message}. Ambassador creation was rolled back. Please run the migration: 20250203000001-ensure-manually-added-column.sql`
-          : `Ã‰chec de la crÃ©ation de la candidature : ${finalAppError.message}. La crÃ©ation de l'ambassadeur a Ã©tÃ© annulÃ©e. Veuillez exÃ©cuter la migration : 20250203000001-ensure-manually-added-column.sql`);
+          : `Échec de la création de la candidature : ${finalAppError.message}. La création de l'ambassadeur a été annulée. Veuillez exécuter la migration : 20250203000001-ensure-manually-added-column.sql`);
       }
 
       // Find the application record we just created to get its ID
@@ -7754,24 +7844,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Show appropriate toast notifications
       if (emailSent) {
         toast({
-          title: language === 'en' ? "âœ… Ambassador Added Successfully" : "âœ… Ambassadeur ajoutÃ© avec succÃ¨s",
+          title: language === 'en' ? "âœ… Ambassador Added Successfully" : "âœ… Ambassadeur ajouté avec succès",
           description: language === 'en' 
             ? `Ambassador created and approval email sent to ${newAmbassadorForm.email}`
-            : `Ambassadeur crÃ©Ã© et email d'approbation envoyÃ© Ã  ${newAmbassadorForm.email}`,
+            : `Ambassadeur créé et email d'approbation envoyé à ${newAmbassadorForm.email}`,
         });
       } else {
         toast({
-          title: language === 'en' ? "Ambassador Added" : "Ambassadeur ajoutÃ©",
+          title: language === 'en' ? "Ambassador Added" : "Ambassadeur ajouté",
           description: emailError || (language === 'en' 
             ? "Ambassador created, but email failed to send. Use 'Resend Email' button to retry."
-            : "Ambassadeur crÃ©Ã©, mais l'e-mail n'a pas pu Ãªtre envoyÃ©. Utilisez le bouton 'Renvoyer e-mail' pour rÃ©essayer."),
+            : "Ambassadeur créé, mais l'e-mail n'a pas pu être envoyé. Utilisez le bouton 'Renvoyer e-mail' pour réessayer."),
           variant: "default",
         });
         toast({
-          title: language === 'en' ? 'Email Delivery Failed' : "Ã‰chec de l'envoi de l'e-mail",
+          title: language === 'en' ? 'Email Delivery Failed' : "Échec de l'envoi de l'e-mail",
           description: language === 'en' 
             ? `The approval email could not be sent to ${newAmbassadorForm.email}. Please use the 'Resend Email' button to retry.`
-            : `L'e-mail d'approbation n'a pas pu Ãªtre envoyÃ© Ã  ${newAmbassadorForm.email}. Veuillez utiliser le bouton 'Renvoyer e-mail' pour rÃ©essayer.`,
+            : `L'e-mail d'approbation n'a pas pu être envoyé à ${newAmbassadorForm.email}. Veuillez utiliser le bouton 'Renvoyer e-mail' pour réessayer.`,
           variant: "destructive",
         });
       }
@@ -7798,7 +7888,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error saving ambassador:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to save ambassador" : "Ã‰chec de l'enregistrement",
+        description: language === 'en' ? "Failed to save ambassador" : "Échec de l'enregistrement",
         variant: "destructive",
       });
     } finally {
@@ -7830,8 +7920,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       invalidateEvents();
       
       toast({
-        title: language === 'en' ? "Event deleted" : "Ã‰vÃ©nement supprimÃ©",
-        description: language === 'en' ? "Event deleted successfully" : "Ã‰vÃ©nement supprimÃ© avec succÃ¨s",
+        title: language === 'en' ? "Event deleted" : "Événement supprimé",
+        description: language === 'en' ? "Event deleted successfully" : "Événement supprimé avec succès",
       });
 
       // Refresh all data to ensure consistency
@@ -7841,7 +7931,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error deleting event:', error);
       toast({
         title: t.error,
-        description: (error as any)?.message || (language === 'en' ? 'Failed to delete event' : 'Ã‰chec de la suppression'),
+        description: (error as any)?.message || (language === 'en' ? 'Failed to delete event' : 'Échec de la suppression'),
         variant: "destructive",
       });
     } finally {
@@ -7871,11 +7961,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (deleteError) {
         console.error('Delete ambassador error:', deleteError);
         // Provide more specific error message
-        let errorMessage = language === 'en' ? 'Failed to delete ambassador' : 'Ã‰chec de la suppression de l\'ambassadeur';
+        let errorMessage = language === 'en' ? 'Failed to delete ambassador' : 'Échec de la suppression de l\'ambassadeur';
         if (deleteError.code === '42501' || deleteError.message?.includes('policy') || deleteError.message?.includes('permission')) {
           errorMessage = language === 'en' 
             ? 'Permission denied. Please run the migration 20250131000002-fix-ambassador-delete-policy.sql in Supabase SQL Editor.'
-            : 'Permission refusÃ©e. Veuillez exÃ©cuter la migration 20250131000002-fix-ambassador-delete-policy.sql dans l\'Ã©diteur SQL Supabase.';
+            : 'Permission refusée. Veuillez exécuter la migration 20250131000002-fix-ambassador-delete-policy.sql dans l\'éditeur SQL Supabase.';
         } else if (deleteError.message) {
           errorMessage = deleteError.message;
         }
@@ -8006,10 +8096,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       toast({
-        title: language === 'en' ? "Ambassador Removed" : "Ambassadeur RetirÃ©",
+        title: language === 'en' ? "Ambassador Removed" : "Ambassadeur Retiré",
         description: language === 'en' 
           ? "Ambassador removed from active list. Application status updated to 'removed' to preserve history." 
-          : "Ambassadeur retirÃ© de la liste active. Statut de la candidature mis Ã  jour Ã  'retirÃ©' pour prÃ©server l'historique.",
+          : "Ambassadeur retiré de la liste active. Statut de la candidature mis à jour à 'retiré' pour préserver l'historique.",
       });
       
       // Close delete dialog
@@ -8019,7 +8109,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchAllData();
     } catch (error) {
       console.error('Error deleting ambassador:', error);
-      const errorMessage = error instanceof Error ? error.message : (language === 'en' ? "Failed to delete ambassador" : "Ã‰chec de la suppression");
+      const errorMessage = error instanceof Error ? error.message : (language === 'en' ? "Failed to delete ambassador" : "Échec de la suppression");
       toast({
         title: language === 'en' ? "Error" : "Erreur",
         description: errorMessage,
@@ -8079,7 +8169,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? "All Ambassadors Have Applications" : "Tous les Ambassadeurs ont des Candidatures",
           description: language === 'en' 
             ? "All ambassadors have corresponding approved applications." 
-            : "Tous les ambassadeurs ont des candidatures approuvÃ©es correspondantes.",
+            : "Tous les ambassadeurs ont des candidatures approuvées correspondantes.",
         });
         return;
       }
@@ -8094,7 +8184,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         social_link: '',
         motivation: language === 'en' 
           ? 'Ambassador created directly (application record created retroactively)' 
-          : 'Ambassadeur crÃ©Ã© directement (candidature crÃ©Ã©e rÃ©troactivement)',
+          : 'Ambassadeur créé directement (candidature créée rétroactivement)',
         status: 'approved',
         created_at: amb.created_at || new Date().toISOString()
       }));
@@ -8108,10 +8198,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       toast({
-        title: language === 'en' ? "Applications Created" : "Candidatures CrÃ©Ã©es",
+        title: language === 'en' ? "Applications Created" : "Candidatures Créées",
         description: language === 'en' 
           ? `Created ${ambassadorsWithoutApps.length} application record(s) for ambassadors.` 
-          : `${ambassadorsWithoutApps.length} candidature(s) crÃ©Ã©e(s) pour les ambassadeurs.`,
+          : `${ambassadorsWithoutApps.length} candidature(s) créée(s) pour les ambassadeurs.`,
       });
 
       // Refresh data
@@ -8122,7 +8212,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? "Error" : "Erreur",
         description: language === 'en' 
           ? "Failed to create application records." 
-          : "Ã‰chec de la crÃ©ation des candidatures.",
+          : "Échec de la création des candidatures.",
         variant: "destructive",
       });
     }
@@ -8147,7 +8237,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? "No Orphaned Applications" : "Aucune Candidature Orpheline",
           description: language === 'en' 
             ? "All approved applications have corresponding ambassadors." 
-            : "Toutes les candidatures approuvÃ©es ont des ambassadeurs correspondants.",
+            : "Toutes les candidatures approuvées ont des ambassadeurs correspondants.",
         });
         return;
       }
@@ -8167,10 +8257,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setApplications(prev => prev.filter(app => !orphanedIds.includes(app.id)));
 
       toast({
-        title: language === 'en' ? "Cleanup Complete" : "Nettoyage TerminÃ©",
+        title: language === 'en' ? "Cleanup Complete" : "Nettoyage Terminé",
         description: language === 'en' 
           ? `Deleted ${orphanedApps.length} orphaned approved application(s).` 
-          : `${orphanedApps.length} candidature(s) orpheline(s) supprimÃ©e(s).`,
+          : `${orphanedApps.length} candidature(s) orpheline(s) supprimée(s).`,
       });
 
       // Refresh data
@@ -8181,7 +8271,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? "Error" : "Erreur",
         description: language === 'en' 
           ? "Failed to clean up orphaned applications." 
-          : "Ã‰chec du nettoyage des candidatures orphelines.",
+          : "Échec du nettoyage des candidatures orphelines.",
         variant: "destructive",
       });
     }
@@ -8255,8 +8345,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
       closeSponsorDialog();
       toast({
-        title: language === 'en' ? 'Sponsor saved' : 'Sponsor enregistrÃ©',
-        description: language === 'en' ? 'Sponsor details updated successfully.' : 'DÃ©tails du sponsor mis Ã  jour avec succÃ¨s.',
+        title: language === 'en' ? 'Sponsor saved' : 'Sponsor enregistré',
+        description: language === 'en' ? 'Sponsor details updated successfully.' : 'Détails du sponsor mis à jour avec succès.',
       });
     } catch (err) {
       console.error('Sponsor save error:', err);
@@ -8288,8 +8378,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await adminApi.deleteSponsor(sponsorIdToDelete);
       
       toast({
-        title: language === 'en' ? "Sponsor deleted" : "Sponsor supprimÃ©",
-        description: language === 'en' ? "Sponsor deleted successfully" : "Sponsor supprimÃ© avec succÃ¨s",
+        title: language === 'en' ? "Sponsor deleted" : "Sponsor supprimé",
+        description: language === 'en' ? "Sponsor deleted successfully" : "Sponsor supprimé avec succès",
       });
       
       closeDeleteDialog();
@@ -8297,7 +8387,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error deleting sponsor:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to delete sponsor" : "Ã‰chec de la suppression du sponsor",
+        description: language === 'en' ? "Failed to delete sponsor" : "Échec de la suppression du sponsor",
         variant: "destructive",
       });
     }
@@ -8334,10 +8424,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setCurrentAdminEmail(null);
       
       toast({
-        title: language === 'en' ? "Logged Out" : "DÃ©connectÃ©",
+        title: language === 'en' ? "Logged Out" : "Déconnecté",
         description: language === 'en' 
           ? "You have been successfully logged out. Please re-enter your credentials to continue."
-          : "Vous avez Ã©tÃ© dÃ©connectÃ© avec succÃ¨s. Veuillez rÃ©-entrer vos identifiants pour continuer.",
+          : "Vous avez été déconnecté avec succès. Veuillez ré-entrer vos identifiants pour continuer.",
       });
     } catch (error) {
       console.error('Logout error:', error);
@@ -8357,7 +8447,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       case 'rejected':
         return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#EF4444' }} title={t.rejected} />; // Red
       case 'removed':
-        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#EF4444' }} title={language === 'en' ? 'Removed' : 'RetirÃ©'} />; // Red
+        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#EF4444' }} title={language === 'en' ? 'Removed' : 'Retiré'} />; // Red
       case 'suspended':
         return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6B7280' }} title={language === 'en' ? 'Paused' : 'En Pause'} />; // Grey
       default:
@@ -8376,31 +8466,31 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         color: '#E21836',
         bgColor: 'rgba(226, 24, 54, 0.15)',
         textColor: '#E21836',
-        label: language === 'en' ? 'Completed' : 'TerminÃ©'
+        label: language === 'en' ? 'Completed' : 'Terminé'
       },
       'MANUAL_COMPLETED': {
         color: '#E21836',
         bgColor: 'rgba(226, 24, 54, 0.15)',
         textColor: '#E21836',
-        label: language === 'en' ? 'Manual Completed' : 'TerminÃ© Manuel'
+        label: language === 'en' ? 'Manual Completed' : 'Terminé Manuel'
       },
       'ACCEPTED': {
         color: '#E21836',
         bgColor: 'rgba(226, 24, 54, 0.15)',
         textColor: '#E21836',
-        label: language === 'en' ? 'Accepted' : 'AcceptÃ©'
+        label: language === 'en' ? 'Accepted' : 'Accepté'
       },
       'MANUAL_ACCEPTED': {
         color: '#E21836',
         bgColor: 'rgba(226, 24, 54, 0.15)',
         textColor: '#E21836',
-        label: language === 'en' ? 'Manual Accepted' : 'AcceptÃ© Manuel'
+        label: language === 'en' ? 'Manual Accepted' : 'Accepté Manuel'
       },
       'PAID': {
         color: '#E21836',
         bgColor: 'rgba(226, 24, 54, 0.15)',
         textColor: '#E21836',
-        label: language === 'en' ? 'Paid' : 'PayÃ©'
+        label: language === 'en' ? 'Paid' : 'Payé'
       },
       'PENDING': {
         color: '#FFC93C',
@@ -8424,19 +8514,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         color: '#FFC93C',
         bgColor: 'rgba(255, 201, 60, 0.15)',
         textColor: '#FFC93C',
-        label: language === 'en' ? 'Refunded' : 'RemboursÃ©'
+        label: language === 'en' ? 'Refunded' : 'Remboursé'
       },
       'FRAUD_FLAGGED': {
         color: '#FFC93C',
         bgColor: 'rgba(255, 201, 60, 0.15)',
         textColor: '#FFC93C',
-        label: language === 'en' ? 'Fraud Flagged' : 'SignalÃ© comme Fraude'
+        label: language === 'en' ? 'Fraud Flagged' : 'Signalé comme Fraude'
       },
       'EXPIRED': {
         color: '#2563EB',
         bgColor: 'rgba(37, 99, 235, 0.15)',
         textColor: '#2563EB',
-        label: language === 'en' ? 'Expired' : 'ExpirÃ©'
+        label: language === 'en' ? 'Expired' : 'Expiré'
       },
       
       // Info statuses - Cyan
@@ -8444,19 +8534,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         color: '#00CFFF',
         bgColor: 'rgba(0, 207, 255, 0.15)',
         textColor: '#00CFFF',
-        label: language === 'en' ? 'Cancelled' : 'AnnulÃ©'
+        label: language === 'en' ? 'Cancelled' : 'Annulé'
       },
       'CANCELLED_BY_AMBASSADOR': {
         color: '#00CFFF',
         bgColor: 'rgba(0, 207, 255, 0.15)',
         textColor: '#00CFFF',
-        label: language === 'en' ? 'Cancelled by Ambassador' : 'AnnulÃ© par Ambassadeur'
+        label: language === 'en' ? 'Cancelled by Ambassador' : 'Annulé par Ambassadeur'
       },
       'CANCELLED_BY_ADMIN': {
         color: '#00CFFF',
         bgColor: 'rgba(0, 207, 255, 0.15)',
         textColor: '#00CFFF',
-        label: language === 'en' ? 'Cancelled by Admin' : 'AnnulÃ© par Admin'
+        label: language === 'en' ? 'Cancelled by Admin' : 'Annulé par Admin'
       },
       
       // Disabled statuses - Gray
@@ -8464,13 +8554,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         color: '#8C8C8C',
         bgColor: 'rgba(140, 140, 140, 0.15)',
         textColor: '#8C8C8C',
-        label: language === 'en' ? 'Failed' : 'Ã‰chouÃ©'
+        label: language === 'en' ? 'Failed' : 'Échoué'
       },
       'IGNORED': {
         color: '#8C8C8C',
         bgColor: 'rgba(140, 140, 140, 0.15)',
         textColor: '#8C8C8C',
-        label: language === 'en' ? 'Ignored' : 'IgnorÃ©'
+        label: language === 'en' ? 'Ignored' : 'Ignoré'
       },
       'FRAUD_SUSPECT': {
         color: '#8C8C8C',
@@ -8586,10 +8676,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
     
     toast({
-      title: language === 'en' ? "Files selected" : "Fichiers sÃ©lectionnÃ©s",
+      title: language === 'en' ? "Files selected" : "Fichiers sélectionnés",
       description: language === 'en' 
         ? `${files.length} file(s) will be uploaded when you save` 
-        : `${files.length} fichier(s) seront tÃ©lÃ©chargÃ©s lors de l'enregistrement`,
+        : `${files.length} fichier(s) seront téléchargés lors de l'enregistrement`,
     });
   };
 
@@ -8832,8 +8922,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
       closeTeamDialog();
       toast({
-        title: language === 'en' ? 'Team member saved' : 'Membre enregistrÃ©',
-        description: language === 'en' ? 'Team member details updated successfully.' : 'DÃ©tails du membre mis Ã  jour avec succÃ¨s.',
+        title: language === 'en' ? 'Team member saved' : 'Membre enregistré',
+        description: language === 'en' ? 'Team member details updated successfully.' : 'Détails du membre mis à jour avec succès.',
       });
     } catch (err) {
       console.error('Team member save error:', err);
@@ -8857,14 +8947,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       closeDeleteTeamDialog();
       toast({
-        title: language === 'en' ? 'Team member deleted' : 'Membre supprimÃ©',
-        description: language === 'en' ? 'Team member removed successfully.' : 'Membre supprimÃ© avec succÃ¨s.',
+        title: language === 'en' ? 'Team member deleted' : 'Membre supprimé',
+        description: language === 'en' ? 'Team member removed successfully.' : 'Membre supprimé avec succès.',
       });
     } catch (err) {
       console.error('Delete team member error:', err);
       toast({
         title: t.error,
-        description: language === 'en' ? 'Failed to delete team member. Please try again.' : 'Ã‰chec de la suppression. Veuillez rÃ©essayer.',
+        description: language === 'en' ? 'Failed to delete team member. Please try again.' : 'Échec de la suppression. Veuillez réessayer.',
         variant: 'destructive',
       });
     }
@@ -8899,13 +8989,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (selectedSuggestion?.id === id) setSelectedSuggestion(null);
       closeDeleteSuggestionDialog();
       toast({
-        title: language === 'en' ? 'Suggestion deleted' : 'Suggestion supprimÃ©e',
-        description: language === 'en' ? 'Suggestion removed successfully.' : 'Suggestion supprimÃ©e avec succÃ¨s.',
+        title: language === 'en' ? 'Suggestion deleted' : 'Suggestion supprimée',
+        description: language === 'en' ? 'Suggestion removed successfully.' : 'Suggestion supprimée avec succès.',
       });
     } catch (err: any) {
       toast({
         title: t.error,
-        description: err.message || (language === 'en' ? 'Failed to delete suggestion.' : 'Ã‰chec de la suppression.'),
+        description: err.message || (language === 'en' ? 'Failed to delete suggestion.' : 'Échec de la suppression.'),
         variant: 'destructive',
       });
     }
@@ -8925,11 +9015,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       if (error) {
         console.error('Delete message error:', error);
-        let errorMessage = language === 'en' ? 'Failed to delete message' : 'Ã‰chec de la suppression';
+        let errorMessage = language === 'en' ? 'Failed to delete message' : 'Échec de la suppression';
         if (error.code === '42501' || error.message?.includes('policy') || error.message?.includes('permission')) {
           errorMessage = language === 'en' 
             ? 'Permission denied. Check RLS policies for "contact_messages" table.' 
-            : 'Permission refusÃ©e. VÃ©rifiez les politiques RLS pour la table "contact_messages".';
+            : 'Permission refusée. Vérifiez les politiques RLS pour la table "contact_messages".';
         } else if (error.message) {
           errorMessage = error.message;
         }
@@ -8948,7 +9038,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (verifyData) {
           throw new Error(language === 'en' 
             ? 'Failed to delete message. Check RLS policies.' 
-            : 'Ã‰chec de la suppression. VÃ©rifiez les politiques RLS.');
+            : 'Échec de la suppression. Vérifiez les politiques RLS.');
         }
       }
       
@@ -8957,14 +9047,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       closeDeleteMessageDialog();
       toast({
-        title: language === 'en' ? 'Message deleted' : 'Message supprimÃ©',
-        description: language === 'en' ? 'Contact message removed successfully.' : 'Message supprimÃ© avec succÃ¨s.',
+        title: language === 'en' ? 'Message deleted' : 'Message supprimé',
+        description: language === 'en' ? 'Contact message removed successfully.' : 'Message supprimé avec succès.',
       });
     } catch (err: any) {
       console.error('Delete message error:', err);
       toast({
         title: t.error,
-        description: err.message || (language === 'en' ? 'Failed to delete message. Please try again.' : 'Ã‰chec de la suppression. Veuillez rÃ©essayer.'),
+        description: err.message || (language === 'en' ? 'Failed to delete message. Please try again.' : 'Échec de la suppression. Veuillez réessayer.'),
         variant: 'destructive',
       });
     }
@@ -9025,10 +9115,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
         // Token expired - redirect to login
         toast({
-          title: language === 'en' ? "Session Expired" : "Session expirÃ©e",
+          title: language === 'en' ? "Session Expired" : "Session expirée",
           description: language === 'en' 
             ? "Your session has expired. Please login again."
-            : "Votre session a expirÃ©. Veuillez vous reconnecter.",
+            : "Votre session a expiré. Veuillez vous reconnecter.",
           variant: "destructive",
         });
         navigate('/admin/login');
@@ -9164,11 +9254,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             size="sm"
             className="hidden"
             onClick={handleLogout}
-            aria-label={language === 'en' ? 'Logout' : 'DÃ©connexion'}
+            aria-label={language === 'en' ? 'Logout' : 'Déconnexion'}
           >
             <LogOut className="w-5 h-5 shrink-0" style={{ color: '#E21836' }} />
             <span className="text-sm font-medium" style={{ color: '#E21836' }}>
-              {language === 'en' ? 'Logout' : 'DÃ©connexion'}
+              {language === 'en' ? 'Logout' : 'Déconnexion'}
             </span>
           </Button>
           <div
@@ -9328,7 +9418,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   style={{ background: activeTab === "careers" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <Briefcase className="w-4 h-4 shrink-0" />
-                  <span>{language === 'en' ? 'Careers' : 'CarriÃ¨res'}</span>
+                  <span>{language === 'en' ? 'Careers' : 'Carrières'}</span>
                 </button>
               )}
               {isTabAllowedOnMobile("academy") && (
@@ -9540,7 +9630,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   >
                     {language === "en"
                       ? "Filter by Event:"
-                      : "Filtrer par Ã‰vÃ©nement:"}
+                      : "Filtrer par Événement:"}
                   </Label>
                   {selectableDashboardEvents.length === 0 ? (
                     <span
@@ -9552,7 +9642,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         color: "hsl(var(--muted-foreground))",
                       }}
                     >
-                      {language === "en" ? "No events" : "Aucun Ã©vÃ©nement"}
+                      {language === "en" ? "No events" : "Aucun événement"}
                     </span>
                   ) : (
                     <Select
@@ -9572,7 +9662,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           placeholder={
                             language === "en"
                               ? "Select event"
-                              : "Choisir un Ã©vÃ©nement"
+                              : "Choisir un événement"
                           }
                         />
                       </SelectTrigger>
@@ -9580,7 +9670,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         {selectableDashboardEvents.map((event) => (
                           <SelectItem key={event.id} value={event.id}>
                             {event.name}
-                            {event.is_test ? " (test)" : ""} â€”{" "}
+                            {event.is_test ? " (test)" : ""} —{" "}
                             {formatDateDMY(event.date, language)}
                           </SelectItem>
                         ))}
@@ -9602,7 +9692,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       <RefreshCw className="w-4 h-4" />
                       {language === "en"
                         ? "Reload Data"
-                        : "Recharger les DonnÃ©es"}
+                        : "Recharger les Données"}
                     </Button>
                   )}
                 </div>
@@ -9722,7 +9812,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </div>
             </div>
 
-            {/* Tabs Content â€” skeleton until core lists (events, applications, ambassadors) are ready */}
+            {/* Tabs Content — skeleton until core lists (events, applications, ambassadors) are ready */}
             {loading ? (
               <div className="space-y-6 py-8" aria-busy="true">
                 <Skeleton className="h-36 w-full max-w-3xl rounded-xl" />
@@ -10236,6 +10326,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   updateAmbassadorApplicationSettings={updateAmbassadorApplicationSettings}
                   loadingAmbassadorApplicationSettings={loadingAmbassadorApplicationSettings}
                   setAmbassadorApplicationMessage={setAmbassadorApplicationMessage}
+                  ambassadorSelectionSettings={ambassadorSelectionSettings}
+                  loadingAmbassadorSelectionSettings={loadingAmbassadorSelectionSettings}
+                  updateAmbassadorCityWide={updateAmbassadorCityWide}
                   heroImages={heroImages}
                   handleUploadHeroImage={handleUploadHeroImage}
                   uploadingHeroImage={uploadingHeroImage}
@@ -10268,7 +10361,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           <div className="py-4">
             <p>{language === 'en'
               ? 'Are you sure you want to delete this ambassador? This action cannot be undone.'
-              : 'ÃŠtes-vous sÃ»r de vouloir supprimer cet ambassadeur ? Cette action est irrÃ©versible.'}
+              : 'Êtes-vous sûr de vouloir supprimer cet ambassadeur ? Cette action est irréversible.'}
             </p>
             {ambassadorToDelete && (
               <div className="mt-2 text-sm text-muted-foreground">
@@ -10287,12 +10380,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       <Dialog open={!!eventToDelete} onOpenChange={open => { if (!open) setEventToDelete(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{language === 'en' ? 'Delete Event' : 'Supprimer l\'Ã©vÃ©nement'}</DialogTitle>
+            <DialogTitle>{language === 'en' ? 'Delete Event' : 'Supprimer l\'événement'}</DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <p>{language === 'en'
               ? 'Are you sure you want to delete this event? This action cannot be undone.'
-              : 'ÃŠtes-vous sÃ»r de vouloir supprimer cet Ã©vÃ©nement ? Cette action est irrÃ©versible.'}
+              : 'Êtes-vous sûr de vouloir supprimer cet événement ? Cette action est irréversible.'}
             </p>
             {eventToDelete && (
               <div className="mt-2 text-sm text-muted-foreground">
@@ -10365,8 +10458,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           open={!!confirmDelete}
           onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}
           title={confirmDelete.kind === 'delete-admin'
-            ? (language === 'en' ? 'Are you sure you want to delete this admin? This action cannot be undone.' : 'ÃŠtes-vous sÃ»r de vouloir supprimer cet admin? Cette action ne peut pas Ãªtre annulÃ©e.')
-            : (language === 'en' ? `Are you sure you want to delete "${confirmDelete.passName}"? This action cannot be undone.` : `ÃŠtes-vous sÃ»r de vouloir supprimer "${confirmDelete.passName}" ? Cette action est irrÃ©versible.`)}
+            ? (language === 'en' ? 'Are you sure you want to delete this admin? This action cannot be undone.' : 'Êtes-vous sûr de vouloir supprimer cet admin? Cette action ne peut pas être annulée.')
+            : (language === 'en' ? `Are you sure you want to delete "${confirmDelete.passName}"? This action cannot be undone.` : `Êtes-vous sûr de vouloir supprimer "${confirmDelete.passName}" ? Cette action est irréversible.`)}
           confirmLabel={language === 'en' ? 'Confirm' : 'Confirmer'}
           cancelLabel={language === 'en' ? 'Cancel' : 'Annuler'}
           onConfirm={() => {

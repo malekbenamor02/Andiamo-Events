@@ -14,6 +14,8 @@ import { cn, generateSlug, findEventByPublicUrlSlug, normalizeCommonEmailTypos }
 import { isLocalhostClient } from '@/lib/localhost';
 import { computeOnlinePaymentFeesDisplay } from '@/lib/onlinePaymentFee';
 import { useCountdownBannerSettings } from '@/hooks/useCountdownBannerSettings';
+import { useAmbassadorSelectionSettings } from '@/hooks/useAmbassadorSelectionSettings';
+import { isAmbassadorCityWide } from '@/lib/ambassadorSelectionSettings';
 import { PassPurchaseCountdownStrip } from '@/components/countdown/PassPurchaseCountdownStrip';
 import {
   COUNTDOWN_LABEL_DEFAULT_EN,
@@ -30,6 +32,7 @@ import { useEventPromoCheckout } from '@/hooks/useEventPromoCheckout';
 import { OrderSuccessScreen } from '@/components/orders/OrderSuccessScreen';
 import { PassPurchaseEventDetails } from '@/components/orders/PassPurchaseEventDetails';
 import { PassPurchaseSeatingChart } from '@/components/orders/PassPurchaseSeatingChart';
+import { PassPurchaseWizardPanel, PassPurchaseWizardStep } from '@/components/orders/PassPurchaseWizardStep';
 import { usePaymentOptions } from '@/hooks/usePaymentOptions';
 import { useActiveAmbassadors } from '@/hooks/useActiveAmbassadors';
 import { PaymentMethod } from '@/lib/constants/orderStatuses';
@@ -190,8 +193,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   const [selectedAmbassadorDetails, setSelectedAmbassadorDetails] = useState<Ambassador | null>(null);
   const [purchaseBlockedReason, setPurchaseBlockedReason] = useState<'completed' | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
+  const [maxVisitedStep, setMaxVisitedStep] = useState(1);
   const [emailConfirm, setEmailConfirm] = useState('');
-  const [stepDirection, setStepDirection] = useState<'forward' | 'back'>('forward');
   const [presaleCsrfToken, setPresaleCsrfToken] = useState<string | null>(null);
   /** True after GET /api/passes/:id returns 403 (presale session required) even if client event row omits presale_enabled. */
   const [passesForbiddenPresale, setPassesForbiddenPresale] = useState(false);
@@ -369,9 +372,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   }, [event, presaleCsrfToken, presaleSessionExpiresAt, passesForbiddenPresale, serverPresaleRequired]);
 
   // Fetch active ambassadors to get full details (including social_link)
+  const { data: ambassadorSelectionSettings } = useAmbassadorSelectionSettings();
+  const ambassadorCityWide = isAmbassadorCityWide(
+    customerInfo.city,
+    ambassadorSelectionSettings
+  );
   const { data: activeAmbassadors = [] } = useActiveAmbassadors(
-    customerInfo.city, 
-    customerInfo.ville
+    customerInfo.city,
+    customerInfo.ville,
+    { cityWide: ambassadorCityWide }
   );
 
   const { data: countdownSettings, isSuccess: countdownSettingsReady } = useCountdownBannerSettings();
@@ -534,10 +543,17 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
   // Update selected ambassador details when ambassador ID changes
   useEffect(() => {
-    if (selectedAmbassadorId && activeAmbassadors.length > 0) {
-      const ambassador = activeAmbassadors.find(a => a.id === selectedAmbassadorId);
-      setSelectedAmbassadorDetails(ambassador || null);
+    if (!selectedAmbassadorId) {
+      setSelectedAmbassadorDetails(null);
+      return;
+    }
+    if (activeAmbassadors.length === 0) return;
+
+    const ambassador = activeAmbassadors.find((a) => a.id === selectedAmbassadorId);
+    if (ambassador) {
+      setSelectedAmbassadorDetails(ambassador);
     } else {
+      setSelectedAmbassadorId(null);
       setSelectedAmbassadorDetails(null);
     }
   }, [selectedAmbassadorId, activeAmbassadors]);
@@ -1196,8 +1212,35 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     return primary;
   };
 
+  const navigateToStep = useCallback(
+    (targetStep: number, opts?: { skipVisitedCheck?: boolean }) => {
+      if (targetStep < 1 || targetStep > WIZARD_STEP_COUNT) return;
+      if (targetStep === wizardStep) return;
+      if (!opts?.skipVisitedCheck && targetStep > maxVisitedStep) return;
+
+      if (wizardStep === WIZARD_STEP_COUNT && targetStep < WIZARD_STEP_COUNT) {
+        checkoutBackFromPaymentRef.current = true;
+        activeCheckoutAbortRef.current?.abort();
+      }
+
+      setValidationErrors({});
+      setWizardStep(targetStep);
+    },
+    [wizardStep, maxVisitedStep]
+  );
+
+  const wizardStepLabels = useMemo(
+    () => [
+      t[language].passSelection,
+      t[language].stepIdentity,
+      t[language].stepEmail,
+      t[language].stepLocation,
+      t[language].stepPaymentSummary,
+    ],
+    [language, t]
+  );
+
   const goNext = () => {
-    setStepDirection('forward');
     const copy = validationCopy;
     let e: Record<string, string> = {};
     switch (wizardStep) {
@@ -1231,17 +1274,13 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       return;
     }
     setValidationErrors({});
-    setWizardStep((s) => Math.min(WIZARD_STEP_COUNT, s + 1));
+    const nextStep = Math.min(WIZARD_STEP_COUNT, wizardStep + 1);
+    setMaxVisitedStep((prev) => Math.max(prev, nextStep));
+    navigateToStep(nextStep, { skipVisitedCheck: true });
   };
 
   const goBack = () => {
-    if (wizardStep === WIZARD_STEP_COUNT) {
-      checkoutBackFromPaymentRef.current = true;
-      activeCheckoutAbortRef.current?.abort();
-    }
-    setStepDirection('back');
-    setValidationErrors({});
-    setWizardStep((s) => Math.max(1, s - 1));
+    navigateToStep(Math.max(1, wizardStep - 1));
   };
 
   const validateForm = (): { valid: boolean; errors: Record<string, string> } => {
@@ -1271,7 +1310,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     const { valid, errors: submitErrors } = validateForm();
     if (!valid) {
       const st = firstWizardStepForErrors(submitErrors);
-      if (st) setWizardStep(st);
+      if (st) navigateToStep(st);
       toast({
         title: t[language].error,
         description: passPurchaseValidationToastDescription(submitErrors),
@@ -1411,6 +1450,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           metaEventId,
           metaFbp: metaAttribution.fbp,
           metaFbc: metaAttribution.fbc,
+          metaFbclid: metaAttribution.fbclid,
           metaEventSourceUrl: metaAttribution.eventSourceUrl,
           presaleCsrfToken:
             (serverPresaleRequired === true ||
@@ -1484,11 +1524,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           trackPurchaseFromBackend(metaTracking.pixel);
         }
 
-        toast({
-          title: t[language].success,
-          description: t[language].successMessageAmbassador,
-          variant: "default",
-        });
         endCheckoutAttempt();
         setSubmitted(true);
       }
@@ -1667,67 +1702,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     !promoBlocksSubmit &&
     !(checkoutPromoDraft.trim() && promoPreview.status === 'loading');
 
-  // Success screen - show OrderSuccessScreen for ambassador cash, simple message for others
+  // Success overlay after ambassador cash order
   if (submitted) {
-    if (paymentMethod === PaymentMethod.AMBASSADOR_CASH && selectedAmbassadorDetails) {
-      return (
-        <OrderSuccessScreen
-          ambassador={selectedAmbassadorDetails}
-          eventName={event.name}
-          eventDate={event.date}
-          totalPrice={isOnlinePayment ? totalWithFees : totalPrice}
-          passes={selectedPassesArray}
-          onBackToEvents={() => navigate('/events')}
-          language={language}
-        />
-      );
-    }
-    
-    // Fallback for other payment methods
     return (
-      <div className="min-h-screen bg-gradient-dark pt-[calc(4rem+var(--site-countdown-offset,0px))]">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Card className="glass border-2 border-green-500/30">
-            <CardContent className="p-8 text-center">
-              <div className="relative inline-flex mx-auto mb-4">
-                <div
-                  className="absolute -inset-5 rounded-full bg-green-500/25 blur-2xl animate-success-check-glow"
-                  aria-hidden
-                />
-                <CheckCircle
-                  className="relative z-10 h-20 w-20 text-green-500 drop-shadow-[0_0_12px_rgba(34,197,94,0.45)] animate-success-check"
-                  strokeWidth={1.75}
-                  aria-hidden
-                />
-              </div>
-              <h2 className="text-3xl font-bold text-primary mb-4">
-                {t[language].thankYou}
-              </h2>
-              <p className="text-lg text-muted-foreground mb-6">
-                {t[language].successMessageOnline}
-              </p>
-              <div className="space-y-4 mb-6">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t[language].orderDetails}</p>
-                  <p className="font-semibold">{event.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {formatDateDMY(event.date, language)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">{t[language].total}</p>
-                  <p className="text-2xl font-bold text-primary">
-                    {isOnlinePayment ? totalWithFees : totalPrice} TND
-                  </p>
-                </div>
-              </div>
-              <Button onClick={() => navigate('/events')} className="w-full">
-                {t[language].backToEvents}
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <OrderSuccessScreen
+        eventName={event.name}
+        totalPrice={totalPrice}
+        message={t[language].successMessageAmbassador}
+        onBackToEvents={() => navigate("/events")}
+        language={language}
+      />
     );
   }
 
@@ -1780,17 +1764,49 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                 <span aria-live="polite">
                   {t[language].stepOf.replace('{n}', String(wizardStep)).replace('{total}', String(WIZARD_STEP_COUNT))}
                 </span>
-                <div className="flex gap-1.5 justify-center sm:justify-end" aria-hidden>
-                  {Array.from({ length: WIZARD_STEP_COUNT }, (_, i) => i + 1).map((n) => (
-                    <span
-                      key={n}
-                      className={cn(
-                        'h-2 w-6 sm:w-8 rounded-full transition-colors',
-                        n === wizardStep ? 'bg-primary' : n < wizardStep ? 'bg-primary/40' : 'bg-muted'
-                      )}
-                    />
-                  ))}
-                </div>
+                <nav
+                  className="flex gap-1.5 justify-center sm:justify-end"
+                  aria-label={language === 'en' ? 'Purchase steps' : "Étapes d'achat"}
+                >
+                  {Array.from({ length: WIZARD_STEP_COUNT }, (_, i) => i + 1).map((n) => {
+                    const isActive = n === wizardStep;
+                    const isVisited = n <= maxVisitedStep;
+                    const isClickable = isVisited && !isActive;
+                    const segmentClass = cn(
+                      'h-2 rounded-full transition-all duration-300 ease-out',
+                      isActive ? 'w-8 sm:w-10 bg-primary' : 'w-6 sm:w-8',
+                      isVisited && !isActive ? 'bg-primary/45' : !isActive && 'bg-muted'
+                    );
+
+                    if (isClickable) {
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => navigateToStep(n)}
+                          className={cn(
+                            segmentClass,
+                            'cursor-pointer hover:bg-primary/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
+                          )}
+                          aria-label={
+                            language === 'en'
+                              ? `Go to step ${n}: ${wizardStepLabels[n - 1]}`
+                              : `Aller à l'étape ${n} : ${wizardStepLabels[n - 1]}`
+                          }
+                        />
+                      );
+                    }
+
+                    return (
+                      <span
+                        key={n}
+                        className={segmentClass}
+                        aria-current={isActive ? 'step' : undefined}
+                        aria-label={wizardStepLabels[n - 1]}
+                      />
+                    );
+                  })}
+                </nav>
               </div>
 
               <Card
@@ -1802,27 +1818,18 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
               >
                 <CardHeader>
                   <CardTitle
+                    key={wizardStep}
                     className={cn(
-                      'text-primary',
+                      'text-primary animate-in fade-in duration-200',
                       wizardStep <= 4 && 'leading-snug'
                     )}
                   >
-                    {wizardStep === 1 && t[language].passSelection}
-                    {wizardStep === 2 && t[language].stepIdentity}
-                    {wizardStep === 3 && t[language].stepEmail}
-                    {wizardStep === 4 && t[language].stepLocation}
-                    {wizardStep === 5 && t[language].stepPaymentSummary}
+                    {wizardStepLabels[wizardStep - 1]}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div
-                    key={wizardStep}
-                    className={cn(
-                      'animate-in fade-in duration-300',
-                      stepDirection === 'back' ? 'slide-in-from-left-4' : 'slide-in-from-right-4'
-                    )}
-                  >
-                  {wizardStep === 1 && (
+                  <PassPurchaseWizardStep step={wizardStep} maxMountedStep={maxVisitedStep}>
+                  <PassPurchaseWizardPanel step={1}>
                   <div className="space-y-4">
                   {event.passes && event.passes.length > 0 ? (
                     <div className={`${event.passes.length === 1 ? 'flex justify-center' : 'grid grid-cols-1 md:grid-cols-2'} gap-4`}>
@@ -1949,9 +1956,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                     <p className="text-red-500 text-sm mt-4">{validationErrors.passes}</p>
                   )}
                   </div>
-                  )}
+                  </PassPurchaseWizardPanel>
 
-                  {wizardStep === 2 && (
+                  <PassPurchaseWizardPanel step={2}>
                     <CustomerInfoForm
                       customerInfo={customerInfo}
                       onChange={setCustomerInfo}
@@ -1959,9 +1966,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       language={language}
                       sections="identity"
                     />
-                  )}
+                  </PassPurchaseWizardPanel>
 
-                  {wizardStep === 3 && (
+                  <PassPurchaseWizardPanel step={3}>
                     <CustomerInfoForm
                       customerInfo={customerInfo}
                       onChange={setCustomerInfo}
@@ -1971,9 +1978,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       emailConfirm={emailConfirm}
                       onEmailConfirmChange={setEmailConfirm}
                     />
-                  )}
+                  </PassPurchaseWizardPanel>
 
-                  {wizardStep === 4 && (
+                  <PassPurchaseWizardPanel step={4}>
                     <CustomerInfoForm
                       customerInfo={customerInfo}
                       onChange={setCustomerInfo}
@@ -1981,9 +1988,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       language={language}
                       sections="location"
                     />
-                  )}
+                  </PassPurchaseWizardPanel>
 
-                  {wizardStep === 5 && (
+                  <PassPurchaseWizardPanel step={5}>
                   <div className="space-y-6">
                   {loadingPaymentOptions ? (
                     <div className="text-center py-8 text-muted-foreground">
@@ -2040,7 +2047,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                           if (Object.keys(errors).length > 0) {
                             setValidationErrors(errors);
                             const st = firstWizardStepForErrors(errors);
-                            if (st) setWizardStep(st);
+                            if (st) navigateToStep(st);
                             toast({
                               title: t[language].error,
                               description: passPurchaseValidationToastDescription(errors),
@@ -2127,6 +2134,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       <AmbassadorSelector
                         city={customerInfo.city}
                         ville={customerInfo.ville}
+                        cityWide={ambassadorCityWide}
                         selectedAmbassadorId={selectedAmbassadorId}
                         onSelect={(id) => {
                           setSelectedAmbassadorId(id);
@@ -2207,9 +2215,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                     </div>
                   </div>
                   </div>
-                  )}
+                  </PassPurchaseWizardPanel>
 
-                  </div>
+                  </PassPurchaseWizardStep>
 
                   <div
                     ref={step5SubmitScrollRef}

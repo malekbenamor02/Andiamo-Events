@@ -59,11 +59,9 @@ export function OrderExpirationTimer({ expiresAt, language }: OrderExpirationTim
 
   if (timeRemaining.isExpired) {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/30">
-        <Clock className="w-4 h-4 text-red-500 animate-pulse" />
-        <span className="text-xs font-semibold text-red-500">
-          {language === "en" ? "Expired" : "Expiré"}
-        </span>
+      <div className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
+        <Clock className="h-3.5 w-3.5" aria-hidden />
+        {language === "en" ? "Expired" : "Expiré"}
       </div>
     );
   }
@@ -71,43 +69,21 @@ export function OrderExpirationTimer({ expiresAt, language }: OrderExpirationTim
   const isUrgent = timeRemaining.days === 0 && timeRemaining.hours < 2;
   const isWarning = timeRemaining.days === 0 && timeRemaining.hours < 6;
 
+  const tone = isUrgent
+    ? "border-destructive/30 bg-destructive/10 text-destructive"
+    : isWarning
+      ? "border-orange-500/30 bg-orange-500/10 text-orange-600 dark:text-orange-400"
+      : "border-border bg-muted/50 text-muted-foreground";
+
   return (
-    <div
-      className={cn(
-        "flex items-center gap-2 px-3 py-1.5 rounded-lg border",
-        isUrgent
-          ? "bg-red-500/20 border-red-500/30"
-          : isWarning
-            ? "bg-orange-500/20 border-orange-500/30"
-            : "bg-yellow-500/20 border-yellow-500/30"
-      )}
-    >
-      <Clock
-        className={cn(
-          "w-4 h-4",
-          isUrgent ? "text-red-500 animate-pulse" : isWarning ? "text-orange-500" : "text-yellow-500"
-        )}
-      />
-      <div className="flex items-center gap-1 text-xs font-semibold">
-        {timeRemaining.days > 0 && (
-          <span
-            className={
-              isUrgent ? "text-red-500" : isWarning ? "text-orange-500" : "text-yellow-500"
-            }
-          >
-            {timeRemaining.days}d
-          </span>
-        )}
-        <span
-          className={
-            isUrgent ? "text-red-500" : isWarning ? "text-orange-500" : "text-yellow-500"
-          }
-        >
-          {String(timeRemaining.hours).padStart(2, "0")}:
-          {String(timeRemaining.minutes).padStart(2, "0")}:
-          {String(timeRemaining.seconds).padStart(2, "0")}
-        </span>
-      </div>
+    <div className={cn("inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium tabular-nums", tone)}>
+      <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      <span>
+        {timeRemaining.days > 0 && `${timeRemaining.days}d `}
+        {String(timeRemaining.hours).padStart(2, "0")}:
+        {String(timeRemaining.minutes).padStart(2, "0")}:
+        {String(timeRemaining.seconds).padStart(2, "0")}
+      </span>
     </div>
   );
 }

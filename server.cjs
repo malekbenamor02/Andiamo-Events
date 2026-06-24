@@ -40,6 +40,12 @@ const { parseOrderNotesPromo } = require('./api/_lib/email-promo-snippet.cjs');
 const { createOfficialInvitationEmailHTML } = require('./api/_lib/official-invitation-email-html.cjs');
 const { buildOrderConfirmationEmailHtml } = require('./api/_lib/order-confirmation-email-html.cjs');
 const { fetchAmbassadorSocialLinkFromApplications } = require('./api/_lib/ambassador-social-link.cjs');
+const { handleActiveAmbassadorsRequest } = require('./api/_lib/active-ambassadors-handler.cjs');
+const { validateAmbassadorCashLocation } = require('./api/_lib/ambassador-extra-villes.cjs');
+const {
+  fetchAmbassadorSelectionSettings,
+  isAmbassadorCityWide,
+} = require('./api/_lib/ambassador-selection-settings.cjs');
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./api/_lib/email-branding.cjs');
 const { uploadTicketQrToR2OrSupabase } = require('./api/_lib/r2-media.cjs');
 const { computeOnlinePaymentFees } = require('./api/_lib/online-payment-fee.cjs');
@@ -6886,53 +6892,11 @@ app.get('/api/ambassadors/active', async (req, res) => {
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    const { city, ville } = req.query;
-
-    if (!city) {
-      return res.status(400).json({ error: 'City parameter is required' });
+    const result = await handleActiveAmbassadorsRequest(supabase, req.query);
+    if (result.status >= 500) {
+      console.error('❌ Error fetching active ambassadors:', result.body?.error);
     }
-
-    // Normalize city and ville (trim whitespace)
-    const normalizedCity = String(city).trim();
-    const normalizedVille = ville && String(ville).trim() !== '' ? String(ville).trim() : null;
-    
-    
-    let query = supabase
-      .from('ambassadors')
-      .select('id, full_name, phone, email, city, ville, status')
-      .eq('status', 'approved')
-      .eq('city', normalizedCity);
-
-    // Filter by ville when provided (same behavior for Tunis, Sousse, etc.)
-    if (normalizedVille) {
-      query = query.eq('ville', normalizedVille);
-    }
-    
-    // Remove alphabetical ordering - will randomize instead
-    // query = query.order('full_name'); // REMOVED: Now using random order
-
-    const { data: ambassadors, error } = await query;
-
-    if (error) {
-      console.error('❌ Error fetching active ambassadors:', error);
-      return res.status(500).json({ error: error.message });
-    }
-
-    // Shuffle ambassadors array using Fisher-Yates algorithm for random display
-    const shuffledAmbassadors = shuffleArray(ambassadors || []);
-
-    const ambassadorsWithSocial = await Promise.all(
-      shuffledAmbassadors.map(async (ambassador) => {
-        const social_link = await fetchAmbassadorSocialLinkFromApplications(supabase, ambassador.phone);
-        return {
-          ...ambassador,
-          social_link: social_link || null,
-        };
-      })
-    );
-
-
-    res.json({ success: true, data: ambassadorsWithSocial || [] });
+    res.status(result.status).json(result.body);
   } catch (error) {
     console.error('Error in ambassadors/active endpoint:', error);
     res.status(500).json({ error: error.message || 'Failed to fetch active ambassadors' });
@@ -11801,7 +11765,7 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     if (paymentMethod === 'ambassador_cash' && ambassadorId) {
       const { data: ambassador, error: ambassadorError } = await dbClient
         .from('ambassadors')
-        .select('id, status')
+        .select('id, status, city, ville, extra_villes')
         .eq('id', ambassadorId)
         .single();
       if (ambassadorError || !ambassador) {
@@ -11814,6 +11778,22 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
         return res.status(400).json({
           error: 'This ambassador cannot receive new orders',
           details: 'The selected ambassador is paused or not active.'
+        });
+      }
+
+      const selectionSettings = await fetchAmbassadorSelectionSettings(dbClient);
+      const cityWide = isAmbassadorCityWide(customerInfo.city, selectionSettings);
+      const locationCheck = validateAmbassadorCashLocation({
+        ambassador,
+        customerCity: customerInfo.city,
+        customerVille: customerInfo.ville,
+        cityWide,
+      });
+      if (!locationCheck.ok) {
+        await logOrderCreateFailure(req, 400, { error: locationCheck.error });
+        return res.status(400).json({
+          error: locationCheck.error,
+          details: locationCheck.details,
         });
       }
     }

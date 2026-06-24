@@ -596,7 +596,7 @@ function registerAcademyInfluencerRoutes(app, deps) {
     }
   });
 
-  async function handlePasswordReset(req, res, { resendOnly }) {
+  async function handleResendInvite(req, res) {
     try {
       const db = getServiceDb();
       if (!db) return res.status(503).json({ error: 'Database not configured' });
@@ -605,15 +605,15 @@ function registerAcademyInfluencerRoutes(app, deps) {
 
       try {
         const updated = await issueTemporaryPasswordAndEmail(db, influencer, {
-          updateInviteTimestamps: !resendOnly,
+          updateInviteTimestamps: false,
         });
         const promoMap = await fetchPromoCodesForInfluencers(db, [updated.id]);
         await writeAcademyInfluencerAudit(db, {
           admin: req.admin,
-          action: resendOnly ? 'academy_influencer_invite_resent' : 'academy_influencer_password_reset',
+          action: 'academy_influencer_invite_resent',
           influencerId: updated.id,
           influencerEmail: updated.email,
-          details: { resend_only: !!resendOnly },
+          details: { resend_only: true },
         });
         res.json({
           success: true,
@@ -621,30 +621,23 @@ function registerAcademyInfluencerRoutes(app, deps) {
           influencer: attachPromoCodes(updated, promoMap),
         });
       } catch (mailErr) {
-        console.error('Influencer password reset email failed:', mailErr.message || mailErr);
+        console.error('Influencer resend invite email failed:', mailErr.message || mailErr);
         res.status(502).json({
           error: 'Could not send invitation email',
           emailSendStatus: 'failed',
         });
       }
     } catch (e) {
-      console.error('influencer password reset', e);
+      console.error('influencer resend invite', e);
       res.status(500).json({ error: e.message });
     }
   }
 
   app.post(
-    '/api/admin/academy/influencers/:id/reset-password',
-    requireAdminAuth,
-    requireSuperAdmin,
-    (req, res) => handlePasswordReset(req, res, { resendOnly: false })
-  );
-
-  app.post(
     '/api/admin/academy/influencers/:id/resend-invite',
     requireAdminAuth,
     requireSuperAdmin,
-    (req, res) => handlePasswordReset(req, res, { resendOnly: true })
+    handleResendInvite
   );
 
   // —— Influencer auth ————————————————————————————————————————————————————————

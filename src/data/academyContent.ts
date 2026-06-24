@@ -218,7 +218,7 @@ export const ACADEMY_PROGRAM: {
     },
     {
       id: 'artist',
-      title: { en: 'Artist liaison', fr: 'Contact artistique' },
+      title: { en: 'Artistic Contact', fr: 'Contact artistique' },
     },
     {
       id: 'technical',
@@ -244,8 +244,8 @@ export const ACADEMY_PROGRAM: {
   trainer: {
     sectionTitle: { en: 'Your trainer', fr: 'Votre formateur' },
     jobTitle: {
-      en: 'CEO & Founder — Andiamo Event & W9yet Event',
-      fr: 'CEO & Fondateur — Andiamo Event & W9yet Event',
+      en: 'CEO & Founder — Andiamo Event & Wkayet Event',
+      fr: 'CEO & Fondateur — Andiamo Event & Wkayet Event',
     },
     experienceLabel: { en: 'Experience', fr: 'Expérience' },
     experience: {
@@ -289,8 +289,8 @@ export const ACADEMY_UI = {
     cta: { en: 'Register now', fr: 'Je m\'inscris maintenant' },
     instructorName: 'Mouayed Chakir',
     instructorRole: {
-      en: 'CEO & Founder — Andiamo Event & W9yet Event',
-      fr: 'CEO & Fondateur — Andiamo Event & W9yet Event',
+      en: 'CEO & Founder — Andiamo Event & Wkayet Event',
+      fr: 'CEO & Fondateur — Andiamo Event & Wkayet Event',
     },
     instructorNote: {
       en: '+20 events managed in commercial management',

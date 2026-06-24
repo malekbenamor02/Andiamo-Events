@@ -236,6 +236,8 @@ export function trackPurchaseFromBackend(payload: TicketMetaPixelPayload): void 
  */
 export function trackConfirmedPurchase(payload: MetaPurchasePayload): void {
   if (!canTrack()) return;
+  if (!payload.orderId || !payload.eventId) return;
+  if (hasPixelFired(TICKET_PIXEL_FIRED_PREFIX, payload.orderId)) return;
 
   const advancedMatching = buildPixelAdvancedMatching(payload.customer);
   window.fbq!('init', META_PIXEL_ID, advancedMatching);
@@ -255,6 +257,7 @@ export function trackConfirmedPurchase(payload: MetaPurchasePayload): void {
   if (payload.promoCode) customData.promo_code = payload.promoCode;
 
   window.fbq!('track', 'Purchase', customData, { eventID: payload.eventId });
+  markPixelFired(TICKET_PIXEL_FIRED_PREFIX, payload.orderId);
 }
 
 /**
