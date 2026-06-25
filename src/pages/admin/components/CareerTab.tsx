@@ -34,10 +34,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { AdminTabHeader } from "./AdminTabShell";
+import {
+  AnimatedUnderlineTabsList,
+  ADMIN_UNDERLINE_TAB_TRIGGER_CLASS,
+} from "./AnimatedUnderlineTabs";
 import {
   Briefcase,
   Plus,
@@ -113,20 +117,13 @@ const ALL_STATUS_VALUE = "__all__";
 /** Default status when opening Applications tab: show all applications. */
 const DEFAULT_APPLICATIONS_STATUS = ALL_STATUS_VALUE;
 
-const CAREER_SUB_TAB_LIST =
-  "h-auto w-full justify-start gap-0 rounded-none border-b border-border/60 bg-transparent p-0";
-const CAREER_SUB_TAB_TRIGGER = cn(
-  "rounded-none border-b-2 border-transparent px-3 py-2 text-sm shadow-none",
-  "text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent",
-  "data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"
-);
-
 interface CareerTabProps {
   language: "en" | "fr";
 }
 
 export function CareerTab({ language }: CareerTabProps) {
   const { toast } = useToast();
+  const [careerSubTab, setCareerSubTab] = useState("applications");
   const [settings, setSettings] = useState<CareerSettings>({
     enabled: true,
     admin_notification_emails: [],
@@ -979,18 +976,18 @@ export function CareerTab({ language }: CareerTabProps) {
     <div className="p-6 space-y-6">
       <AdminTabHeader title={t.careers} />
 
-      <Tabs defaultValue="applications" className="space-y-4">
-        <TabsList className={CAREER_SUB_TAB_LIST}>
-          <TabsTrigger value="applications" className={CAREER_SUB_TAB_TRIGGER}>
+      <Tabs value={careerSubTab} onValueChange={setCareerSubTab} className="space-y-4">
+        <AnimatedUnderlineTabsList activeValue={careerSubTab}>
+          <TabsTrigger value="applications" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
             {t.applications}
           </TabsTrigger>
-          <TabsTrigger value="domains" className={CAREER_SUB_TAB_TRIGGER}>
+          <TabsTrigger value="domains" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
             {t.domains}
           </TabsTrigger>
-          <TabsTrigger value="settings" className={CAREER_SUB_TAB_TRIGGER}>
+          <TabsTrigger value="settings" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
             {t.enabled}
           </TabsTrigger>
-        </TabsList>
+        </AnimatedUnderlineTabsList>
 
         <TabsContent value="applications">
           <Card>

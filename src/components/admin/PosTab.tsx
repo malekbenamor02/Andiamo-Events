@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -32,13 +32,16 @@ import {
   ADMIN_FILTERS_PANEL,
   ADMIN_FILTER_LABEL,
 } from "@/pages/admin/components/AdminTabShell";
+import {
+  AnimatedUnderlineTabsList,
+  ADMIN_UNDERLINE_TAB_TRIGGER_COMPACT_CLASS,
+} from "@/pages/admin/components/AnimatedUnderlineTabs";
 
 function fetcher(url: string, options?: RequestInit) {
   return fetch(`${getApiBaseUrl()}${url}`, { ...options, credentials: "include" });
 }
 
-const POS_TAB_TRIGGER =
-  "shrink-0 gap-1.5 rounded-none border-0 border-b-2 border-transparent bg-transparent px-3 py-2.5 text-xs shadow-none transition-colors sm:px-4 sm:text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
+const POS_TAB_TRIGGER = ADMIN_UNDERLINE_TAB_TRIGGER_COMPACT_CLASS;
 
 function getPosOrderStatusDisplay(status: string, language: "en" | "fr") {
   switch (status) {
@@ -517,7 +520,10 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
     <div className="space-y-6">
       <AdminTabHeader title={t.title} />
       <Tabs value={subTab} onValueChange={setSubTab} className="w-full">
-        <TabsList className="flex h-auto w-full justify-start gap-0 overflow-x-auto rounded-none border-b border-border/60 bg-transparent p-0 scrollbar-hidden">
+        <AnimatedUnderlineTabsList
+          activeValue={subTab}
+          className="flex h-auto w-full justify-start gap-0 overflow-x-auto scrollbar-hidden"
+        >
           <TabsTrigger value="orders" className={POS_TAB_TRIGGER}>
             <ShoppingCart className="h-4 w-4 shrink-0" />
             {t.orders}
@@ -538,7 +544,7 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
             <Activity className="h-4 w-4 shrink-0" />
             {t.audit}
           </TabsTrigger>
-        </TabsList>
+        </AnimatedUnderlineTabsList>
 
         <TabsContent value="outlets" className="mt-4">
           <Card className="border-border/60 bg-card">

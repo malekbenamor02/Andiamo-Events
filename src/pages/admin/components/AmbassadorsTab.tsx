@@ -42,6 +42,8 @@ import {
   Save,
   Download,
   Search,
+  CheckSquare,
+  X,
 } from "lucide-react";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { formatAmbassadorLocationLabel } from "@/lib/ambassadors/extraVilles";
@@ -138,10 +140,12 @@ export function AmbassadorsTab({
 }: AmbassadorsTabProps) {
   const { toast } = useToast();
   const [filterStatus, setFilterStatus] = useState<"active" | "paused">("active");
+  const [filterName, setFilterName] = useState("");
   const [filterPhone, setFilterPhone] = useState("");
   const [filterEmail, setFilterEmail] = useState("");
   const [filterCity, setFilterCity] = useState("");
   const [filterVille, setFilterVille] = useState("");
+  const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState<null | "pause" | "delete">(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -155,6 +159,7 @@ export function AmbassadorsTab({
   );
 
   const filteredList = useMemo(() => {
+    const name = filterName.trim().toLowerCase();
     const phone = filterPhone.trim().replace(/\D/g, "");
     const email = filterEmail.trim().toLowerCase();
     const city = filterCity.trim().toLowerCase();
@@ -162,6 +167,8 @@ export function AmbassadorsTab({
     return displayList.filter((amb) => {
       if (filterStatus === "active" && amb.status !== "approved") return false;
       if (filterStatus === "paused" && amb.status !== "suspended") return false;
+      if (name && !(amb.full_name || "").toLowerCase().includes(name))
+        return false;
       if (phone && !(amb.phone || "").replace(/\D/g, "").includes(phone))
         return false;
       if (email && !(amb.email || "").toLowerCase().includes(email))
@@ -172,7 +179,7 @@ export function AmbassadorsTab({
         return false;
       return true;
     });
-  }, [displayList, filterStatus, filterPhone, filterEmail, filterCity, filterVille]);
+  }, [displayList, filterStatus, filterName, filterPhone, filterEmail, filterCity, filterVille]);
 
   const selectedAmbassadors = useMemo(
     () => ambassadors.filter((amb) => selectedIds.has(amb.id)),
@@ -199,6 +206,12 @@ export function AmbassadorsTab({
     });
   };
 
+  const handleExitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setBulkAction(null);
+  };
+
   const handleBulkConfirm = async () => {
     if (!bulkAction || selectedIds.size === 0) return;
 
@@ -214,6 +227,7 @@ export function AmbassadorsTab({
       }
       setSelectedIds(new Set());
       setBulkAction(null);
+      setSelectionMode(false);
     } finally {
       setBulkProcessing(false);
     }
@@ -235,6 +249,27 @@ export function AmbassadorsTab({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {selectionMode ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExitSelectionMode}
+              className="gap-2"
+            >
+              <X className="h-4 w-4" />
+              {language === "en" ? "Cancel selection" : "Annuler la sélection"}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectionMode(true)}
+              className="gap-2"
+            >
+              <CheckSquare className="h-4 w-4" />
+              {language === "en" ? "Select" : "Sélectionner"}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={onExportExcel} className="gap-2">
             <Download className="h-4 w-4" />
             {language === "en" ? "Export Excel" : "Exporter Excel"}
@@ -658,6 +693,20 @@ export function AmbassadorsTab({
       </div>
       <div className="rounded-lg border border-border/60 bg-muted/20 p-3 sm:p-4 space-y-3">
         <div className="flex flex-wrap items-end gap-3">
+          <div className="relative min-w-[160px] flex-1 sm:max-w-[220px]">
+            <Label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">
+              {language === "en" ? "Name" : "Nom"}
+            </Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder={language === "en" ? "Filter…" : "Filtrer…"}
+                value={filterName}
+                onChange={(e) => setFilterName(e.target.value)}
+                className="h-9 border-border/60 bg-background pl-9"
+              />
+            </div>
+          </div>
           <div className="relative min-w-[160px] flex-1 sm:max-w-[200px]">
             <Label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">
               {language === "en" ? "Phone" : "Téléphone"}
@@ -771,6 +820,7 @@ export function AmbassadorsTab({
             size="sm"
             onClick={() => {
               setFilterStatus("active");
+              setFilterName("");
               setFilterPhone("");
               setFilterEmail("");
               setFilterCity("");
@@ -781,7 +831,7 @@ export function AmbassadorsTab({
             {language === "en" ? "Clear filters" : "Effacer les filtres"}
           </Button>
         </div>
-        {selectedIds.size > 0 && (
+        {selectionMode && selectedIds.size > 0 && (
           <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
             <span className="text-xs text-muted-foreground">
               {selectedIds.size} {language === "en" ? "selected" : "sélectionné(s)"}
@@ -812,13 +862,15 @@ export function AmbassadorsTab({
         <Table>
           <TableHeader>
             <TableRow className="border-border/60 bg-muted/30 hover:bg-muted/30">
-              <TableHead className="w-10 px-2 py-2.5">
-                <Checkbox
-                  checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
-                  onCheckedChange={handleToggleSelectAllVisible}
-                  aria-label={language === "en" ? "Select all ambassadors" : "Tout sélectionner"}
-                />
-              </TableHead>
+              {selectionMode && (
+                <TableHead className="w-10 px-2 py-2.5">
+                  <Checkbox
+                    checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
+                    onCheckedChange={handleToggleSelectAllVisible}
+                    aria-label={language === "en" ? "Select all ambassadors" : "Tout sélectionner"}
+                  />
+                </TableHead>
+              )}
               <TableHead className="px-3 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 {t.ambassadorName}
               </TableHead>
@@ -848,23 +900,25 @@ export function AmbassadorsTab({
                 key={ambassador.id}
                 className="border-border/60 hover:bg-muted/20"
               >
-                <TableCell className="px-2 py-2.5">
-                  <Checkbox
-                    checked={selectedIds.has(ambassador.id)}
-                    onCheckedChange={(checked) =>
-                      setSelectedIds((prev) => {
-                        const next = new Set(prev);
-                        if (checked) {
-                          next.add(ambassador.id);
-                        } else {
-                          next.delete(ambassador.id);
-                        }
-                        return next;
-                      })
-                    }
-                    aria-label={language === "en" ? "Select ambassador" : "Sélectionner l'ambassadeur"}
-                  />
-                </TableCell>
+                {selectionMode && (
+                  <TableCell className="px-2 py-2.5">
+                    <Checkbox
+                      checked={selectedIds.has(ambassador.id)}
+                      onCheckedChange={(checked) =>
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (checked) {
+                            next.add(ambassador.id);
+                          } else {
+                            next.delete(ambassador.id);
+                          }
+                          return next;
+                        })
+                      }
+                      aria-label={language === "en" ? "Select ambassador" : "Sélectionner l'ambassadeur"}
+                    />
+                  </TableCell>
+                )}
                 <TableCell className="px-3 py-2.5">
                   <span className="font-medium text-foreground">{ambassador.full_name}</span>
                 </TableCell>

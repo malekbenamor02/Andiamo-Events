@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
@@ -42,14 +42,10 @@ import {
   ADMIN_FILTERS_PANEL,
   ADMIN_TABLE_WRAP,
 } from './AdminTabShell';
-
-const ACADEMY_SUB_TAB_LIST =
-  'h-auto w-full justify-start gap-0 rounded-none border-b border-border/60 bg-transparent p-0';
-const ACADEMY_SUB_TAB_TRIGGER = cn(
-  'rounded-none border-b-2 border-transparent px-3 py-2 text-sm shadow-none',
-  'text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent',
-  'data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none'
-);
+import {
+  AnimatedUnderlineTabsList,
+  ADMIN_UNDERLINE_TAB_TRIGGER_CLASS,
+} from './AnimatedUnderlineTabs';
 
 type AcademyLanguage = 'en' | 'fr';
 
@@ -395,23 +391,23 @@ export function AcademyTab({ language }: AcademyTabProps) {
       )}
 
       <Tabs value={subTab} onValueChange={setSubTab}>
-        <TabsList className={ACADEMY_SUB_TAB_LIST}>
-          <TabsTrigger value="registrations" className={ACADEMY_SUB_TAB_TRIGGER}>
+        <AnimatedUnderlineTabsList activeValue={subTab}>
+          <TabsTrigger value="registrations" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
             {isEn ? 'Registrations' : 'Inscriptions'}
           </TabsTrigger>
-          <TabsTrigger value="promo" className={ACADEMY_SUB_TAB_TRIGGER}>
+          <TabsTrigger value="promo" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
             {isEn ? 'Promo codes' : 'Codes promo'}
           </TabsTrigger>
-          <TabsTrigger value="influencers" className={ACADEMY_SUB_TAB_TRIGGER}>
+          <TabsTrigger value="influencers" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
             {isEn ? 'Influencers' : 'Influenceurs'}
           </TabsTrigger>
-          <TabsTrigger value="reports" className={ACADEMY_SUB_TAB_TRIGGER}>
+          <TabsTrigger value="reports" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
             {isEn ? 'Reports' : 'Rapports'}
           </TabsTrigger>
-          <TabsTrigger value="settings" className={ACADEMY_SUB_TAB_TRIGGER}>
+          <TabsTrigger value="settings" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
             {isEn ? 'Settings' : 'Paramètres'}
           </TabsTrigger>
-        </TabsList>
+        </AnimatedUnderlineTabsList>
 
         <TabsContent value="registrations" className="space-y-4">
           <div className={ADMIN_FILTERS_PANEL}>

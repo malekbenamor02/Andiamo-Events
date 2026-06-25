@@ -6,7 +6,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { FolderPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Ambassador, AmbassadorApplication, SelectedMotivation } from "../types";
@@ -14,6 +13,10 @@ import { useApplicationSelections } from "../hooks/useApplicationSelections";
 import { ApplicationsListCore } from "./applications/ApplicationsListCore";
 import { ApplicationSelectionsPanel } from "./applications/ApplicationSelectionsPanel";
 import { PickSelectionDialog } from "./applications/PickSelectionDialog";
+import {
+  AnimatedUnderlineButtonNav,
+  ADMIN_UNDERLINE_BUTTON_CLASS,
+} from "./AnimatedUnderlineTabs";
 
 export interface ApplicationsTabTranslation {
   approve: string;
@@ -193,32 +196,24 @@ export function ApplicationsTab(props: ApplicationsTabProps) {
 
   return (
     <TabsContent value="applications" className="space-y-6">
-      <div className="flex gap-1 border-b border-border/60">
+      <AnimatedUnderlineButtonNav activeValue={viewMode}>
         <button
           type="button"
-          className={cn(
-            "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
-            viewMode === "all"
-              ? "border-primary font-medium text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground",
-          )}
+          data-nav-value="all"
+          className={ADMIN_UNDERLINE_BUTTON_CLASS(viewMode === "all")}
           onClick={() => setViewMode("all")}
         >
           {language === "en" ? "All applications" : "Toutes les candidatures"}
         </button>
         <button
           type="button"
-          className={cn(
-            "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
-            viewMode === "selections"
-              ? "border-primary font-medium text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground",
-          )}
+          data-nav-value="selections"
+          className={ADMIN_UNDERLINE_BUTTON_CLASS(viewMode === "selections")}
           onClick={() => setViewMode("selections")}
         >
           {language === "en" ? "Draft selections" : "Sélections brouillon"}
         </button>
-      </div>
+      </AnimatedUnderlineButtonNav>
 
       {viewMode === "all" ? (
         <ApplicationsListCore
