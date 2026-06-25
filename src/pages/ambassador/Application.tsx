@@ -17,6 +17,7 @@ import DOMPurify from 'dompurify';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { PageMeta } from '@/components/PageMeta';
+import { JsonLdBreadcrumb, JsonLdWebPage } from '@/components/JsonLd';
 import { PAGE_DESCRIPTIONS } from '@/lib/seo';
 import { trackAmbassadorLead, createMetaEventId, getMetaAttributionContext } from '@/lib/meta';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
@@ -631,6 +632,17 @@ const Application = ({ language }: ApplicationProps) => {
         title="Become an Ambassador"
         description={PAGE_DESCRIPTIONS.ambassador[language]}
         path="/ambassador"
+      />
+      <JsonLdWebPage
+        name="Become an Ambassador | Andiamo Events"
+        description={PAGE_DESCRIPTIONS.ambassador.en}
+        path="/ambassador"
+      />
+      <JsonLdBreadcrumb
+        items={[
+          { name: 'Home', url: '/' },
+          { name: 'Ambassador Program', url: '/ambassador' },
+        ]}
       />
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-float" />

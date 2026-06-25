@@ -1,3 +1,5 @@
+# Andiamo Events — public pages welcome for search engines and AI assistants
+
 User-agent: *
 Allow: /
 Disallow: /admin
@@ -7,6 +9,85 @@ Disallow: /pos
 Disallow: /ambassador/dashboard
 Disallow: /ambassador/auth
 Disallow: /cod-order
+Disallow: /influencer/
 
+# AI crawlers — explicit welcome on public content
+User-agent: GPTBot
+Allow: /
+Disallow: /admin
+Disallow: /admin/login
+Disallow: /scanner
+Disallow: /pos
+Disallow: /ambassador/dashboard
+Disallow: /ambassador/auth
+Disallow: /cod-order
+Disallow: /influencer/
 
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /admin
+Disallow: /admin/login
+Disallow: /scanner
+Disallow: /pos
+Disallow: /ambassador/dashboard
+Disallow: /ambassador/auth
+Disallow: /cod-order
+Disallow: /influencer/
+
+User-agent: Claude-Web
+Allow: /
+Disallow: /admin
+Disallow: /admin/login
+Disallow: /scanner
+Disallow: /pos
+Disallow: /ambassador/dashboard
+Disallow: /ambassador/auth
+Disallow: /cod-order
+Disallow: /influencer/
+
+User-agent: anthropic-ai
+Allow: /
+Disallow: /admin
+Disallow: /admin/login
+Disallow: /scanner
+Disallow: /pos
+Disallow: /ambassador/dashboard
+Disallow: /ambassador/auth
+Disallow: /cod-order
+Disallow: /influencer/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /admin
+Disallow: /admin/login
+Disallow: /scanner
+Disallow: /pos
+Disallow: /ambassador/dashboard
+Disallow: /ambassador/auth
+Disallow: /cod-order
+Disallow: /influencer/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /admin
+Disallow: /admin/login
+Disallow: /scanner
+Disallow: /pos
+Disallow: /ambassador/dashboard
+Disallow: /ambassador/auth
+Disallow: /cod-order
+Disallow: /influencer/
+
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /admin
+Disallow: /admin/login
+Disallow: /scanner
+Disallow: /pos
+Disallow: /ambassador/dashboard
+Disallow: /ambassador/auth
+Disallow: /cod-order
+Disallow: /influencer/
+
+# AI-readable site guide: https://www.andiamoevents.com/llms.txt
 Sitemap: https://www.andiamoevents.com/sitemap.xml
