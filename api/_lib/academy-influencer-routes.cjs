@@ -334,11 +334,12 @@ async function issueTemporaryPasswordAndEmail(db, influencer, { updateInviteTime
 }
 
 function registerAcademyInfluencerRoutes(app, deps) {
-  const { requireAdminAuth, requireSuperAdmin } = deps;
+  const { requireAdminAuth, requireAdminPermission } = deps;
+  const requireAcademyManage = requireAdminPermission('academy:manage');
 
   // —— Admin: influencers ———————————————————————————————————————————————————
 
-  app.get('/api/admin/academy/influencers', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.get('/api/admin/academy/influencers', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       if (!db) return res.status(503).json({ error: 'Database not configured' });
@@ -358,7 +359,7 @@ function registerAcademyInfluencerRoutes(app, deps) {
     }
   });
 
-  app.get('/api/admin/academy/influencers/:id/sales', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.get('/api/admin/academy/influencers/:id/sales', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       if (!db) return res.status(503).json({ error: 'Database not configured' });
@@ -371,7 +372,7 @@ function registerAcademyInfluencerRoutes(app, deps) {
     }
   });
 
-  app.post('/api/admin/academy/influencers', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.post('/api/admin/academy/influencers', requireAdminAuth, requireAcademyManage, async (req, res) => {
     let createdId = null;
     try {
       const db = getServiceDb();
@@ -487,7 +488,7 @@ function registerAcademyInfluencerRoutes(app, deps) {
     }
   });
 
-  app.patch('/api/admin/academy/influencers/:id', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.patch('/api/admin/academy/influencers/:id', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       if (!db) return res.status(503).json({ error: 'Database not configured' });
@@ -636,7 +637,7 @@ function registerAcademyInfluencerRoutes(app, deps) {
   app.post(
     '/api/admin/academy/influencers/:id/resend-invite',
     requireAdminAuth,
-    requireSuperAdmin,
+    requireAcademyManage,
     handleResendInvite
   );
 

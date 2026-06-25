@@ -3,8 +3,10 @@
  */
 import {
   hasPermission,
+  hasEffectivePermission,
   resolveEffectivePermissions,
   resolveAllowedTabs,
+  resolveAdminEffectiveAccess,
 } from '../../shared/admin/permissions.mjs';
 import { ADMIN_TAB_DEFINITIONS } from '../../shared/admin/tabDefinitions.mjs';
 
@@ -144,8 +146,24 @@ export async function verifyAdminSession(req, opts = {}) {
       ? Math.max(0, Math.floor((tokenExpiration - Date.now()) / 1000))
       : 0;
 
-    const permissions = await resolveEffectivePermissions(admin.role, dbClient);
-    const allowedTabs = resolveAllowedTabs(admin.role, ADMIN_TAB_DEFINITIONS);
+    const { data: tabRows, error: tabRowsError } = await dbClient
+      .from('admin_tab_access')
+      .select('tab_key, show_in_mobile, mobile_order')
+      .eq('admin_id', admin.id);
+
+    if (tabRowsError) {
+      console.error('verifyAdminSession tab access load error:', tabRowsError);
+      return {
+        valid: false,
+        error: 'Failed to load admin tab access',
+        statusCode: 500,
+      };
+    }
+
+    const effective = resolveAdminEffectiveAccess(
+      { role: admin.role, tabRows: tabRows || [] },
+      ADMIN_TAB_DEFINITIONS
+    );
 
     return {
       valid: true,
@@ -155,8 +173,9 @@ export async function verifyAdminSession(req, opts = {}) {
         name: admin.name,
         role: admin.role,
       },
-      permissions,
-      allowedTabs,
+      permissions: effective.permissions,
+      allowedTabs: effective.allowedTabs,
+      mobileTabs: effective.mobileTabs,
       sessionExpiresAt: tokenExpiration,
       sessionTimeRemaining: timeRemaining,
       /** JWT exp for legacy handlers */
@@ -173,4 +192,4 @@ export async function verifyAdminSession(req, opts = {}) {
   }
 }
 
-export { hasPermission, resolveEffectivePermissions, resolveAllowedTabs };
+export { hasPermission, hasEffectivePermission, resolveEffectivePermissions, resolveAllowedTabs, resolveAdminEffectiveAccess };

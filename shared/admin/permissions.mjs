@@ -10,8 +10,15 @@ export const {
   ADMIN_ROLES,
   ROLE_PERMISSIONS,
   hasPermission,
+  hasEffectivePermission,
   resolvePermissions,
   resolveEffectivePermissions,
   resolveAllowedTabs,
   getDefaultTabKey,
 } = perms;
+
+export {
+  SENSITIVE_TAB_KEYS,
+  TAB_ACCESS_PRESETS,
+  resolveAdminEffectiveAccess,
+} from './tabAccess.mjs';

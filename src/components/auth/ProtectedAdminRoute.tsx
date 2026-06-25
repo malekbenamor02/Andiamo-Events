@@ -79,6 +79,7 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
                 admin,
                 permissions: Array.isArray(data.permissions) ? data.permissions : undefined,
                 allowedTabs: Array.isArray(data.allowedTabs) ? data.allowedTabs : undefined,
+                mobileTabs: Array.isArray(data.mobileTabs) ? data.mobileTabs : undefined,
                 sessionExpiresAt: data.sessionExpiresAt as number | undefined,
                 sessionTimeRemaining: data.sessionTimeRemaining as number | null | undefined,
               });

@@ -334,7 +334,8 @@ async function academyPublicError(res, status, code, message, logDetails) {
 }
 
 function registerAcademyRoutes(app, deps) {
-  const { requireAdminAuth, requireSuperAdmin } = deps;
+  const { requireAdminAuth, requireSuperAdmin, requireAdminPermission } = deps;
+  const requireAcademyManage = requireAdminPermission('academy:manage');
   const registerLimiter = multerSingle('paymentProof');
 
   async function handleAutoCancelExpiredAcademyRegistrations(req, res) {
@@ -860,9 +861,9 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  // —— Admin (super_admin only) ———————————————————————————————————————————————
+  // —— Admin (academy:manage or super_admin via effective permissions) ——
 
-  app.get('/api/admin/academy/settings', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.get('/api/admin/academy/settings', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       if (!db) return academyServiceError(res, 503, 'Database not configured');
@@ -878,7 +879,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.patch('/api/admin/academy/settings', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.patch('/api/admin/academy/settings', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       if (!db) return academyServiceError(res, 503, 'Database not configured');
@@ -918,7 +919,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.get('/api/admin/academy/registrations', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.get('/api/admin/academy/registrations', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       if (!db) return academyServiceError(res, 503, 'Database not configured');
@@ -938,7 +939,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.get('/api/admin/academy/registrations/:id', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.get('/api/admin/academy/registrations/:id', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       const { data, error } = await db
@@ -960,7 +961,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.patch('/api/admin/academy/registrations/:id', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.patch('/api/admin/academy/registrations/:id', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       const email = req.body?.email?.trim()?.toLowerCase();
@@ -980,7 +981,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.post('/api/admin/academy/registrations/:id/approve', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.post('/api/admin/academy/registrations/:id/approve', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       const can = await canApproveMore(db);
@@ -1027,7 +1028,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.post('/api/admin/academy/registrations/:id/reject', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.post('/api/admin/academy/registrations/:id/reject', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       const { data: reg } = await db
@@ -1066,7 +1067,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.post('/api/admin/academy/registrations/:id/resend-email', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.post('/api/admin/academy/registrations/:id/resend-email', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       const { data: reg } = await db.from('academy_registrations').select('*').eq('id', req.params.id).single();
@@ -1084,7 +1085,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.get('/api/admin/academy/reports', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.get('/api/admin/academy/reports', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       const { data: rows } = await db.from('academy_registrations').select('status, total_amount_dt');
@@ -1115,7 +1116,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.get('/api/admin/academy/promo-codes', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.get('/api/admin/academy/promo-codes', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       const { data, error } = await db
@@ -1134,7 +1135,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.post('/api/admin/academy/promo-codes', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.post('/api/admin/academy/promo-codes', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       const code = normalizeAcademyPromoCode(req.body.code);
@@ -1170,7 +1171,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.patch('/api/admin/academy/promo-codes/:id', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.patch('/api/admin/academy/promo-codes/:id', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       const patch = { updated_at: new Date().toISOString() };
@@ -1209,7 +1210,7 @@ function registerAcademyRoutes(app, deps) {
     }
   });
 
-  app.delete('/api/admin/academy/promo-codes/:id', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  app.delete('/api/admin/academy/promo-codes/:id', requireAdminAuth, requireAcademyManage, async (req, res) => {
     try {
       const db = getServiceDb();
       const { data: row } = await db.from('academy_promo_codes').select('used_count').eq('id', req.params.id).single();

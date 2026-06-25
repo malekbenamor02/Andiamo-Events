@@ -103,12 +103,36 @@ export function getTabsForAllowed(allowedTabs: string[]): AdminTabRegistryItem[]
 
 export function getMobileBottomTabItems(
   allowedTabs: string[],
+  mobileTabs: string[],
   labels: TabLabels,
   language: 'en' | 'fr'
 ) {
-  const set = new Set(allowedTabs);
+  const allowed = new Set(allowedTabs);
+
+  if (mobileTabs.length > 0) {
+    const mobileOrderMap = new Map(
+      ADMIN_TAB_REGISTRY.map((tab) => [tab.key, tab.mobileOrder ?? tab.order ?? 99])
+    );
+    const explicitOrder = new Map(mobileTabs.map((key, index) => [key, index]));
+    const items = mobileTabs
+      .filter((key) => allowed.has(key))
+      .map((key) => ADMIN_TAB_REGISTRY.find((tab) => tab.key === key))
+      .filter((tab): tab is AdminTabRegistryItem => !!tab)
+      .sort((a, b) => {
+        const ao = explicitOrder.get(a.key) ?? mobileOrderMap.get(a.key) ?? 99;
+        const bo = explicitOrder.get(b.key) ?? mobileOrderMap.get(b.key) ?? 99;
+        return ao - bo;
+      });
+
+    return items.map((tab) => ({
+      key: tab.key,
+      label: labelForTab(tab, labels, language),
+      icon: tab.icon,
+    }));
+  }
+
   const items = ADMIN_TAB_REGISTRY.filter(
-    (tab) => tab.showInMobileBottomNav && set.has(tab.key)
+    (tab) => tab.showInMobileBottomNav && allowed.has(tab.key)
   ).sort((a, b) => (a.mobileOrder ?? 99) - (b.mobileOrder ?? 99));
 
   return items.map((tab) => ({

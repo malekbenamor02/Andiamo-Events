@@ -143,6 +143,20 @@ export interface PassPurchase {
   };
 }
 
+/** Per-admin tab access editor state */
+export interface AdminTabAccessState {
+  useRoleDefaults: boolean;
+  allowedTabKeys: string[];
+  mobileTabKeys: string[];
+}
+
+/** Tab access summary from GET /api/admin/admins */
+export interface AdminTabAccessSummary {
+  is_explicit: boolean;
+  allowed_tab_keys: string[] | null;
+  mobile_tab_keys: string[] | null;
+}
+
 /** Admin user (for admins list in Admin Management tab). */
 export interface AdminUser {
   id: string;
@@ -152,6 +166,7 @@ export interface AdminUser {
   role: string;
   is_active: boolean;
   created_at: string;
+  tab_access?: AdminTabAccessSummary;
 }
 
 /** Admin being edited (for edit dialog). */
@@ -162,6 +177,7 @@ export interface EditingAdminShape {
   phone?: string;
   role: string;
   is_active: boolean;
+  tabAccess: AdminTabAccessState;
 }
 
 export type ConfirmDeleteTarget =

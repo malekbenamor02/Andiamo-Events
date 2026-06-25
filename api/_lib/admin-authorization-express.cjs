@@ -1,6 +1,6 @@
 'use strict';
 
-const { hasPermission } = require('../../shared/admin/permissions.cjs');
+const { hasPermission, hasEffectivePermission } = require('../../shared/admin/permissions.cjs');
 const { verifyAdminSession } = require('./admin-authorization.cjs');
 
 function sendAuthFailure(res, result) {
@@ -36,6 +36,7 @@ function requireAdminAuth(req, res, next) {
       };
       req.adminPermissions = result.permissions || [];
       req.adminAllowedTabs = result.allowedTabs || [];
+      req.adminMobileTabs = result.mobileTabs || [];
       next();
     })
     .catch((err) => {
@@ -81,7 +82,7 @@ function requireAdminPermission(permissionKey) {
     if (!req.admin) {
       return res.status(401).json({ error: 'Not authenticated', valid: false });
     }
-    if (!hasPermission(req.admin.role, permissionKey)) {
+    if (!hasEffectivePermission(req.adminPermissions, permissionKey)) {
       return sendForbidden(res, `Permission required: ${permissionKey}`);
     }
     next();
@@ -91,6 +92,7 @@ function requireAdminPermission(permissionKey) {
 module.exports = {
   verifyAdminSession,
   hasPermission,
+  hasEffectivePermission,
   requireAdminAuth,
   requireSuperAdmin,
   requireAdminRole,

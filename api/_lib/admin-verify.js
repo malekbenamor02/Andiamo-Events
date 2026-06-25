@@ -20,6 +20,7 @@ export async function verifyAdminAuth(req) {
     admin: result.admin,
     permissions: result.permissions,
     allowedTabs: result.allowedTabs,
+    mobileTabs: result.mobileTabs,
     sessionExpiresAt: result.sessionExpiresAt,
     sessionTimeRemaining: result.sessionTimeRemaining,
   };

@@ -25,6 +25,11 @@ import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail,
 import { fetchSalesSettings, updateSalesSettings } from "@/lib/salesSettings";
 import { upsertSiteContentViaApi } from "@/lib/adminSiteContent";
 import { adminApi } from "@/lib/adminApi";
+import {
+  defaultAdminTabAccessState,
+  tabAccessStateToApiPayload,
+} from "./components/AdminTabAccessEditor";
+import type { AdminUser, EditingAdminShape } from "./types";
 import { adminOrdersApi } from "@/lib/adminOrdersApi";
 import {
   canAccessTabKey,
@@ -282,16 +287,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [activeTab, setActiveTab] = useState("overview");
   const [currentAdminRole, setCurrentAdminRole] = useState<string | null>(null);
   const [allowedTabs, setAllowedTabs] = useState<string[]>([]);
+  const [mobileTabs, setMobileTabs] = useState<string[]>([]);
   const [adminPermissions, setAdminPermissions] = useState<string[]>([]);
   const [authReady, setAuthReady] = useState(false);
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
   const [currentAdminName, setCurrentAdminName] = useState<string | null>(null);
   const [currentAdminEmail, setCurrentAdminEmail] = useState<string | null>(null);
-  const [admins, setAdmins] = useState<Array<{id: string; name: string; email: string; phone?: string; role: string; is_active: boolean; created_at: string}>>([]);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [isAddAdminDialogOpen, setIsAddAdminDialogOpen] = useState(false);
   const [isEditAdminDialogOpen, setIsEditAdminDialogOpen] = useState(false);
-  const [editingAdmin, setEditingAdmin] = useState<{id: string; name: string; email: string; phone?: string; role: string; is_active: boolean} | null>(null);
+  const [editingAdmin, setEditingAdmin] = useState<EditingAdminShape | null>(null);
   const [newAdminData, setNewAdminData] = useState({ name: '', email: '', phone: '' });
+  const [newAdminTabAccess, setNewAdminTabAccess] = useState(defaultAdminTabAccessState);
   const [adminLogs, setAdminLogs] = useState<any[]>([]);
   const [loadingAdminLogs, setLoadingAdminLogs] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
@@ -1089,6 +1096,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     [adminPermissions, currentAdminRole]
   );
 
+  const canManageSettings = useMemo(
+    () => adminPermissions.includes('*') || adminPermissions.includes('settings:manage'),
+    [adminPermissions]
+  );
+
   const allowedTabItems = useMemo(() => getTabsForAllowed(allowedTabs), [allowedTabs]);
 
   const playNotificationSound = () => {
@@ -1710,19 +1722,25 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   useEffect(() => {
     if (!selectedEventId) return;
 
-    void fetchAmbassadorSalesData();
-    void fetchOnlineOrders();
+    if (canAccessTab('ambassador-sales')) {
+      void fetchAmbassadorSalesData();
+    }
+    if (canAccessTab('online-orders')) {
+      void fetchOnlineOrders();
+    }
 
-    (async () => {
-      try {
-        const result = await adminOrdersApi.chartOnlineOrders(selectedEventId);
-        setOnlineOrdersForChart(result.data || []);
-      } catch {
-        setOnlineOrdersForChart([]);
-      }
-    })();
+    if (canAccessTab('online-orders') || canAccessTab('overview')) {
+      (async () => {
+        try {
+          const result = await adminOrdersApi.chartOnlineOrders(selectedEventId);
+          setOnlineOrdersForChart(result.data || []);
+        } catch {
+          setOnlineOrdersForChart([]);
+        }
+      })();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEventId]);
+  }, [selectedEventId, canAccessTab]);
 
   // Update ticket stats when selected event changes
   useEffect(() => {
@@ -1771,12 +1789,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     } catch (error) {
       console.error("Error fetching countdown banner settings:", error);
     }
-    
-    // Fetch order expiration settings
-    try {
-      await fetchExpirationSettings();
-    } catch (error) {
-      console.error('Error fetching expiration settings:', error);
+
+    if (canManageSettings) {
+      try {
+        await fetchExpirationSettings();
+      } catch (error) {
+        console.error('Error fetching expiration settings:', error);
+      }
     }
   };
   
@@ -1793,6 +1812,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           setExpirationSettings(filtered);
         }
       } else {
+        if (response.status === 403) {
+          return;
+        }
         let detail = `HTTP ${response.status}`;
         try {
           const errBody = await response.json();
@@ -2393,6 +2415,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Fetch Ambassador Sales System data
   const fetchAmbassadorSalesData = async (statusFilter?: string) => {
+    if (!canAccessTab('ambassador-sales')) return;
     setLoadingOrders(true);
     try {
       const ambassadorNameMap = new Map<string, string>();
@@ -2541,11 +2564,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setCodOrders([]);
       setOrderLogs([]);
       const description = error?.message || (language === 'en' ? 'Failed to fetch sales data' : 'Échec de la récupération des données de vente');
-      toast({
-        title: language === 'en' ? 'Error' : 'Erreur',
-        description,
-        variant: 'destructive'
-      });
+      const isPermissionDenied =
+        /permission required/i.test(description) || /forbidden/i.test(description);
+      if (!isPermissionDenied) {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description,
+          variant: 'destructive'
+        });
+      }
     } finally {
       setLoadingOrders(false);
     }
@@ -2553,6 +2580,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Fetch online orders
   const fetchOnlineOrders = async () => {
+    if (!canAccessTab('online-orders')) return;
     setLoadingOnlineOrders(true);
     try {
       const dateTo = onlineOrderFilters.dateTo
@@ -2598,17 +2626,25 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setOnlineOrders(filteredData);
     } catch (error: any) {
       console.error('Error fetching online orders:', error);
-      toast({
-        title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Échec du chargement des commandes en ligne'),
-        variant: "destructive",
-      });
+      const description =
+        error.message ||
+        (language === 'en' ? 'Failed to fetch online orders' : 'Échec du chargement des commandes en ligne');
+      const isPermissionDenied =
+        /permission required/i.test(description) || /forbidden/i.test(description);
+      if (!isPermissionDenied) {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description,
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoadingOnlineOrders(false);
     }
   };
 
   const fetchOnlineOrdersWithFilters = async (filters: typeof onlineOrderFilters) => {
+    if (!canAccessTab('online-orders')) return;
     setLoadingOnlineOrders(true);
     try {
       const dateTo = filters.dateTo
@@ -2654,11 +2690,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setOnlineOrders(filteredData);
     } catch (error: any) {
       console.error('Error fetching online orders:', error);
-      toast({
-        title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Échec du chargement des commandes en ligne'),
-        variant: "destructive",
-      });
+      const description =
+        error.message ||
+        (language === 'en' ? 'Failed to fetch online orders' : 'Échec du chargement des commandes en ligne');
+      const isPermissionDenied =
+        /permission required/i.test(description) || /forbidden/i.test(description);
+      if (!isPermissionDenied) {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description,
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoadingOnlineOrders(false);
     }
@@ -4816,6 +4859,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const role = cached.admin.role || "admin";
       setCurrentAdminRole(role);
       setAllowedTabs(cached.allowedTabs || []);
+      setMobileTabs(cached.mobileTabs || []);
       setAdminPermissions(cached.permissions || []);
       setAuthReady(true);
       setCurrentAdminId(cached.admin.id || null);
@@ -4855,6 +4899,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             const role = data.admin.role || 'admin';
             setCurrentAdminRole(role);
             setAllowedTabs(Array.isArray(data.allowedTabs) ? data.allowedTabs : []);
+            setMobileTabs(Array.isArray(data.mobileTabs) ? data.mobileTabs : []);
             setAdminPermissions(Array.isArray(data.permissions) ? data.permissions : []);
             setAuthReady(true);
             setCurrentAdminId(data.admin.id || null);
@@ -5029,7 +5074,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
     try {
       const result = await adminApi.listAdmins();
-      setAdmins((result.data || []) as Array<{id: string; name: string; email: string; phone?: string; role: string; is_active: boolean; created_at: string}>);
+      setAdmins((result.data || []) as AdminUser[]);
     } catch (error) {
       console.error('Error fetching admins:', error);
     }
@@ -5067,6 +5112,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (newAdminData.phone?.trim()) {
         payload.phone = newAdminData.phone;
       }
+      if (isSuperAdmin) {
+        Object.assign(payload, tabAccessStateToApiPayload(newAdminTabAccess, 'admin', 'create'));
+      }
 
       const result = await adminApi.createAdmin(payload);
       const newAdmin = result.data;
@@ -5103,6 +5151,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       setNewAdminData({ name: '', email: '', phone: '' });
+      setNewAdminTabAccess(defaultAdminTabAccessState());
       setIsAddAdminDialogOpen(false);
       if (currentAdminId && newAdmin?.id) {
         logAdminAction({
@@ -5164,6 +5213,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (editingAdmin.phone !== undefined) {
         updatePayload.phone =
           editingAdmin.phone && editingAdmin.phone.trim() ? editingAdmin.phone : null;
+      }
+      if (isSuperAdmin) {
+        Object.assign(
+          updatePayload,
+          tabAccessStateToApiPayload(editingAdmin.tabAccess, editingAdmin.role, 'update')
+        );
       }
 
       await adminApi.updateAdmin(editingAdmin.id, updatePayload);
@@ -9013,7 +9068,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   const mobileBottomTabs = [
-    ...getMobileBottomTabItems(allowedTabs, t, language),
+    ...getMobileBottomTabItems(allowedTabs, mobileTabs, t, language),
     { key: "logout", label: t.logout, icon: LogOutIcon },
   ].filter((tab) => tab.key === "logout" || isTabAllowedOnMobile(tab.key));
 
@@ -9491,6 +9546,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     admins={admins}
                     newAdminData={newAdminData}
                     setNewAdminData={setNewAdminData}
+                    newAdminTabAccess={newAdminTabAccess}
+                    setNewAdminTabAccess={setNewAdminTabAccess}
+                    tabLabels={t}
+                    isSuperAdmin={isSuperAdmin}
                     isAddAdminDialogOpen={isAddAdminDialogOpen}
                     setIsAddAdminDialogOpen={setIsAddAdminDialogOpen}
                     isEditAdminDialogOpen={isEditAdminDialogOpen}
@@ -9621,7 +9680,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               <TabsContent value="academy" className="space-y-6">
                 {activeTab === "academy" && (
                   <Suspense fallback={adminTabSuspenseFallback}>
-                    <LazyAcademyTab language={language} />
+                    <LazyAcademyTab language={language} canManageInfluencers={canAccessTab('academy')} />
                   </Suspense>
                 )}
               </TabsContent>

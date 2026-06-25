@@ -1,0 +1,18 @@
+{
+  "sensitiveTabKeys": ["admins", "settings", "logs"],
+  "presets": {
+    "standard_admin": [
+      "overview",
+      "ambassadors",
+      "applications",
+      "careers",
+      "online-orders",
+      "ambassador-sales",
+      "pos",
+      "consultation-inquiries"
+    ],
+    "events_only": ["overview", "events"],
+    "sales_pos": ["overview", "online-orders", "ambassador-sales", "pos"],
+    "marketing_only": ["overview", "marketing"]
+  }
+}

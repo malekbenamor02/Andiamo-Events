@@ -28,6 +28,12 @@ function hasPermission(role, permission) {
   return list.includes(permission);
 }
 
+function hasEffectivePermission(permissions, permissionKey) {
+  if (!permissionKey || !Array.isArray(permissions) || !permissions.length) return false;
+  if (permissions.includes('*')) return true;
+  return permissions.includes(permissionKey);
+}
+
 function resolvePermissions(role) {
   if (role === 'super_admin') return ['*'];
   if (role === 'admin') return [...ROLE_PERMISSIONS.admin];
@@ -55,6 +61,7 @@ module.exports = {
   ADMIN_ROLES: ['admin', 'super_admin'],
   ROLE_PERMISSIONS,
   hasPermission,
+  hasEffectivePermission,
   resolvePermissions,
   resolveEffectivePermissions,
   resolveAllowedTabs,

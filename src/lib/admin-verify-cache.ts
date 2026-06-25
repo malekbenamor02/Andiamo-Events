@@ -17,6 +17,7 @@ export type AdminVerifyCachePayload = {
   admin: AdminVerifyCacheAdmin;
   permissions?: string[];
   allowedTabs?: string[];
+  mobileTabs?: string[];
   sessionExpiresAt?: number | null;
   sessionTimeRemaining?: number | null;
 };
@@ -30,6 +31,7 @@ export function writeAdminVerifyCache(
       admin: payload.admin,
       permissions: payload.permissions,
       allowedTabs: payload.allowedTabs,
+      mobileTabs: payload.mobileTabs,
       sessionExpiresAt: payload.sessionExpiresAt,
       sessionTimeRemaining: payload.sessionTimeRemaining,
     };

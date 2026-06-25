@@ -142,14 +142,14 @@ export function AdminDesktopSidebarRail({
       key: "ambassadors",
       icon: Users,
       label: t.ambassadors,
-      visible: true,
+      visible: canAccessTab("ambassadors"),
       onClick: () => setActiveTab("ambassadors"),
     },
     {
       key: "applications",
       icon: FileText,
       label: t.applications,
-      visible: true,
+      visible: canAccessTab("applications"),
       onClick: () => setActiveTab("applications"),
     },
     {
@@ -170,7 +170,7 @@ export function AdminDesktopSidebarRail({
       key: "online-orders",
       icon: CreditCard,
       label: language === "en" ? "Online Orders" : "Commandes en Ligne",
-      visible: true,
+      visible: canAccessTab("online-orders"),
       onClick: () => {
         setActiveTab("online-orders");
         if (onlineOrdersCount === 0) void fetchOnlineOrders();
@@ -180,7 +180,7 @@ export function AdminDesktopSidebarRail({
       key: "ambassador-sales",
       icon: Package,
       label: language === "en" ? "Ambassador Sales" : "Ventes Ambassadeurs",
-      visible: true,
+      visible: canAccessTab("ambassador-sales"),
       onClick: () => {
         setActiveTab("ambassador-sales");
         if (codAmbassadorOrdersCount === 0) void fetchAmbassadorSalesData();
@@ -190,7 +190,7 @@ export function AdminDesktopSidebarRail({
       key: "pos",
       icon: Store,
       label: language === "en" ? "Point de Vente" : "Point de Vente",
-      visible: true,
+      visible: canAccessTab("pos"),
       onClick: () => setActiveTab("pos"),
     },
     {

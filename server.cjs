@@ -1490,6 +1490,7 @@ app.get('/api/verify-admin', verifyAdminLimiter, requireAdminAuth, async (req, r
       },
       permissions: req.adminPermissions || [],
       allowedTabs: req.adminAllowedTabs || [],
+      mobileTabs: req.adminMobileTabs || [],
       sessionExpiresAt: tokenExpiration,
       sessionTimeRemaining: timeRemaining,
     });

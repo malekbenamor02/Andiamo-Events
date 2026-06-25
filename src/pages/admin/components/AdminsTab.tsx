@@ -34,7 +34,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Plus, Edit, Trash2, Save, History } from "lucide-react";
 import { format } from "date-fns";
-import type { AdminUser, EditingAdminShape } from "../types";
+import type { AdminUser, EditingAdminShape, AdminTabAccessState } from "../types";
 import {
   AdminTabHeader,
   ADMIN_TABLE_HEAD,
@@ -43,12 +43,21 @@ import {
   ADMIN_BTN_EDIT,
   ADMIN_BTN_DELETE,
 } from "./AdminTabShell";
+import {
+  AdminTabAccessEditor,
+  defaultAdminTabAccessState,
+  tabAccessStateFromSummary,
+} from "./AdminTabAccessEditor";
 
 export interface AdminsTabProps {
   language: "en" | "fr";
   admins: AdminUser[];
   newAdminData: { name: string; email: string; phone: string };
   setNewAdminData: (data: { name: string; email: string; phone: string }) => void;
+  newAdminTabAccess: AdminTabAccessState;
+  setNewAdminTabAccess: (value: AdminTabAccessState) => void;
+  tabLabels: Record<string, string>;
+  isSuperAdmin: boolean;
   isAddAdminDialogOpen: boolean;
   setIsAddAdminDialogOpen: (open: boolean) => void;
   isEditAdminDialogOpen: boolean;
@@ -69,6 +78,10 @@ export function AdminsTab({
   admins,
   newAdminData,
   setNewAdminData,
+  newAdminTabAccess,
+  setNewAdminTabAccess,
+  tabLabels,
+  isSuperAdmin,
   isAddAdminDialogOpen,
   setIsAddAdminDialogOpen,
   isEditAdminDialogOpen,
@@ -93,6 +106,7 @@ export function AdminsTab({
               <Button
                 onClick={() => {
                   setNewAdminData({ name: "", email: "", phone: "" });
+                  setNewAdminTabAccess(defaultAdminTabAccessState());
                   setIsAddAdminDialogOpen(true);
                 }}
               >
@@ -144,6 +158,15 @@ export function AdminsTab({
                   }
                 />
               </div>
+              {isSuperAdmin && (
+                <AdminTabAccessEditor
+                  language={language}
+                  role="admin"
+                  value={newAdminTabAccess}
+                  onChange={setNewAdminTabAccess}
+                  labels={tabLabels}
+                />
+              )}
               <div className="flex justify-end gap-2 pt-4">
                 <Button variant="outline" onClick={() => setIsAddAdminDialogOpen(false)}>
                   {language === "en" ? "Cancel" : "Annuler"}
@@ -222,7 +245,14 @@ export function AdminsTab({
                 <Select
                   value={editingAdmin.role}
                   onValueChange={(value: "admin" | "super_admin") =>
-                    setEditingAdmin({ ...editingAdmin, role: value })
+                    setEditingAdmin({
+                      ...editingAdmin,
+                      role: value,
+                      tabAccess:
+                        value === "super_admin"
+                          ? defaultAdminTabAccessState()
+                          : editingAdmin.tabAccess,
+                    })
                   }
                 >
                   <SelectTrigger>
@@ -251,6 +281,15 @@ export function AdminsTab({
                   {language === "en" ? "Active" : "Actif"}
                 </Label>
               </div>
+              {isSuperAdmin && (
+                <AdminTabAccessEditor
+                  language={language}
+                  role={editingAdmin.role}
+                  value={editingAdmin.tabAccess}
+                  onChange={(tabAccess) => setEditingAdmin({ ...editingAdmin, tabAccess })}
+                  labels={tabLabels}
+                />
+              )}
               <div className="flex justify-end gap-2 pt-4">
                 <Button
                   variant="outline"
@@ -356,6 +395,7 @@ export function AdminsTab({
                             phone: admin.phone,
                             role: admin.role,
                             is_active: admin.is_active,
+                            tabAccess: tabAccessStateFromSummary(admin.tab_access),
                           });
                           setIsEditAdminDialogOpen(true);
                         }}

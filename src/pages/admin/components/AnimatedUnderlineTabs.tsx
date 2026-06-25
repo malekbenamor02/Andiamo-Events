@@ -16,8 +16,11 @@ const UNDERLINE_TRANSITION =
 export const ADMIN_UNDERLINE_TAB_LIST_CLASS =
   "relative h-auto w-full justify-start gap-0 rounded-none border-b border-border/60 bg-transparent p-0";
 
+export const ADMIN_UNDERLINE_TAB_LIST_SCROLLABLE_CLASS =
+  "relative h-auto w-max min-w-full justify-start gap-0 rounded-none border-b border-border/60 bg-transparent p-0";
+
 export const ADMIN_UNDERLINE_TAB_TRIGGER_CLASS = cn(
-  "relative z-10 rounded-none border-b-2 border-transparent px-3 py-2 text-sm shadow-none",
+  "relative z-10 shrink-0 rounded-none border-b-2 border-transparent px-2 py-2 text-xs shadow-none sm:px-3 sm:text-sm",
   "text-muted-foreground transition-colors duration-200",
   "data-[state=active]:bg-transparent data-[state=active]:font-medium",
   "data-[state=active]:text-foreground data-[state=active]:shadow-none"
@@ -121,22 +124,51 @@ export function AnimatedUnderlineTabsList({
   activeValue,
   className,
   children,
+  scrollable = false,
 }: {
   activeValue?: string;
   className?: string;
   children: ReactNode;
+  /** Horizontal scroll so all triggers stay tappable on narrow screens (e.g. Academy subtabs). */
+  scrollable?: boolean;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const indicator = useAnimatedUnderline(listRef, activeValue);
 
-  return (
+  useEffect(() => {
+    if (!scrollable) return;
+    const list = listRef.current;
+    if (!list) return;
+    const active =
+      (activeValue
+        ? list.querySelector<HTMLElement>(`[data-state="active"]`)
+        : null) ?? list.querySelector<HTMLElement>('[data-state="active"]');
+    active?.scrollIntoView({
+      behavior: "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }, [activeValue, scrollable]);
+
+  const tabsList = (
     <TabsList
       ref={listRef}
-      className={cn(ADMIN_UNDERLINE_TAB_LIST_CLASS, className)}
+      className={cn(
+        scrollable ? ADMIN_UNDERLINE_TAB_LIST_SCROLLABLE_CLASS : ADMIN_UNDERLINE_TAB_LIST_CLASS,
+        className
+      )}
     >
       <UnderlineIndicator indicator={indicator} />
       {children}
     </TabsList>
+  );
+
+  if (!scrollable) return tabsList;
+
+  return (
+    <div className="scrollbar-hide -mx-1 overflow-x-auto overscroll-x-contain px-1 touch-pan-x">
+      {tabsList}
+    </div>
   );
 }
 

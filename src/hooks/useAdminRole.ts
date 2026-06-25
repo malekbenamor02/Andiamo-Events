@@ -15,6 +15,7 @@ export interface VerifyAdminResponse {
   };
   permissions?: string[];
   allowedTabs?: string[];
+  mobileTabs?: string[];
   sessionExpiresAt?: number;
   sessionTimeRemaining?: number;
 }
@@ -32,6 +33,7 @@ export function useAdminRole() {
           role: null as string | null,
           permissions: [] as string[],
           allowedTabs: [] as string[],
+          mobileTabs: [] as string[],
           canAccessTab: () => false,
           valid: false,
         };
@@ -43,6 +45,7 @@ export function useAdminRole() {
         role,
         permissions: data.permissions || [],
         allowedTabs: data.allowedTabs || [],
+        mobileTabs: data.mobileTabs || [],
         canAccessTab: (tab: string) => (data.allowedTabs || []).includes(tab),
         valid: !!data.valid,
       };

@@ -51,6 +51,8 @@ type AcademyLanguage = 'en' | 'fr';
 
 interface AcademyTabProps {
   language: AcademyLanguage;
+  /** Influencer management is included with Academy tab access (`academy:manage`). */
+  canManageInfluencers?: boolean;
 }
 
 interface AcademyRegistration {
@@ -221,7 +223,7 @@ function AcademyTabLoadingPanel({
   );
 }
 
-export function AcademyTab({ language }: AcademyTabProps) {
+export function AcademyTab({ language, canManageInfluencers = false }: AcademyTabProps) {
   const { toast } = useToast();
   const isEn = language === 'en';
   const [subTab, setSubTab] = useState('registrations');
@@ -279,6 +281,12 @@ export function AcademyTab({ language }: AcademyTabProps) {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (!canManageInfluencers && subTab === 'influencers') {
+      setSubTab('registrations');
+    }
+  }, [canManageInfluencers, subTab]);
 
   const filtered = useMemo(() => {
     let list = registrations;
@@ -391,16 +399,18 @@ export function AcademyTab({ language }: AcademyTabProps) {
       )}
 
       <Tabs value={subTab} onValueChange={setSubTab}>
-        <AnimatedUnderlineTabsList activeValue={subTab}>
+        <AnimatedUnderlineTabsList activeValue={subTab} scrollable>
           <TabsTrigger value="registrations" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
             {isEn ? 'Registrations' : 'Inscriptions'}
           </TabsTrigger>
           <TabsTrigger value="promo" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
             {isEn ? 'Promo codes' : 'Codes promo'}
           </TabsTrigger>
-          <TabsTrigger value="influencers" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
-            {isEn ? 'Influencers' : 'Influenceurs'}
-          </TabsTrigger>
+          {canManageInfluencers && (
+            <TabsTrigger value="influencers" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
+              {isEn ? 'Influencers' : 'Influenceurs'}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="reports" className={ADMIN_UNDERLINE_TAB_TRIGGER_CLASS}>
             {isEn ? 'Reports' : 'Rapports'}
           </TabsTrigger>
@@ -618,13 +628,15 @@ export function AcademyTab({ language }: AcademyTabProps) {
           )}
         </TabsContent>
 
-        <TabsContent value="influencers">
-          <AcademyInfluencersSection
-            language={language}
-            promoCodes={promoCodes}
-            onPromoCodesChanged={loadAll}
-          />
-        </TabsContent>
+        {canManageInfluencers && (
+          <TabsContent value="influencers">
+            <AcademyInfluencersSection
+              language={language}
+              promoCodes={promoCodes}
+              onPromoCodesChanged={loadAll}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="reports">
           {loading ? (

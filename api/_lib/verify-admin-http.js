@@ -46,6 +46,7 @@ export async function handleVerifyAdmin(req, res) {
       admin: authResult.admin,
       permissions: authResult.permissions,
       allowedTabs: authResult.allowedTabs,
+      mobileTabs: authResult.mobileTabs,
       sessionExpiresAt: authResult.sessionExpiresAt,
       sessionTimeRemaining: authResult.sessionTimeRemaining,
     });
