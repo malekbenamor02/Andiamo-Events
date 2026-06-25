@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import Loader from '@/components/ui/Loader';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { OnlinePaymentStatusScreen } from '@/components/orders/OnlinePaymentStatusScreen';
+import type { OnlinePaymentStatusVariant } from '@/components/orders/OnlinePaymentStatusScreen';
 import { PageMeta } from '@/components/PageMeta';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
 import { mapPublicError, mapThrownError } from '@/lib/userErrors';
@@ -36,7 +34,10 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
     language === 'en'
       ? {
           title: 'Processing payment',
-          successTitle: 'Payment successful!',
+          redirecting: 'Redirecting to payment...',
+          pleaseWait: 'Please wait...',
+          successTitle: 'Payment confirmed',
+          successSubtitle: 'Thank you for registering',
           successMessage:
             'Your payment has been confirmed. You will receive a confirmation email shortly.',
           failedTitle: 'Payment failed',
@@ -45,12 +46,17 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
           expiredMessage:
             'Your registration was not completed in time. Please register again to book your place.',
           back: 'Back to Academy',
+          goBack: 'Go back',
+          close: 'Close',
           noId: 'Invalid request. No registration ID.',
           generic: 'Something went wrong. Please try again.',
         }
       : {
           title: 'Traitement du paiement',
-          successTitle: 'Paiement réussi !',
+          redirecting: 'Redirection vers le paiement...',
+          pleaseWait: 'Veuillez patienter...',
+          successTitle: 'Paiement confirmé',
+          successSubtitle: 'Merci pour votre inscription',
           successMessage:
             'Votre paiement a été confirmé. Vous recevrez un e-mail de confirmation sous peu.',
           failedTitle: 'Paiement échoué',
@@ -59,7 +65,9 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
           expiredTitle: 'Inscription expirée',
           expiredMessage:
             'Votre inscription n\'a pas été finalisée à temps. Veuillez vous réinscrire pour réserver votre place.',
-          back: 'Retour à l\'Academy',
+          back: "Retour à l'Academy",
+          goBack: 'Retour',
+          close: 'Fermer',
           noId: 'Requête invalide.',
           generic: 'Une erreur s\'est produite.',
         };
@@ -165,8 +173,42 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
     }
   }, [registrationId, isReturn, isInit, language, navigate]);
 
+  const statusVariant: OnlinePaymentStatusVariant =
+    state === 'redirecting'
+      ? 'redirecting'
+      : state === 'expired'
+        ? 'failed'
+        : state;
+
+  const statusTitle =
+    statusVariant === 'loading' || statusVariant === 'redirecting'
+      ? t.title
+      : state === 'success'
+        ? t.successTitle
+        : state === 'expired'
+          ? t.expiredTitle
+          : t.failedTitle;
+
+  const statusSubtitle =
+    statusVariant === 'loading' || statusVariant === 'redirecting'
+      ? statusVariant === 'redirecting'
+        ? t.redirecting
+        : t.pleaseWait
+      : state === 'success'
+        ? t.successSubtitle
+        : undefined;
+
+  const statusMessage =
+    state === 'success'
+      ? t.successMessage
+      : state === 'expired'
+        ? error || t.expiredMessage
+        : state === 'failed'
+          ? error || t.failedMessage
+          : undefined;
+
   return (
-    <div className="min-h-screen bg-gradient-dark flex items-center justify-center px-4 py-16">
+    <div className="min-h-screen bg-gradient-dark">
       <PageMeta
         title={language === 'en' ? 'Payment processing' : 'Traitement du paiement'}
         description={
@@ -177,33 +219,18 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
         path="/academy/payment-processing"
         noIndex
       />
-      <Card className="w-full max-w-md glass border-2 border-primary/30">
-        <CardContent className="p-8 text-center">
-          {(state === 'loading' || state === 'redirecting') && (
-            <>
-              <Loader size="xl" className="mx-auto mb-4" />
-              <h1 className="text-xl font-heading font-bold">{t.title}</h1>
-            </>
-          )}
-          {state === 'success' && (
-            <>
-              <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-4" />
-              <h1 className="text-2xl font-heading font-bold mb-2">{t.successTitle}</h1>
-              <p className="text-muted-foreground mb-6">{t.successMessage}</p>
-            </>
-          )}
-          {(state === 'failed' || state === 'expired') && (
-            <>
-              <XCircle className="w-20 h-20 text-red-500 mx-auto mb-4" />
-              <h1 className="text-2xl font-heading font-bold mb-2">
-                {state === 'expired' ? t.expiredTitle : t.failedTitle}
-              </h1>
-              {error && <p className="text-muted-foreground mb-6">{error}</p>}
-              <Button onClick={() => navigate('/academy/register')}>{t.back}</Button>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <OnlinePaymentStatusScreen
+        variant={statusVariant}
+        title={statusTitle}
+        subtitle={statusSubtitle}
+        message={statusMessage}
+        closeLabel={t.close}
+        onClose={() => navigate('/academy/register')}
+        primaryActionLabel={t.back}
+        onPrimaryAction={() => navigate('/academy/register')}
+        secondaryActionLabel={state === 'failed' ? t.goBack : undefined}
+        onSecondaryAction={state === 'failed' ? () => navigate(-1) : undefined}
+      />
     </div>
   );
 }

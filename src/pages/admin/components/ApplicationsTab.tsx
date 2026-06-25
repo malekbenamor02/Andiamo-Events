@@ -58,7 +58,6 @@ export interface ApplicationsTabProps {
   onApprove: (app: AmbassadorApplication) => void;
   onReject: (app: AmbassadorApplication) => void;
   onResendEmail: (app: AmbassadorApplication) => void;
-  onCopyCredentials: (app: AmbassadorApplication) => void;
   processingId: string | null;
   orphanedCount: number;
   currentAdminId: string | null;

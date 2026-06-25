@@ -12,10 +12,17 @@ import { PageMeta } from "@/components/PageMeta";
 import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 import { JsonLdBreadcrumb } from "@/components/JsonLd";
 import { mapPublicError } from "@/lib/userErrors";
+import { cn } from "@/lib/utils";
 
 const TITLE_MAX = 200;
 const DETAILS_MAX = 2000;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PAGE_TOP = "pt-[calc(4rem+var(--site-countdown-offset,0px))]";
+const FIELD_CLASS =
+  "mt-2 h-11 sm:h-12 rounded-xl border-border/60 bg-background/80 focus-visible:ring-primary/30";
+const TEXTAREA_CLASS =
+  "mt-2 min-h-[120px] resize-y rounded-xl border-border/60 bg-background/80 focus-visible:ring-primary/30";
+const CARD_SURFACE = "rounded-2xl border border-border/60 bg-card/90";
 
 interface SuggestionsProps {
   language: "en" | "fr";
@@ -33,40 +40,10 @@ const Suggestions = ({ language }: SuggestionsProps) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [animatedSections, setAnimatedSections] = useState<Set<string>>(new Set());
   const { toast } = useToast();
-  const topRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
-  const heroRef = useRef<HTMLDivElement>(null);
-  const formRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const sectionId = entry.target.getAttribute("data-section");
-            if (sectionId) {
-              setAnimatedSections((prev) => new Set([...prev, sectionId]));
-            }
-          }
-        });
-      },
-      { threshold: 0.3, rootMargin: "0px 0px -50px 0px" }
-    );
-    const sections = [
-      { ref: heroRef, id: "hero" },
-      { ref: formRef, id: "form" },
-    ];
-    sections.forEach(({ ref, id }) => {
-      if (ref.current) {
-        ref.current.setAttribute("data-section", id);
-        observer.observe(ref.current);
-      }
-    });
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     const isLocalhost =
@@ -264,131 +241,152 @@ const Suggestions = ({ language }: SuggestionsProps) => {
   const t = copy[language];
 
   return (
-    <main className="pt-16 min-h-screen bg-background relative overflow-hidden" id="main-content">
+    <main className={cn("min-h-[100dvh] bg-background", PAGE_TOP)} id="main-content">
       <PageMeta title="Suggestions" description={PAGE_DESCRIPTIONS.suggestions[language]} path="/suggestions" />
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Suggestions", url: "/suggestions" }]} />
-      <div ref={topRef} className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 relative z-10">
+
+      <div className="mx-auto max-w-xl px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-8 sm:px-5 sm:pt-10">
         {submitted ? (
-          <div className="max-w-2xl mx-auto text-center space-y-6">
-            <div className="bg-green-950/30 rounded-sm p-8 border border-green-500/50">
-              <h2 className="text-3xl md:text-4xl font-heading font-bold text-green-400 mb-4">{t.thankYouTitle}</h2>
-              <p className="text-lg text-green-300/90">
-                {t.thankYouMessage}
-              </p>
+          <div className="mx-auto max-w-md text-center">
+            <div className={cn(CARD_SURFACE, "px-6 py-8 shadow-lg")}>
+              <h2 className="text-lg font-semibold tracking-tight text-primary">{t.thankYouTitle}</h2>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{t.thankYouMessage}</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-6 w-full rounded-xl border-border/60"
+                onClick={() => {
+                  setSubmitted(false);
+                  setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+                }}
+              >
+                {t.submitAnother}
+              </Button>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="btn-gradient"
-              onClick={() => {
-                setSubmitted(false);
-                setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-              }}
-            >
-              {t.submitAnother}
-            </Button>
           </div>
         ) : (
           <>
-            <div
-              ref={heroRef}
-              className={`text-center mb-12 transform transition-all duration-1000 ease-out ${
-                animatedSections.has("hero") ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-8 scale-95"
-              }`}
-            >
-              <h1 className="text-4xl md:text-5xl font-heading font-bold text-primary mb-4 uppercase">{t.title}</h1>
-              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">{t.description}</p>
-            </div>
+            <header className="mb-6 text-center sm:mb-8">
+              <h1 className="font-heading text-[1.75rem] font-bold tracking-tight text-foreground sm:text-3xl">
+                {t.title}
+              </h1>
+              <p className="mx-auto mt-2.5 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
+                {t.description}
+              </p>
+            </header>
 
-            <div
-              ref={formRef}
-              className={`bg-card rounded-sm p-8 max-w-2xl mx-auto transform transition-all duration-1000 ease-out ${
-                animatedSections.has("form") ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-              }`}
-            >
-              <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <Label className="text-sm font-medium">{t.typeLabel} *</Label>
-              <div className="flex flex-wrap gap-4 mt-2">
-                {[
-                  { value: "event" as const, icon: Calendar, label: t.event },
-                  { value: "artist" as const, icon: Music, label: t.artist },
-                  { value: "venue" as const, icon: MapPin, label: t.venue },
-                ].map(({ value, icon: Icon, label }) => (
-                  <label key={value} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="suggestion_type"
-                      value={value}
-                      checked={formData.suggestion_type === value}
-                      onChange={() => setFormData((d) => ({ ...d, suggestion_type: value }))}
-                      className="sr-only peer"
-                    />
-                    <span className="flex items-center gap-2 px-4 py-2 rounded-md border border-border bg-background peer-checked:border-primary peer-checked:bg-primary/10 transition-colors">
-                      <Icon className="w-4 h-4" />
-                      {label}
-                    </span>
-                  </label>
-                ))}
+            <div className={cn(CARD_SURFACE, "overflow-hidden shadow-lg")}>
+              <div className="border-b border-border/50 px-5 py-4 sm:px-6">
+                <p className="text-xs text-muted-foreground sm:text-sm">
+                  {language === "en"
+                    ? "Fields marked * are required"
+                    : "Les champs marqués * sont obligatoires"}
+                </p>
               </div>
-              {errors.suggestion_type && <p className="text-sm text-destructive mt-1">{errors.suggestion_type}</p>}
+
+              <div className="px-5 py-5 sm:px-6 sm:py-6">
+                <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
+                  <div>
+                    <Label className="text-sm font-medium text-foreground/90">{t.typeLabel} *</Label>
+                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      {[
+                        { value: "event" as const, icon: Calendar, label: t.event },
+                        { value: "artist" as const, icon: Music, label: t.artist },
+                        { value: "venue" as const, icon: MapPin, label: t.venue },
+                      ].map(({ value, icon: Icon, label }) => (
+                        <label key={value} className="cursor-pointer">
+                          <input
+                            type="radio"
+                            name="suggestion_type"
+                            value={value}
+                            checked={formData.suggestion_type === value}
+                            onChange={() => setFormData((d) => ({ ...d, suggestion_type: value }))}
+                            className="sr-only peer"
+                          />
+                          <span
+                            className={cn(
+                              "flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition-colors",
+                              "border-border/60 bg-background/80 text-foreground/90",
+                              "peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-primary"
+                            )}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="text-center leading-tight">{label}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    {errors.suggestion_type && (
+                      <p className="mt-1.5 text-sm text-destructive">{errors.suggestion_type}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="title" className="text-sm font-medium text-foreground/90">
+                      {t.titleLabel} *
+                    </Label>
+                    <Input
+                      id="title"
+                      value={formData.title}
+                      onChange={(e) => setFormData((d) => ({ ...d, title: e.target.value }))}
+                      placeholder={t.titlePlaceholder}
+                      maxLength={TITLE_MAX + 1}
+                      className={FIELD_CLASS}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formData.title.length}/{TITLE_MAX}
+                    </p>
+                    {errors.title && <p className="mt-1 text-sm text-destructive">{errors.title}</p>}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="email" className="text-sm font-medium text-foreground/90">
+                      {t.emailLabel} *
+                    </Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      required
+                      autoComplete="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData((d) => ({ ...d, email: e.target.value }))}
+                      placeholder={t.emailPlaceholder}
+                      className={FIELD_CLASS}
+                    />
+                    {errors.email && <p className="mt-1 text-sm text-destructive">{errors.email}</p>}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="details" className="text-sm font-medium text-foreground/90">
+                      {t.detailsLabel}
+                    </Label>
+                    <Textarea
+                      id="details"
+                      value={formData.details}
+                      onChange={(e) => setFormData((d) => ({ ...d, details: e.target.value }))}
+                      placeholder={t.detailsPlaceholder}
+                      rows={4}
+                      maxLength={DETAILS_MAX + 1}
+                      className={TEXTAREA_CLASS}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formData.details.length}/{DETAILS_MAX}
+                    </p>
+                    {errors.details && <p className="mt-1 text-sm text-destructive">{errors.details}</p>}
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="btn-gradient h-12 w-full rounded-xl"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? t.submitting : t.submit}
+                  </Button>
+                </form>
+              </div>
             </div>
 
-            <div>
-              <Label htmlFor="title" className="text-sm font-medium">
-                {t.titleLabel} *
-              </Label>
-              <Input
-                id="title"
-                value={formData.title}
-                onChange={(e) => setFormData((d) => ({ ...d, title: e.target.value }))}
-                placeholder={t.titlePlaceholder}
-                maxLength={TITLE_MAX + 1}
-                className="mt-2"
-              />
-              <p className="text-xs text-muted-foreground mt-1">{formData.title.length}/{TITLE_MAX}</p>
-              {errors.title && <p className="text-sm text-destructive mt-1">{errors.title}</p>}
-            </div>
-
-            <div>
-              <Label htmlFor="email" className="text-sm font-medium">
-                {t.emailLabel} *
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData((d) => ({ ...d, email: e.target.value }))}
-                placeholder={t.emailPlaceholder}
-                className="mt-2"
-              />
-              {errors.email && <p className="text-sm text-destructive mt-1">{errors.email}</p>}
-            </div>
-
-            <div>
-              <Label htmlFor="details" className="text-sm font-medium">
-                {t.detailsLabel}
-              </Label>
-              <Textarea
-                id="details"
-                value={formData.details}
-                onChange={(e) => setFormData((d) => ({ ...d, details: e.target.value }))}
-                placeholder={t.detailsPlaceholder}
-                rows={4}
-                maxLength={DETAILS_MAX + 1}
-                className="mt-2"
-              />
-              <p className="text-xs text-muted-foreground mt-1">{formData.details.length}/{DETAILS_MAX}</p>
-              {errors.details && <p className="text-sm text-destructive mt-1">{errors.details}</p>}
-            </div>
-
-            <Button type="submit" className="btn-gradient w-full" disabled={isSubmitting}>
-              {isSubmitting ? t.submitting : t.submit}
-            </Button>
-          </form>
-            </div>
-            <p className="text-center text-muted-foreground text-sm mt-8">
+            <p className="mt-6 text-center text-xs text-muted-foreground sm:text-sm">
               {language === "en"
                 ? "We read every suggestion and use them to plan future events."
                 : "Nous lisons chaque suggestion et nous en servons pour nos prochains événements."}

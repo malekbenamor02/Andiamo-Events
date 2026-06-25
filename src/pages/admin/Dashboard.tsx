@@ -89,7 +89,6 @@ import {
   PieChart,
   Download,
   RefreshCw,
-  Copy,
   Wrench,
   ArrowUp,
   ArrowDown,
@@ -6671,74 +6670,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Function to copy credentials to clipboard
-  const copyCredentials = async (application: AmbassadorApplication) => {
-    try {
-      // Check if this is a manually added ambassador
-      const isManual = application.manually_added;
-      let actualApplicationId = application.id;
-      
-      if (isManual) {
-        // Find the application record for this manually added ambassador
-        const { data: appRecord } = await supabase
-          .from('ambassador_applications')
-          .select('id')
-          .eq('phone_number', application.phone_number)
-          .eq('status', 'approved')
-          .eq('manually_added', true)
-          .maybeSingle();
-        if (appRecord) {
-          actualApplicationId = appRecord.id;
-        }
-      }
-
-      let credentials = ambassadorCredentials[actualApplicationId];
-      
-      // If credentials not found, try to get from ambassador
-      if (!credentials) {
-        const { data: ambassador } = await supabase
-          .from('ambassadors')
-          .select('id, phone')
-          .eq('phone', application.phone_number)
-          .maybeSingle();
-        
-        if (ambassador) {
-          // Generate new credentials for display
-          const password = generatePassword();
-          credentials = {
-            username: application.phone_number,
-            password: password
-          };
-        }
-      }
-
-      if (!credentials) {
-        toast({
-          title: t.error,
-          description: language === 'en' ? "No credentials found for this application" : "Aucune information d'identification trouvée",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const credentialsText = `Username: ${credentials.username}\nPassword: ${credentials.password}\nLogin URL: ${window.location.origin}/ambassador/auth`;
-      
-      await navigator.clipboard.writeText(credentialsText);
-      
-      toast({
-        title: language === 'en' ? "Credentials copied" : "Informations d'identification copiées",
-        description: language === 'en' ? "Credentials copied to clipboard. You can now paste them in a message." : "Informations copiées dans le presse-papiers. Vous pouvez maintenant les coller dans un message.",
-      });
-    } catch (error) {
-      console.error('Error copying credentials:', error);
-      toast({
-        title: t.error,
-        description: language === 'en' ? "Failed to copy credentials" : "Échec de la copie des informations",
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleReject = async (application: AmbassadorApplication) => {
     setProcessingId(application.id);
     
@@ -9658,7 +9589,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onApprove={handleApprove}
                 onReject={handleReject}
                 onResendEmail={resendEmail}
-                onCopyCredentials={copyCredentials}
                 processingId={processingId}
                 orphanedCount={applications.filter(app => app.status === 'approved' && !ambassadors.some(amb => amb.phone === app.phone_number || (app.email && amb.email && amb.email === app.email))).length}
                 currentAdminId={currentAdminId}

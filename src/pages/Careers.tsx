@@ -24,7 +24,8 @@ import {
 import type { CareerDomain, CareerApplicationField } from "@/lib/career/types";
 import { uploadCareerDocument } from "@/lib/upload";
 import { mapPublicError } from "@/lib/userErrors";
-import { Briefcase, ArrowLeft, ArrowRight, CheckCircle, Sparkles, Upload, X, Search, Loader2, Share2 } from "lucide-react";
+import { Briefcase, ArrowLeft, ArrowRight, CheckCircle, Upload, X, Search, Loader2, Share2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface CareersProps {
   language: "en" | "fr";
@@ -115,6 +116,15 @@ function isValidUrl(raw: string): boolean {
     return false;
   }
 }
+
+const PAGE_TOP = "pt-[calc(4rem+var(--site-countdown-offset,0px))]";
+const FIELD_CLASS =
+  "mt-2 h-11 sm:h-12 rounded-xl border-border/60 bg-background/80 focus-visible:ring-primary/30";
+const TEXTAREA_CLASS =
+  "mt-2 min-h-[120px] resize-y rounded-xl border-border/60 bg-background/80 focus-visible:ring-primary/30";
+const SELECT_TRIGGER_CLASS =
+  "mt-2 h-11 sm:h-12 w-full rounded-xl border-border/60 bg-background/80 focus:ring-primary/30";
+const CARD_SURFACE = "rounded-2xl border border-border/60 bg-card/90";
 
 export default function Careers({ language }: CareersProps) {
   const { slug } = useParams<{ slug?: string }>();
@@ -513,139 +523,125 @@ export default function Careers({ language }: CareersProps) {
     return (
       <>
         <PageMeta title={t.title} description={PAGE_DESCRIPTIONS.careers[language]} path="/careers" />
-        <div className="min-h-screen bg-background">
-          {/* Hero */}
-          <section className="container pt-16 pb-4 md:pt-16 md:pb-8 px-4">
-            <div className="max-w-3xl mx-auto text-center">
-              <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4 bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent animate-in fade-in slide-in-from-bottom-4 duration-700">
-                {t.title}
-              </h1>
-              <p className="text-muted-foreground text-lg md:text-xl animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
-                {t.subtitle}
-              </p>
-            </div>
+        <div className={cn("min-h-[100dvh] bg-background", PAGE_TOP)}>
+          <section className="mx-auto max-w-3xl px-4 pb-6 pt-8 text-center sm:px-5 sm:pt-10 sm:pb-8">
+            <h1 className="font-heading text-[1.75rem] font-bold tracking-tight text-foreground sm:text-4xl">
+              {t.title}
+            </h1>
+            <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground sm:mt-3 sm:text-base">
+              {t.subtitle}
+            </p>
           </section>
 
-          {/* Why join us */}
           {benefits && Array.isArray(benefits.items) && benefits.items.length > 0 && (
-            <section className="container py-4 md:py-8 px-4">
-              <div className="max-w-4xl mx-auto">
-                <h2 className="text-2xl md:text-3xl font-semibold mb-8 text-center flex items-center justify-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                  <Sparkles className="h-8 w-8 text-primary" />
-                  {benefits.title || t.whyJoinUs}
-                </h2>
-                <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {benefits.items.map((item, i) => (
-                    <li
-                      key={i}
-                      className="rounded-xl border border-primary/20 bg-card/50 p-5 backdrop-blur-sm transition-all duration-300 hover:border-primary/40 hover:shadow-[0_0_20px_hsl(var(--primary)/0.15)] animate-in fade-in slide-in-from-bottom-4 duration-500"
-                      style={{ animationDelay: `${i * 80}ms`, animationFillMode: "backwards" }}
-                    >
-                      <span className="flex items-center gap-2 text-foreground">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-medium">
-                          {i + 1}
-                        </span>
-                        {item}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            <section className="mx-auto max-w-3xl px-4 pb-8 sm:px-5">
+              <h2 className="mb-4 text-base font-semibold tracking-tight text-foreground sm:mb-5 sm:text-lg">
+                {benefits.title || t.whyJoinUs}
+              </h2>
+              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {benefits.items.map((item, i) => (
+                  <li
+                    key={i}
+                    className={cn(CARD_SURFACE, "px-4 py-3.5 text-sm leading-relaxed text-foreground/90")}
+                  >
+                    {item}
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
 
-          {/* Openings - square cards */}
-          <section className="container pt-2 pb-10 md:pt-6 md:pb-16 px-4">
-            <div className="max-w-4xl mx-auto">
-              {domains.length === 0 ? (
-                <p className="text-center text-muted-foreground text-lg animate-in fade-in duration-500">{t.closed}</p>
-              ) : (
-                <>
-                  <div className="relative mb-6">
-                    <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" aria-hidden />
-                    <Input
-                      type="search"
-                      placeholder={t.searchJobs}
-                      value={jobSearch}
-                      onChange={(e) => setJobSearch(e.target.value)}
-                      className="pl-11 pr-4 py-6 rounded-xl border-primary/20 bg-card/50 text-foreground placeholder:text-muted-foreground focus-visible:ring-primary/50 focus-visible:border-primary/40 transition-colors"
-                      aria-label={language === "fr" ? "Rechercher dans les offres" : "Search jobs"}
-                    />
-                  </div>
-                  {(() => {
-                    const q = jobSearch.trim().toLowerCase();
-                    const filtered = q
-                      ? domains.filter(
-                          (d) =>
-                            d.name.toLowerCase().includes(q) ||
-                            (d.description ?? "").toLowerCase().includes(q)
-                        )
-                      : domains;
-                    if (filtered.length === 0) {
-                      return (
-                        <p className="text-center text-muted-foreground text-lg py-8 animate-in fade-in duration-300">
-                          {t.noJobsMatch}
-                        </p>
-                      );
-                    }
+          <section className="mx-auto max-w-3xl px-4 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:px-5">
+            {domains.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground sm:text-base">{t.closed}</p>
+            ) : (
+              <>
+                <div className="relative mb-5">
+                  <Search
+                    className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <Input
+                    type="search"
+                    placeholder={t.searchJobs}
+                    value={jobSearch}
+                    onChange={(e) => setJobSearch(e.target.value)}
+                    className={cn(FIELD_CLASS, "mt-0 pl-10")}
+                    aria-label={language === "fr" ? "Rechercher dans les offres" : "Search jobs"}
+                  />
+                </div>
+                {(() => {
+                  const q = jobSearch.trim().toLowerCase();
+                  const filtered = q
+                    ? domains.filter(
+                        (d) =>
+                          d.name.toLowerCase().includes(q) ||
+                          (d.description ?? "").toLowerCase().includes(q)
+                      )
+                    : domains;
+                  if (filtered.length === 0) {
                     return (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {filtered.map((d, i) => (
-                    <Card
-                      key={d.id}
-                      className="border border-primary/10 bg-card/80 backdrop-blur-sm transition-all duration-300 hover:border-primary/30 hover:shadow-[0_0_30px_hsl(var(--primary)/0.12)] animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col min-h-0"
-                      style={{ animationDelay: `${i * 100}ms`, animationFillMode: "backwards" }}
-                    >
-                      <CardHeader className="flex flex-col items-start gap-3 p-5 pb-2 shrink-0">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/20">
-                          <Briefcase className="h-5 w-5 text-primary" />
-                        </span>
-                        <CardTitle className="text-lg font-semibold leading-tight line-clamp-2">
-                          {d.name}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="flex flex-1 flex-col justify-between gap-4 p-5 pt-0 pb-5 min-h-0">
-                        {(d.job_type || d.salary) && (
-                          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                            {d.job_type && <span className="rounded-md bg-primary/15 px-2 py-0.5 text-primary">{d.job_type}</span>}
-                            {d.salary && <span>{d.salary}</span>}
-                          </div>
-                        )}
-                        {d.description ? (
-                          <p className="text-sm text-muted-foreground line-clamp-4 flex-1 min-h-0">{d.description}</p>
-                        ) : (
-                          <div className="flex-1 min-h-0" />
-                        )}
-                        <div className="flex flex-col sm:flex-row gap-2 mt-2">
-                          <Button
-                            asChild
-                            className="btn-neon btn-apply-smooth rounded-lg w-full sm:w-auto shrink-0 inline-flex items-center"
-                            size="sm"
-                          >
-                            <Link to={`/careers/${d.slug}`} className="inline-flex items-center">
-                              {t.apply} <ArrowRight className="ml-2 h-4 w-4 btn-apply-arrow" />
-                            </Link>
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="rounded-lg w-full sm:w-auto inline-flex items-center border-primary/40 text-primary hover:bg-primary/10"
-                            onClick={() => handleShareJob(d.slug, d.name)}
-                          >
-                            <Share2 className="mr-2 h-4 w-4" />
-                            {language === "fr" ? "Partager" : "Share"}
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                        ))}
-                      </div>
+                      <p className="py-10 text-center text-sm text-muted-foreground sm:text-base">
+                        {t.noJobsMatch}
+                      </p>
                     );
-                  })()}
-                </>
-              )}
-            </div>
+                  }
+                  return (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      {filtered.map((d) => (
+                        <Card key={d.id} className={cn(CARD_SURFACE, "flex flex-col shadow-sm")}>
+                          <CardHeader className="gap-2 p-5 pb-2">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                              <Briefcase className="h-4 w-4 text-primary" aria-hidden />
+                            </div>
+                            <CardTitle className="text-base font-semibold leading-snug line-clamp-2 sm:text-lg">
+                              {d.name}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="flex flex-1 flex-col gap-4 p-5 pt-0">
+                            {(d.job_type || d.salary) && (
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                {d.job_type && (
+                                  <span className="rounded-md bg-muted px-2 py-0.5 font-medium text-foreground/80">
+                                    {d.job_type}
+                                  </span>
+                                )}
+                                {d.salary && <span>{d.salary}</span>}
+                              </div>
+                            )}
+                            {d.description ? (
+                              <p className="line-clamp-4 flex-1 text-sm leading-relaxed text-muted-foreground">
+                                {d.description}
+                              </p>
+                            ) : (
+                              <div className="flex-1" />
+                            )}
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <Button asChild className="btn-gradient h-10 rounded-xl sm:w-auto" size="sm">
+                                <Link to={`/careers/${d.slug}`} className="inline-flex items-center justify-center">
+                                  {t.apply}
+                                  <ArrowRight className="ml-2 h-4 w-4" />
+                                </Link>
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-10 rounded-xl border-border/60 sm:w-auto"
+                                onClick={() => handleShareJob(d.slug, d.name)}
+                              >
+                                <Share2 className="mr-2 h-4 w-4" />
+                                {language === "fr" ? "Partager" : "Share"}
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </>
+            )}
           </section>
         </div>
       </>
@@ -658,9 +654,11 @@ export default function Careers({ language }: CareersProps) {
 
   if (slug && !domain && domainResolved) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <p className="text-muted-foreground">{language === "fr" ? "Offre introuvable." : "Opening not found."}</p>
-        <Button asChild className="ml-4" variant="outline">
+      <div className={cn("flex min-h-[100dvh] flex-col items-center justify-center gap-4 bg-background p-5", PAGE_TOP)}>
+        <p className="text-sm text-muted-foreground sm:text-base">
+          {language === "fr" ? "Offre introuvable." : "Opening not found."}
+        </p>
+        <Button asChild variant="outline" className="rounded-xl border-border/60">
           <Link to="/careers">{t.back}</Link>
         </Button>
       </div>
@@ -669,16 +667,14 @@ export default function Careers({ language }: CareersProps) {
 
   if (submitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-        <Card className="max-w-md w-full text-center border-primary/20 shadow-[0_0_40px_hsl(var(--primary)/0.1)] animate-in zoom-in-95 fade-in duration-500">
-          <CardContent className="pt-8 pb-8">
-            <CheckCircle className="h-16 w-16 text-primary mx-auto mb-4 animate-in zoom-in duration-500" />
-            <h2 className="text-xl font-semibold mb-2">{t.success}</h2>
-            <Button asChild className="mt-4 btn-gradient rounded-lg">
-              <Link to="/careers">{t.back}</Link>
-            </Button>
-          </CardContent>
-        </Card>
+      <div className={cn("flex min-h-[100dvh] items-center justify-center bg-background p-5", PAGE_TOP)}>
+        <div className={cn(CARD_SURFACE, "w-full max-w-md px-6 py-8 text-center shadow-lg")}>
+          <CheckCircle className="mx-auto mb-4 h-12 w-12 text-primary" />
+          <h2 className="text-lg font-semibold tracking-tight">{t.success}</h2>
+          <Button asChild className="btn-gradient mt-6 w-full rounded-xl">
+            <Link to="/careers">{t.back}</Link>
+          </Button>
+        </div>
       </div>
     );
   }
@@ -690,129 +686,134 @@ export default function Careers({ language }: CareersProps) {
     return (
       <>
         <PageMeta title={language === "fr" ? `Postuler – ${domain?.name}` : `Apply – ${domain?.name}`} description={domain?.description || PAGE_DESCRIPTIONS.careers[language]} path={slug ? `/careers/${slug}/apply` : "/careers"} />
-        <div className="min-h-screen bg-background">
-          <div className="max-w-2xl mx-auto px-4 py-24">
-            <div className="mb-6">
-              <Link
-                to={`/careers/${slug}`}
-                className="inline-flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary hover:underline underline-offset-2 transition-colors"
-              >
-                <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
-                {t.backToJob}
-              </Link>
-            </div>
-            <h1 className="text-3xl font-bold mb-2">
-              {language === "fr" ? "Postuler" : "Apply"} – {domain?.name}
-            </h1>
-            {domain?.description && (
-              <p className="text-muted-foreground mb-8">{domain.description}</p>
-            )}
-            <section className="scroll-mt-24">
-              <form ref={formRef} id="career-apply-form" onSubmit={handleSubmit} className="space-y-6">
-                {sortedFields.map((f, idx) => (
-                  <div key={f.id} className="career-form-field" style={{ animationDelay: `${idx * 80}ms` }}>
-                    <Label htmlFor={f.id} className="text-foreground">
-                      {f.label} {f.required && <span className="text-primary">*</span>}
-                    </Label>
-                    {f.field_type === "textarea" ? (
-                      <Textarea
-                        id={f.id}
-                        value={formData[f.field_key] ?? ""}
-                        onChange={(e) => handleChange(f.field_key, e.target.value)}
-                        required={f.required}
-                        className="mt-2 rounded-lg border-primary/20 bg-card/30 focus:border-primary/50 focus:ring-primary/20"
-                        rows={4}
-                      />
-                    ) : f.field_type === "select" ? (
-                      <Select value={formData[f.field_key] ?? ""} onValueChange={(v) => handleChange(f.field_key, v)} required={f.required}>
-                        <SelectTrigger id={f.id} className="mt-2 rounded-lg border-primary/20 bg-card/30">
-                          <SelectValue placeholder={t.required} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(f.options || []).filter((opt) => {
-                            const disabledOptions = Array.isArray((f.validation as any)?.disabledOptions) ? ((f.validation as any).disabledOptions as string[]) : [];
-                            return !disabledOptions.includes(opt);
-                          }).map((opt) => (
-                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : f.field_type === "file" ? (
-                      <div className="mt-2">
-                        <input
-                          ref={(el) => { fileInputRefs.current[f.field_key] = el; }}
-                          type="file"
-                          accept=".pdf,.doc,.docx,image/*"
-                          className="hidden"
-                          onChange={(e) => handleFileDrop(f.field_key, e.target.files?.[0] ?? null)}
+        <div className={cn("min-h-[100dvh] bg-background", PAGE_TOP)}>
+          <div className="mx-auto max-w-xl px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-6 sm:px-5 sm:pt-8">
+            <Link
+              to={`/careers/${slug}`}
+              className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-primary"
+            >
+              <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
+              {t.backToJob}
+            </Link>
+
+            <div className={cn(CARD_SURFACE, "overflow-hidden shadow-lg")}>
+              <div className="border-b border-border/50 px-5 py-5 sm:px-6">
+                <h1 className="text-lg font-semibold tracking-tight text-primary sm:text-xl">
+                  {language === "fr" ? "Postuler" : "Apply"} – {domain?.name}
+                </h1>
+                {domain?.description && (
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{domain.description}</p>
+                )}
+              </div>
+
+              <div className="px-5 py-5 sm:px-6 sm:py-6">
+                <form ref={formRef} id="career-apply-form" onSubmit={handleSubmit} className="space-y-5">
+                  {sortedFields.map((f) => (
+                    <div key={f.id}>
+                      <Label htmlFor={f.id} className="text-sm font-medium text-foreground/90">
+                        {f.label} {f.required && <span className="text-muted-foreground">*</span>}
+                      </Label>
+                      {f.field_type === "textarea" ? (
+                        <Textarea
+                          id={f.id}
+                          value={formData[f.field_key] ?? ""}
+                          onChange={(e) => handleChange(f.field_key, e.target.value)}
+                          required={f.required}
+                          className={TEXTAREA_CLASS}
+                          rows={4}
                         />
-                        {!fileFiles[f.field_key] ? (
-                          <div
-                            onClick={() => fileInputRefs.current[f.field_key]?.click()}
-                            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-primary", "bg-primary/5"); }}
-                            onDragLeave={(e) => { e.currentTarget.classList.remove("border-primary", "bg-primary/5"); }}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              e.currentTarget.classList.remove("border-primary", "bg-primary/5");
-                              const file = e.dataTransfer.files?.[0];
-                              if (file) handleFileDrop(f.field_key, file);
-                            }}
-                            className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/30 bg-card/30 py-8 px-4 cursor-pointer transition-all hover:border-primary/50 hover:bg-primary/5"
-                          >
-                            <Upload className="h-10 w-10 text-primary/70 mb-2" />
-                            <p className="text-sm text-muted-foreground text-center">{t.dropFile}</p>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-card/30 px-4 py-3">
-                            <span className="text-sm truncate">{fileFiles[f.field_key].name}</span>
-                            <Button type="button" variant="ghost" size="icon" className="shrink-0 text-destructive hover:text-destructive" onClick={() => handleFileDrop(f.field_key, null)}>
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
+                      ) : f.field_type === "select" ? (
+                        <Select value={formData[f.field_key] ?? ""} onValueChange={(v) => handleChange(f.field_key, v)} required={f.required}>
+                          <SelectTrigger id={f.id} className={SELECT_TRIGGER_CLASS}>
+                            <SelectValue placeholder={t.required} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(f.options || []).filter((opt) => {
+                              const disabledOptions = Array.isArray((f.validation as any)?.disabledOptions) ? ((f.validation as any).disabledOptions as string[]) : [];
+                              return !disabledOptions.includes(opt);
+                            }).map((opt) => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : f.field_type === "file" ? (
+                        <div className="mt-2">
+                          <input
+                            ref={(el) => { fileInputRefs.current[f.field_key] = el; }}
+                            type="file"
+                            accept=".pdf,.doc,.docx,image/*"
+                            className="hidden"
+                            onChange={(e) => handleFileDrop(f.field_key, e.target.files?.[0] ?? null)}
+                          />
+                          {!fileFiles[f.field_key] ? (
+                            <div
+                              onClick={() => fileInputRefs.current[f.field_key]?.click()}
+                              onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-primary/40", "bg-muted/30"); }}
+                              onDragLeave={(e) => { e.currentTarget.classList.remove("border-primary/40", "bg-muted/30"); }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.currentTarget.classList.remove("border-primary/40", "bg-muted/30");
+                                const file = e.dataTransfer.files?.[0];
+                                if (file) handleFileDrop(f.field_key, file);
+                              }}
+                              className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border/60 bg-background/50 px-4 py-8 transition-colors hover:border-border hover:bg-muted/20"
+                            >
+                              <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
+                              <p className="text-center text-sm text-muted-foreground">{t.dropFile}</p>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between rounded-xl border border-border/60 bg-background/80 px-4 py-3">
+                              <span className="truncate text-sm">{fileFiles[f.field_key].name}</span>
+                              <Button type="button" variant="ghost" size="icon" className="shrink-0 text-destructive hover:text-destructive" onClick={() => handleFileDrop(f.field_key, null)}>
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <Input
+                          id={f.id}
+                          type={f.field_type === "email" ? "email" : f.field_type === "phone" ? "tel" : f.field_type === "number" || f.field_type === "age" ? "number" : "text"}
+                          inputMode={f.field_type === "phone" ? "numeric" : undefined}
+                          min={f.field_type === "age" && (f.validation as { min?: number })?.min != null ? (f.validation as { min: number }).min : undefined}
+                          max={f.field_type === "age" && (f.validation as { max?: number })?.max != null ? (f.validation as { max: number }).max : undefined}
+                          value={formData[f.field_key] ?? ""}
+                          onChange={(e) => handleChange(f.field_key, e.target.value)}
+                          required={f.required}
+                          placeholder={
+                            f.field_type === "phone"
+                              ? (language === "fr" ? "2X XXX XXX" : "2X XXX XXX")
+                              : f.field_type === "link" && (f.validation as { linkType?: string })?.linkType
+                                ? (LINK_PLACEHOLDERS[(f.validation as { linkType: string }).linkType]?.[language === "fr" ? "fr" : "en"] ?? "https://...")
+                                : undefined
+                          }
+                          title={f.field_type === "phone" ? (language === "fr" ? "8 chiffres commençant par 2, 5, 4 ou 9" : "8 digits starting with 2, 5, 4, or 9") : undefined}
+                          className={FIELD_CLASS}
+                        />
+                      )}
+                    </div>
+                  ))}
+                  <Button
+                    type="submit"
+                    disabled={submitting}
+                    className="btn-gradient h-12 w-full rounded-xl"
+                    aria-busy={submitting}
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {t.submitting}
+                      </>
                     ) : (
-                      <Input
-                        id={f.id}
-                        type={f.field_type === "email" ? "email" : f.field_type === "phone" ? "tel" : f.field_type === "number" || f.field_type === "age" ? "number" : "text"}
-                        inputMode={f.field_type === "phone" ? "numeric" : undefined}
-                        min={f.field_type === "age" && (f.validation as { min?: number })?.min != null ? (f.validation as { min: number }).min : undefined}
-                        max={f.field_type === "age" && (f.validation as { max?: number })?.max != null ? (f.validation as { max: number }).max : undefined}
-                        value={formData[f.field_key] ?? ""}
-                        onChange={(e) => handleChange(f.field_key, e.target.value)}
-                        required={f.required}
-                        placeholder={
-                          f.field_type === "phone"
-                            ? (language === "fr" ? "2X XXX XXX" : "2X XXX XXX")
-                            : f.field_type === "link" && (f.validation as { linkType?: string })?.linkType
-                              ? (LINK_PLACEHOLDERS[(f.validation as { linkType: string }).linkType]?.[language === "fr" ? "fr" : "en"] ?? "https://...")
-                              : undefined
-                        }
-                        title={f.field_type === "phone" ? (language === "fr" ? "8 chiffres commençant par 2, 5, 4 ou 9" : "8 digits starting with 2, 5, 4, or 9") : undefined}
-                        className="mt-2 rounded-lg border-primary/20 bg-card/30 focus:border-primary/50 focus:ring-primary/20"
-                      />
+                      <>
+                        {t.submit}
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </>
                     )}
-                  </div>
-                ))}
-                <Button
-                  type="submit"
-                  disabled={submitting}
-                  className="btn-neon btn-apply-smooth rounded-lg inline-flex items-center"
-                  aria-busy={submitting}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {t.submitting}
-                    </>
-                  ) : (
-                    <>
-                      {t.submit} <ArrowRight className="ml-2 h-4 w-4 btn-apply-arrow" />
-                    </>
-                  )}
-                </Button>
-              </form>
-            </section>
+                  </Button>
+                </form>
+              </div>
+            </div>
           </div>
         </div>
       </>
@@ -822,33 +823,25 @@ export default function Careers({ language }: CareersProps) {
   return (
     <>
       <PageMeta title={`${domain?.name} – ${t.title}`} description={domain?.description || PAGE_DESCRIPTIONS.careers[language]} path={slug ? `/careers/${slug}` : "/careers"} />
-      <div className="min-h-screen bg-background">
-        {/* Mobile: stacked. Desktop (md+): fixed left column + scrollable right column */}
-        <div className="md:grid md:grid-cols-[minmax(0,360px)_1fr] lg:grid-cols-[minmax(0,400px)_1fr] md:gap-10 md:min-h-screen">
-          {/* Left (mobile: sticky top bar, desktop: sticky left column) */}
-          <header className="sticky top-0 z-10 border-b md:border-b-0 md:border-r border-border/50 bg-background/95 backdrop-blur-sm career-form-view shrink-0">
-            <div className="pt-24 pb-6 px-4 mx-auto max-w-xl md:max-w-none md:mx-0 md:px-6 md:pb-8">
-              <div className="mb-4 career-form-item" style={{ animationDelay: "0ms" }}>
-                <Link
-                  to="/careers"
-                  className="inline-flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary hover:underline underline-offset-2 transition-colors"
-                >
-                  <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
-                  {t.back}
-                </Link>
-              </div>
-              <h1 className="text-3xl font-bold mb-2 career-form-item" style={{ animationDelay: "80ms" }}>
-                {domain?.name}
-              </h1>
+      <div className={cn("min-h-[100dvh] bg-background", PAGE_TOP)}>
+        <div className="md:grid md:min-h-[calc(100dvh-4rem-var(--site-countdown-offset,0px))] md:grid-cols-[minmax(0,340px)_1fr] lg:grid-cols-[minmax(0,380px)_1fr]">
+          <header className="shrink-0 border-b border-border/50 bg-background md:sticky md:top-[calc(4rem+var(--site-countdown-offset,0px))] md:h-[calc(100dvh-4rem-var(--site-countdown-offset,0px))] md:border-b-0 md:border-r">
+            <div className="mx-auto max-w-xl px-4 py-6 sm:px-5 md:mx-0 md:flex md:h-full md:flex-col md:px-6 md:py-8">
+              <Link
+                to="/careers"
+                className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-primary"
+              >
+                <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
+                {t.back}
+              </Link>
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{domain?.name}</h1>
               {domain?.description && (
-                <p className="text-muted-foreground mb-3 career-form-item" style={{ animationDelay: "160ms" }}>
-                  {domain.description}
-                </p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{domain.description}</p>
               )}
               {(domain?.job_type || domain?.salary) && (
-                <div className="flex flex-wrap items-center gap-3 mb-4 career-form-item" style={{ animationDelay: "200ms" }}>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
                   {domain.job_type && (
-                    <span className="rounded-lg bg-primary/15 px-3 py-1 text-sm font-medium text-primary">
+                    <span className="rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-foreground/80">
                       {domain.job_type}
                     </span>
                   )}
@@ -857,43 +850,42 @@ export default function Careers({ language }: CareersProps) {
                   )}
                 </div>
               )}
-              <div className="career-form-item" style={{ animationDelay: "240ms" }}>
-                <Button asChild className="btn-neon btn-apply-smooth rounded-lg inline-flex items-center">
-                  <Link to={`/careers/${slug}/apply`} className="inline-flex items-center">
-                    {t.apply} <ArrowRight className="ml-2 h-4 w-4 btn-apply-arrow" />
+              <div className="mt-6 md:mt-auto md:pt-6">
+                <Button asChild className="btn-gradient h-11 w-full rounded-xl sm:w-auto">
+                  <Link to={`/careers/${slug}/apply`} className="inline-flex items-center justify-center">
+                    {t.apply}
+                    <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
               </div>
             </div>
           </header>
 
-          {/* Right: scrollable job details + form (mobile: below header, desktop: main column) */}
-          <main className="px-4 py-8 mx-auto max-w-xl md:max-w-none md:mx-0 md:px-8 md:pt-24 md:pb-12">
-            {/* Job details (admin-added full details) */}
+          <main className="mx-auto max-w-xl px-4 py-8 sm:px-5 md:mx-0 md:max-w-2xl md:px-8 md:py-10 lg:max-w-3xl">
             {((domain as { benefits?: string })?.benefits || (domain as { job_details?: string })?.job_details) && (
-              <div className="space-y-6 mb-10">
-                <h2 className="text-xl font-semibold text-foreground">
+              <div className="space-y-5">
+                <h2 className="text-base font-semibold tracking-tight sm:text-lg">
                   {language === "fr" ? "Détails du poste" : "Job Details"}
                 </h2>
                 {(domain as { benefits?: string })?.benefits && (
                   <div
-                    className="rounded-xl border border-primary/20 bg-card/30 p-5 prose prose-invert prose-sm max-w-none"
+                    className={cn(CARD_SURFACE, "prose prose-invert prose-sm max-w-none p-5")}
                     dangerouslySetInnerHTML={{ __html: (domain as { benefits: string }).benefits }}
                   />
                 )}
                 {(domain as { job_details?: string })?.job_details && (
-                  <div className="rounded-xl border border-primary/20 bg-card/30 p-5 prose prose-invert prose-sm max-w-none">
+                  <div className={cn(CARD_SURFACE, "prose prose-invert prose-sm max-w-none p-5")}>
                     {(domain as { job_details: string }).job_details.trim().startsWith("<") ? (
                       <div dangerouslySetInnerHTML={{ __html: (domain as { job_details: string }).job_details }} />
                     ) : (
-                      <div className="whitespace-pre-wrap text-foreground">{(domain as { job_details: string }).job_details}</div>
+                      <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                        {(domain as { job_details: string }).job_details}
+                      </div>
                     )}
                   </div>
                 )}
               </div>
             )}
-
-            {/* Form is on the separate apply page (/careers/:slug/apply) — Apply button above links there */}
           </main>
         </div>
       </div>

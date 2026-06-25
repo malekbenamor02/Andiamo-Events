@@ -22,7 +22,7 @@ const CounterSection = ({ language }: CounterSectionProps) => {
       setCounters({
         events: Math.floor(TARGET_COUNTS.events * progress),
         members: Math.floor(TARGET_COUNTS.members * progress),
-        followers: Math.floor(TARGET_COUNTS.followers * progress)
+        followers: Math.floor(TARGET_COUNTS.followers * progress),
       });
 
       if (step >= steps) {
@@ -50,40 +50,41 @@ const CounterSection = ({ language }: CounterSectionProps) => {
   }, [animateCounters, hasAnimated]);
 
   return (
-    <section id="counter-section" className="py-20 bg-gradient-dark">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-heading font-black mb-4 text-foreground uppercase">
+    <section id="counter-section" className="bg-gradient-dark py-16 md:py-20">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mb-10 text-center md:mb-12">
+          <h2 className="mb-3 font-heading text-3xl font-bold uppercase tracking-wide text-foreground md:text-4xl">
             {language === 'en' ? 'Our Impact' : 'Notre Impact'}
           </h2>
-          <p className="text-xl text-muted-foreground uppercase">
+          <p className="mx-auto max-w-2xl text-base uppercase tracking-wide text-muted-foreground md:text-lg">
             {language === 'en'
               ? 'Join thousands of party-goers across Tunisia'
               : 'Rejoignez des milliers de fêtards à travers la Tunisie'}
           </p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-3 md:gap-8">
           <div className="text-center">
-            <div className="text-5xl md:text-6xl font-heading font-bold text-primary mb-2">
+            <div className="font-heading text-5xl font-bold tabular-nums text-primary md:text-6xl">
               {counters.events.toLocaleString()}+
             </div>
-            <p className="text-xl text-muted-foreground">
+            <p className="mt-2 text-lg text-muted-foreground md:text-xl">
               {language === 'en' ? 'Events' : 'Événements'}
             </p>
           </div>
           <div className="text-center">
-            <div className="text-5xl md:text-6xl font-heading font-bold text-primary mb-2">
+            <div className="font-heading text-5xl font-bold tabular-nums text-primary md:text-6xl">
               {counters.members.toLocaleString()}+
             </div>
-            <p className="text-xl text-muted-foreground">
+            <p className="mt-2 text-lg text-muted-foreground md:text-xl">
               {language === 'en' ? 'Members' : 'Membres'}
             </p>
           </div>
           <div className="text-center">
-            <div className="text-5xl md:text-6xl font-heading font-bold text-primary mb-2">
+            <div className="font-heading text-5xl font-bold tabular-nums text-primary md:text-6xl">
               {counters.followers.toLocaleString()}+
             </div>
-            <p className="text-xl text-muted-foreground">
+            <p className="mt-2 text-lg text-muted-foreground md:text-xl">
               {language === 'en' ? 'Followers' : 'Abonnés'}
             </p>
           </div>
@@ -93,4 +94,4 @@ const CounterSection = ({ language }: CounterSectionProps) => {
   );
 };
 
-export default CounterSection; 
+export default CounterSection;

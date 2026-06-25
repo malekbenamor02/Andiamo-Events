@@ -46,7 +46,6 @@ import {
   CheckCircle,
   XCircle,
   Mail as MailIcon,
-  Copy,
   Instagram,
   ExternalLink,
   FolderPlus,
@@ -158,7 +157,6 @@ export function ApplicationsListCore({
   onApprove,
   onReject,
   onResendEmail,
-  onCopyCredentials,
   processingId,
   orphanedCount,
   title = "Ambassador Applications",
@@ -869,8 +867,7 @@ export function ApplicationsListCore({
                                 }}
                                 disabled={processingId === application.id}
                                 size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-xs"
+                                className="h-7 px-2 text-xs bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-600/40"
                                 title={
                                   emailStatus[application.id] === "failed"
                                     ? language === "en"
@@ -900,19 +897,6 @@ export function ApplicationsListCore({
                                     </span>
                                   </>
                                 )}
-                              </Button>
-                              <Button
-                                onClick={() => onCopyCredentials(application)}
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 w-7 p-0"
-                                title={
-                                  language === "en"
-                                    ? "Copy credentials to clipboard"
-                                    : "Copier les identifiants dans le presse-papiers"
-                                }
-                              >
-                                <Copy className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           )}

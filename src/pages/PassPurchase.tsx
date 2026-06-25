@@ -13,6 +13,7 @@ import { formatDateDMY, isPassPurchaseWindowClosed } from '@/lib/date-utils';
 import { cn, generateSlug, findEventByPublicUrlSlug, normalizeCommonEmailTypos } from '@/lib/utils';
 import { isLocalhostClient } from '@/lib/localhost';
 import { computeOnlinePaymentFeesDisplay } from '@/lib/onlinePaymentFee';
+import { savePaymentReturnPath } from '@/lib/orders/paymentReturnPath';
 import { useCountdownBannerSettings } from '@/hooks/useCountdownBannerSettings';
 import { useAmbassadorSelectionSettings } from '@/hooks/useAmbassadorSelectionSettings';
 import { isAmbassadorCityWide } from '@/lib/ambassadorSelectionSettings';
@@ -30,6 +31,7 @@ import { OrderSummary } from '@/components/orders/OrderSummary';
 import { PromoCodeField } from '@/components/orders/PromoCodeField';
 import { useEventPromoCheckout } from '@/hooks/useEventPromoCheckout';
 import { OrderSuccessScreen } from '@/components/orders/OrderSuccessScreen';
+import { PresalePortalScreen } from '@/components/orders/PresalePortalScreen';
 import { PassPurchaseEventDetails } from '@/components/orders/PassPurchaseEventDetails';
 import { PassPurchaseSeatingChart } from '@/components/orders/PassPurchaseSeatingChart';
 import { PassPurchaseWizardPanel, PassPurchaseWizardStep } from '@/components/orders/PassPurchaseWizardStep';
@@ -621,10 +623,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       completePaymentToSubmit: "Select a payment method above to continue.",
       next: "Continue",
       back: "Back",
-      presaleTitle: "So you think you're VIP?",
-      presaleHint: "Unlock access for our community members.",
-      presalePlaceholder: "Presale code",
-      presaleUnlock: "Prove It",
       presaleInvalid: "Invalid or expired code. Try again.",
     },
     fr: {
@@ -658,10 +656,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       completePaymentToSubmit: "Choisissez un mode de paiement ci-dessus pour continuer.",
       next: "Continuer",
       back: "Retour",
-      presaleTitle: "Oh… alors tu te crois VIP ?",
-      presaleHint: "Débloquez l'accès réservé aux membres de notre communauté.",
-      presalePlaceholder: "Code prévente",
-      presaleUnlock: "Prouve-le",
       presaleInvalid: "Code invalide ou expiré. Réessayez.",
     }
   };
@@ -1484,6 +1478,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         trackEvent('order_submit_online', onlineParams);
 
         endCheckoutAttempt();
+        const returnPath = eventSlug
+          ? `/${eventSlug}`
+          : event?.id || eventId
+            ? `/pass-purchase?eventId=${encodeURIComponent(event?.id || eventId!)}`
+            : '/pass-purchase';
+        savePaymentReturnPath(returnPath);
         navigate(`/payment-processing?orderId=${order.id}&init=1`, { replace: true });
       } else if (paymentMethod === PaymentMethod.EXTERNAL_APP) {
         // TODO: Wire processConfirmedTicketPurchaseTracking when external_app has a confirmed PAID signal.
@@ -1631,45 +1631,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     return (
       <main className="min-h-screen bg-gradient-dark flex flex-col pt-16" id="main-content">
         <PageMeta title={purchaseTitle} description={event.description?.slice(0, 155) ?? ''} path={purchasePath} />
-        <div className="flex flex-1 flex-col items-center justify-center px-4 pb-12">
-        <Card className="flex w-full max-w-md flex-col items-stretch text-left glass border-border/60">
-          <CardHeader className="items-stretch text-left">
-            <h2 className="w-full text-left text-2xl font-semibold font-heading leading-snug tracking-tight text-primary">
-              {t[language].presaleTitle}
-            </h2>
-          </CardHeader>
-          <CardContent className="flex flex-col items-stretch space-y-4 text-left">
-            <p className="w-full text-left text-sm text-muted-foreground">{t[language].presaleHint}</p>
-            <form onSubmit={handlePresaleRedeem} className="flex w-full flex-col items-stretch space-y-3 text-left">
-              <Input
-                type="text"
-                name="presale-code"
-                autoComplete="off"
-                value={presaleCodeDraft}
-                autoCapitalize="characters"
-                spellCheck={false}
-                onChange={(e) => setPresaleCodeDraft(e.target.value.toUpperCase())}
-                placeholder={t[language].presalePlaceholder}
-                className="bg-background/50 text-left"
-              />
-              <Button
-                type="submit"
-                disabled={presaleRedeeming}
-                className={cn('w-full', presaleRedeeming && 'disabled:!opacity-100')}
-              >
-                {presaleRedeeming ? (
-                  <>
-                    <Loader size="sm" className="!bg-white shrink-0" />
-                    {t[language].processing}
-                  </>
-                ) : (
-                  t[language].presaleUnlock
-                )}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-        </div>
+        <PresalePortalScreen
+          language={language}
+          eventName={event.name}
+          code={presaleCodeDraft}
+          onCodeChange={setPresaleCodeDraft}
+          onSubmit={handlePresaleRedeem}
+          isSubmitting={presaleRedeeming}
+          processingLabel={t[language].processing}
+          onBackToEvents={() => navigate('/')}
+        />
       </main>
     );
   }

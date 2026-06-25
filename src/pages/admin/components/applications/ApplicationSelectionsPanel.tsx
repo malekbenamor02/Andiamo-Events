@@ -70,7 +70,6 @@ export function ApplicationSelectionsPanel({
   onApprove,
   onReject,
   onResendEmail,
-  onCopyCredentials,
   processingId,
   currentAdminId,
   currentAdminName,
@@ -718,7 +717,6 @@ export function ApplicationSelectionsPanel({
             onApprove={onApprove}
             onReject={onReject}
             onResendEmail={onResendEmail}
-            onCopyCredentials={onCopyCredentials}
             processingId={processingId}
             orphanedCount={0}
             title={selectedSelection.name}

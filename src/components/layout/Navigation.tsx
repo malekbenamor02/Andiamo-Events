@@ -10,7 +10,6 @@ import {
   Mail,
   MessageSquare,
   Info,
-  ChevronRight,
   Globe,
   type LucideIcon,
 } from "lucide-react";
@@ -284,7 +283,7 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
   const isLightMode = theme === "light";
   const themeLabel = isLightMode ? "Light" : "Dark";
   const mobileMenuButtonClass = isMenuOpen
-    ? "md:hidden p-2 text-primary hover:text-primary transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-primary/35 bg-primary/12 hover:bg-primary/20 hover:border-primary/55 active:scale-95"
+    ? "md:hidden p-2 text-foreground hover:text-muted-foreground transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg active:scale-95"
     : isLightMode && !useBlackLogo
       ? "md:hidden p-2 text-white hover:text-white transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-white/25 bg-black/25 hover:bg-black/40 active:scale-95"
       : "md:hidden p-2 text-foreground hover:text-primary transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-card/60 active:scale-95";
@@ -430,13 +429,7 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
             aria-label={language === "en" ? "Navigation menu" : "Menu de navigation"}
           >
             <div className="mobile-menu-inner">
-              <span className="mobile-menu-glow mobile-menu-glow--primary" aria-hidden />
-              <span className="mobile-menu-glow mobile-menu-glow--accent" aria-hidden />
-
-              <div className="mobile-menu-header">
-                <p className="mobile-menu-tagline">{PRIMARY_SLOGAN[language]}</p>
-                <span className="mobile-menu-header-spacer" aria-hidden />
-              </div>
+              <p className="mobile-menu-tagline">{PRIMARY_SLOGAN[language]}</p>
 
               <nav className="mobile-menu-nav" aria-label={language === "en" ? "Main navigation" : "Navigation principale"}>
                 {navigationMobile[language].map((item, index) => {
@@ -448,15 +441,11 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
                       to={item.href}
                       onClick={closeMenu}
                       className={`mobile-menu-link${active ? " mobile-menu-link--active" : ""}`}
-                      style={{ animationDelay: `${0.08 + index * 0.055}s` }}
+                      style={{ animationDelay: `${0.04 + index * 0.035}s` }}
                       aria-current={active ? "page" : undefined}
                     >
-                      {active && <span className="mobile-menu-link-indicator" aria-hidden />}
-                      <span className="mobile-menu-link-icon" aria-hidden>
-                        <Icon className="w-[18px] h-[18px]" strokeWidth={2} />
-                      </span>
+                      <Icon className="mobile-menu-link-icon" strokeWidth={1.75} aria-hidden />
                       <span className="mobile-menu-link-label">{item.name}</span>
-                      <ChevronRight className="mobile-menu-link-chevron" aria-hidden />
                     </Link>
                   );
                 })}
@@ -464,7 +453,7 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
 
               <div
                 className="mobile-menu-footer"
-                style={{ animationDelay: `${0.08 + navigationMobile[language].length * 0.055 + 0.08}s` }}
+                style={{ animationDelay: `${0.04 + navigationMobile[language].length * 0.035 + 0.06}s` }}
               >
                 <button
                   type="button"

@@ -13,15 +13,10 @@ interface IndexProps {
 }
 
 const Index = ({ language }: IndexProps) => {
-  const [counters, setCounters] = useState({ events: 0, members: 0, followers: 0});
   const [animatedSections, setAnimatedSections] = useState<Set<string>>(new Set(['hero']));
 
-  // Refs for each section
   const heroRef = useRef<HTMLDivElement>(null);
-  const counterRef = useRef<HTMLDivElement>(null);
   const sponsorsRef = useRef<HTMLDivElement>(null);
-
-  const targetCounts = { events: 20, members: 40, followers: 45000};
 
   // Scroll to top when page loads/refreshes
   useEffect(() => {
@@ -42,11 +37,6 @@ const Index = ({ language }: IndexProps) => {
             const sectionId = entry.target.getAttribute('data-section');
             if (sectionId) {
               setAnimatedSections(prev => new Set([...prev, sectionId]));
-
-              // Trigger counter animation when counter section is visible
-              if (sectionId === 'counter') {
-                animateCounters();
-              }
             }
           }
         });
@@ -59,7 +49,6 @@ const Index = ({ language }: IndexProps) => {
 
     const sections = [
       { ref: heroRef, id: 'hero' },
-      { ref: counterRef, id: 'counter' },
       { ref: sponsorsRef, id: 'sponsors' },
     ];
 
@@ -72,29 +61,6 @@ const Index = ({ language }: IndexProps) => {
 
     return () => observer.disconnect();
   }, []);
-
-  const animateCounters = () => {
-    const duration = 2000;
-    const steps = 60;
-    const stepDuration = duration / steps;
-
-    let step = 0;
-    const timer = setInterval(() => {
-      step++;
-      const progress = step / steps;
-
-      setCounters({
-        events: Math.floor(targetCounts.events * progress),
-        members: Math.floor(targetCounts.members * progress),
-        followers: Math.floor(targetCounts.followers * progress),
-      });
-
-      if (step >= steps) {
-        clearInterval(timer);
-        setCounters(targetCounts);
-      }
-    }, stepDuration);
-  };
 
   return (
     <main className="relative" id="main-content">
@@ -117,16 +83,7 @@ const Index = ({ language }: IndexProps) => {
 
       <FeaturedEventsSection language={language} />
 
-      <div
-        ref={counterRef}
-        className={`transform transition-all duration-1000 ease-out ${
-          animatedSections.has('counter')
-            ? 'opacity-100 translate-y-0 scale-100'
-            : 'opacity-0 translate-y-8 scale-95'
-        }`}
-      >
-        <CounterSection language={language} />
-      </div>
+      <CounterSection language={language} />
 
       <div
         ref={sponsorsRef}

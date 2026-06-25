@@ -5,10 +5,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import Loader from '@/components/ui/Loader';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { OnlinePaymentStatusScreen } from '@/components/orders/OnlinePaymentStatusScreen';
+import { getPaymentReturnPath } from '@/lib/orders/paymentReturnPath';
 import { getApiBaseUrl } from '@/lib/api-routes';
 import { mapPublicError, mapThrownError } from '@/lib/userErrors';
 import {
@@ -49,20 +47,40 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
 
   const t = language === 'en' ? {
     title: 'Processing payment',
-    successTitle: 'Payment successful!',
+    redirecting: 'Redirecting to payment...',
+    pleaseWait: 'Please wait...',
+    successTitle: 'Payment confirmed',
+    successSubtitle: 'Thank you for your order',
     successMessage: 'Your payment has been confirmed. Your tickets have been sent to your email.',
     failedTitle: 'Payment failed',
     failedMessage: 'Your payment could not be completed. Please try again or choose another payment method.',
-    backToEvents: 'Back to Events',
+    unknownTitle: 'Payment not confirmed',
+    unknownMessage:
+      'We could not reach the bank to confirm your payment. If you see a debit on your card, please wait for an email or SMS confirmation, or contact our support.',
+    backToEvents: 'Back to events',
+    buyAgain: 'Buy again',
+    goBack: 'Go back',
+    contactSupport: 'Contact support',
+    close: 'Close',
     noOrder: 'Invalid request. No order ID provided.',
     genericError: 'Something went wrong. Please try again or contact us.'
   } : {
     title: 'Traitement du paiement',
-    successTitle: 'Paiement réussi !',
+    redirecting: 'Redirection vers le paiement...',
+    pleaseWait: 'Veuillez patienter...',
+    successTitle: 'Paiement confirmé',
+    successSubtitle: 'Merci pour votre commande',
     successMessage: 'Votre paiement a été confirmé. Vos billets ont été envoyés par email.',
     failedTitle: 'Paiement échoué',
     failedMessage: 'Votre paiement n\'a pas pu être traité. Veuillez réessayer ou choisir un autre mode de paiement.',
-    backToEvents: 'Retour aux Événements',
+    unknownTitle: 'Paiement non confirmé',
+    unknownMessage:
+      'Nous n\'avons pas pu joindre la banque pour confirmer votre paiement. Si vous voyez un débit sur votre carte, veuillez attendre un email ou un SMS de confirmation, ou contacter notre support.',
+    backToEvents: 'Retour aux événements',
+    buyAgain: 'Réessayer',
+    goBack: 'Retour',
+    contactSupport: 'Contacter le support',
+    close: 'Fermer',
     noOrder: 'Requête invalide. Aucun numéro de commande.',
     genericError: 'Une erreur s\'est produite. Veuillez réessayer ou nous contacter.'
   };
@@ -184,79 +202,62 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
     setPurchaseTracked(true);
   }, [state, purchaseTracked, confirmResult, orderId]);
 
+  const statusVariant =
+    state === 'redirecting' ? 'redirecting' : state;
+
+  const statusTitle =
+    statusVariant === 'loading' || statusVariant === 'redirecting'
+      ? t.title
+      : statusVariant === 'success'
+        ? t.successTitle
+        : statusVariant === 'unknown'
+          ? t.unknownTitle
+          : t.failedTitle;
+
+  const statusSubtitle =
+    statusVariant === 'loading' || statusVariant === 'redirecting'
+      ? statusVariant === 'redirecting'
+        ? t.redirecting
+        : t.pleaseWait
+      : statusVariant === 'success'
+        ? t.successSubtitle
+        : undefined;
+
+  const statusMessage =
+    statusVariant === 'success'
+      ? t.successMessage
+      : statusVariant === 'failed' || statusVariant === 'unknown'
+        ? error || (statusVariant === 'unknown' ? t.unknownMessage : t.failedMessage)
+        : undefined;
+
+  const buyAgainPath = getPaymentReturnPath();
+
   return (
-    <div className="min-h-screen bg-gradient-dark flex items-center justify-center px-4 py-16">
-      <Card className="w-full max-w-md glass border-2 border-primary/30">
-        <CardContent className="p-8">
-          {(state === 'loading' || state === 'redirecting') && (
-            <div className="text-center">
-              <Loader size="xl" className="mx-auto mb-4" />
-              <h1 className="text-xl font-heading font-bold text-foreground mb-2">{t.title}</h1>
-              <p className="text-muted-foreground">{state === 'redirecting' ? (language === 'en' ? 'Redirecting to payment...' : 'Redirection vers le paiement...') : 'Please wait...'}</p>
-            </div>
-          )}
-
-          {state === 'unknown' && (
-            <div className="text-center">
-              <XCircle className="w-24 h-24 text-yellow-500 mx-auto mb-6" />
-              <h1 className="text-2xl font-heading font-bold text-foreground mb-2">
-                {language === 'en' ? 'We could not confirm your payment' : 'Nous n’avons pas pu confirmer votre paiement'}
-              </h1>
-              <p className="text-muted-foreground mb-6">
-                {error ||
-                  (language === 'en'
-                    ? 'We could not reach the bank to confirm your payment. If you see a debit on your card, please wait for an email/SMS confirmation or contact our support.'
-                    : 'Nous n’avons pas pu joindre la banque pour confirmer votre paiement. Si vous voyez un débit sur votre carte, veuillez attendre un email/SMS de confirmation ou contacter notre support.')}
-              </p>
-              <div className="flex gap-3 justify-center">
-                <Button variant="outline" onClick={() => navigate(-1)} size="lg">
-                  {language === 'en' ? 'Go back' : 'Retour'}
-                </Button>
-                <Button onClick={() => navigate('/contact')} size="lg">
-                  {language === 'en' ? 'Contact support' : 'Contacter le support'}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {state === 'success' && (
-            <div className="text-center">
-              <div className="relative inline-flex mx-auto mb-6">
-                <div
-                  className="absolute -inset-6 rounded-full bg-green-500/25 blur-2xl animate-success-check-glow"
-                  aria-hidden
-                />
-                <CheckCircle
-                  className="relative z-10 h-24 w-24 text-green-500 drop-shadow-[0_0_14px_rgba(34,197,94,0.45)] animate-success-check"
-                  strokeWidth={1.75}
-                  aria-hidden
-                />
-              </div>
-              <h1 className="text-2xl font-heading font-bold text-foreground mb-2">{t.successTitle}</h1>
-              <p className="text-muted-foreground mb-6">{t.successMessage}</p>
-              <Button onClick={() => navigate('/events')} className="btn-gradient" size="lg">
-                {t.backToEvents}
-              </Button>
-            </div>
-          )}
-
-          {state === 'failed' && (
-            <div className="text-center">
-              <XCircle className="w-24 h-24 text-red-500 mx-auto mb-6" />
-              <h1 className="text-2xl font-heading font-bold text-foreground mb-2">{t.failedTitle}</h1>
-              <p className="text-muted-foreground mb-6">{error || t.failedMessage}</p>
-              <div className="flex gap-3 justify-center">
-                <Button variant="outline" onClick={() => navigate(-1)} size="lg">
-                  {language === 'en' ? 'Go back' : 'Retour'}
-                </Button>
-                <Button onClick={() => navigate('/events')} className="btn-gradient" size="lg">
-                  {t.backToEvents}
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+    <div className="min-h-screen bg-gradient-dark">
+      <OnlinePaymentStatusScreen
+        variant={statusVariant}
+        title={statusTitle}
+        subtitle={statusSubtitle}
+        message={statusMessage}
+        closeLabel={t.close}
+        onClose={() =>
+          statusVariant === 'failed' ? navigate(buyAgainPath) : navigate('/events')
+        }
+        primaryActionLabel={
+          statusVariant === 'unknown'
+            ? t.contactSupport
+            : statusVariant === 'failed'
+              ? t.buyAgain
+              : t.backToEvents
+        }
+        onPrimaryAction={() =>
+          statusVariant === 'unknown'
+            ? navigate('/contact')
+            : statusVariant === 'failed'
+              ? navigate(buyAgainPath)
+              : navigate('/events')
+        }
+      />
     </div>
   );
 }

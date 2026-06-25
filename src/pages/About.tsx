@@ -1,14 +1,12 @@
 import { useState, useEffect } from "react";
-import { MapPin, Heart, Users, Zap, Trophy, Sparkles, Star, Image, Building2, Globe } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import TeamSection from "@/components/home/TeamSection";
 import { PageMeta } from "@/components/PageMeta";
 import { JsonLdBreadcrumb } from "@/components/JsonLd";
 import { PAGE_DESCRIPTIONS } from "@/lib/seo";
+import { cn } from "@/lib/utils";
 
 interface AboutProps {
   language: 'en' | 'fr';
@@ -28,13 +26,12 @@ interface AboutContent {
   [key: string]: string | AboutImage[] | undefined;
 }
 
+const PAGE_TOP = "pt-[calc(4rem+var(--site-countdown-offset,0px))]";
+const CARD_SURFACE = "rounded-2xl border border-border/60 bg-card/90";
+
 const About = ({ language }: AboutProps) => {
-  const [aboutContent, setAboutContent] = useState<AboutContent>({});
   const [aboutImages, setAboutImages] = useState<AboutImage[]>([]);
-  const [animatedSections, setAnimatedSections] = useState<Set<string>>(new Set());
-  const [hasAnimated, setHasAnimated] = useState(false);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchSiteContent = async () => {
@@ -53,8 +50,6 @@ const About = ({ language }: AboutProps) => {
 
         if (data && data.content) {
           const content = data.content as AboutContent;
-          setAboutContent(content);
-          // Extract images from content
           if (content.images && Array.isArray(content.images)) {
             setAboutImages(content.images as AboutImage[]);
           }
@@ -68,23 +63,6 @@ const About = ({ language }: AboutProps) => {
 
     fetchSiteContent();
   }, []);
-
-  // Animation effect for sections with smoother transitions
-  useEffect(() => {
-    if (!hasAnimated) {
-      const timer = setTimeout(() => {
-        setHasAnimated(true);
-        // Animate sections one by one with staggered delays
-        const sections = ['hero', 'story', 'cities', 'cta'];
-        sections.forEach((section, index) => {
-          setTimeout(() => {
-            setAnimatedSections(prev => new Set([...prev, section]));
-          }, index * 200); // 200ms delay for smoother flow
-        });
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [hasAnimated]);
 
   const content = {
     en: {
@@ -253,275 +231,133 @@ const About = ({ language }: AboutProps) => {
   }
 
   return (
-    <main className="min-h-screen bg-background pt-16 overflow-x-hidden" id="main-content">
+    <main className={cn("min-h-[100dvh] bg-background overflow-x-hidden", PAGE_TOP)} id="main-content">
       <PageMeta
         title="About Us"
         description={PAGE_DESCRIPTIONS.about[language]}
         path="/about"
       />
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "About", url: "/about" }]} />
-      {/* 1️⃣ BTL Hero Section - Left Aligned */}
-      <section className="relative py-20 md:py-32 overflow-hidden animate-page-intro">
-        {/* Enhanced animated background elements */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-primary/5 to-primary/5" />
-        <div className="absolute top-20 left-10 w-32 h-32 bg-primary/20 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '4s' }} />
-        <div className="absolute top-40 right-20 w-40 h-40 bg-secondary/20 rounded-full blur-3xl animate-pulse delay-1000" style={{ animationDuration: '5s' }} />
-        <div className="absolute bottom-20 left-1/4 w-24 h-24 bg-accent/20 rounded-full blur-3xl animate-pulse delay-2000" style={{ animationDuration: '6s' }} />
-        <div className="absolute top-1/2 right-1/3 w-20 h-20 bg-primary/15 rounded-full blur-2xl animate-pulse delay-500" style={{ animationDuration: '7s' }} />
-        
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className={`transform transition-all duration-1000 ease-out ${
-            animatedSections.has('hero') 
-              ? 'opacity-100 translate-y-0' 
-              : 'opacity-0 translate-y-12'
-          }`}>
-            <div className="max-w-4xl">
-              <div className="inline-block mb-6">
-                <span className="text-sm md:text-base font-semibold text-primary px-4 py-2 rounded-full bg-primary/10 border border-primary/20 animate-in fade-in duration-1000">
-                  {t.btlHero.label}
-                </span>
-              </div>
-              <h1 className="text-4xl md:text-6xl lg:text-7xl font-heading font-bold mb-6 text-primary leading-tight uppercase">
-                {t.btlHero.title}
-              </h1>
-              <p className="text-lg md:text-xl text-foreground/80 leading-relaxed whitespace-pre-line">
-                {t.btlHero.description}
+
+      <section className="mx-auto max-w-3xl px-4 pb-10 pt-8 sm:px-5 sm:pt-10 sm:pb-12">
+        <p className="text-xs font-medium uppercase tracking-wider text-primary">{t.btlHero.label}</p>
+        <h1 className="mt-3 font-heading text-[1.75rem] font-bold tracking-tight text-foreground sm:text-4xl">
+          {t.btlHero.title}
+        </h1>
+        <p className="mt-4 text-sm leading-relaxed text-muted-foreground whitespace-pre-line sm:text-base">
+          {t.btlHero.description}
+        </p>
+      </section>
+
+      <section className="mx-auto max-w-3xl px-4 pb-12 sm:px-5">
+        <h2 className="mb-5 text-lg font-semibold tracking-tight sm:text-xl">{t.btlBrands.title}</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Card className={cn(CARD_SURFACE, "shadow-sm")}>
+            <CardContent className="p-5 sm:p-6">
+              <h3 className="text-base font-semibold text-primary sm:text-lg">{t.btlBrands.andiamo.title}</h3>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                {t.btlBrands.andiamo.text}
               </p>
-            </div>
+            </CardContent>
+          </Card>
+          <Card className={cn(CARD_SURFACE, "shadow-sm")}>
+            <CardContent className="p-5 sm:p-6">
+              <h3 className="text-base font-semibold text-primary sm:text-lg">{t.btlBrands.wagxt.title}</h3>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                {t.btlBrands.wagxt.text}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      <section className="border-y border-border/50 bg-muted/20">
+        <div className="mx-auto max-w-3xl px-4 py-10 sm:px-5 sm:py-12">
+          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">{t.btlVision.title}</h2>
+          <p className="mt-4 text-sm leading-relaxed text-muted-foreground sm:text-base">{t.btlVision.text}</p>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-3xl px-4 py-10 text-center sm:px-5 sm:py-12">
+        <p className="text-xs font-medium uppercase tracking-wider text-primary">{t.andiamoHero.label}</p>
+        <h2 className="mt-3 font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          {t.andiamoHero.title}
+        </h2>
+        <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+          {t.andiamoHero.subtitle}
+        </p>
+      </section>
+
+      <section className="mx-auto max-w-5xl px-4 pb-12 sm:px-5 sm:pb-16">
+        <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
+          <Card className={cn(CARD_SURFACE, "shadow-sm")}>
+            <CardContent className="p-5 sm:p-8">
+              <p className="text-xs font-medium uppercase tracking-wider text-primary">
+                {t.andiamoDescription.label}
+              </p>
+              <h2 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
+                {t.andiamoDescription.title}
+              </h2>
+              <div className="mt-5 space-y-4 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                <p>{t.andiamoDescription.paragraph1}</p>
+                <p>{t.andiamoDescription.paragraph2}</p>
+              </div>
+              <div className="mt-6 flex flex-wrap gap-2">
+                {t.andiamoDescription.highlights.map((highlight) => (
+                  <span
+                    key={highlight}
+                    className="rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-foreground/80 sm:text-sm"
+                  >
+                    {highlight}
+                  </span>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex items-center justify-center">
+            {aboutImages.length > 0 ? (
+              <img
+                src={aboutImages[0].src}
+                alt={aboutImages[0].alt || "Andiamo Events"}
+                className="max-h-72 w-full max-w-xs rounded-2xl object-contain sm:max-w-sm"
+              />
+            ) : (
+              <div className="font-heading text-4xl font-bold tracking-tight text-primary sm:text-5xl">
+                ANDIAMO
+              </div>
+            )}
           </div>
         </div>
       </section>
 
-      {/* 2️⃣ BTL Brands Section - Two Cards Side-by-Side */}
-      <section className="py-16 md:py-24 relative">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-secondary/5 to-transparent" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-          <div className={`text-center mb-12 md:mb-16 transform transition-all duration-1000 ease-out ${
-            animatedSections.has('story') 
-              ? 'opacity-100 translate-y-0' 
-              : 'opacity-0 translate-y-12'
-          }`}>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-4 text-primary uppercase">
-              {t.btlBrands.title}
-            </h2>
+      <section className="mx-auto max-w-3xl px-4 pb-12 sm:px-5 sm:pb-16">
+        <div className="grid gap-8 sm:grid-cols-2 sm:gap-10">
+          <div>
+            <h3 className="text-base font-semibold text-primary sm:text-lg">
+              {t.andiamoDetails.international.title}
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+              {t.andiamoDetails.international.text}
+            </p>
           </div>
-          <div className="grid md:grid-cols-2 gap-6 md:gap-8">
-            <Card className="group relative overflow-hidden border-2 border-transparent hover:border-primary/30 bg-card/50 backdrop-blur-sm transform transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-primary/10">
-              <CardContent className="p-6 md:p-8">
-                <h3 className="text-xl md:text-2xl font-heading font-bold mb-4 text-center text-primary uppercase">
-                  {t.btlBrands.andiamo.title}
-                </h3>
-                <p className="text-base md:text-lg text-foreground/80 leading-relaxed text-center">
-                  {t.btlBrands.andiamo.text}
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="group relative overflow-hidden border-2 border-transparent hover:border-primary/30 bg-card/50 backdrop-blur-sm transform transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-primary/10">
-              <CardContent className="p-6 md:p-8">
-                <h3 className="text-xl md:text-2xl font-heading font-bold mb-4 text-center text-primary uppercase">
-                  {t.btlBrands.wagxt.title}
-                </h3>
-                <p className="text-base md:text-lg text-foreground/80 leading-relaxed text-center">
-                  {t.btlBrands.wagxt.text}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* 3️⃣ BTL Vision Section - Centered with Darker Background */}
-      <section className="py-16 md:py-24 relative bg-gradient-to-b from-secondary/10 via-secondary/15 to-secondary/10">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className={`transform transition-all duration-1000 ease-out ${
-            animatedSections.has('story') 
-              ? 'opacity-100 translate-y-0' 
-              : 'opacity-0 translate-y-12'
-          }`}>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-6 text-primary uppercase">
-              {t.btlVision.title}
-            </h2>
-            <p className="text-base md:text-lg text-foreground/80 leading-relaxed max-w-3xl mx-auto">
-              {t.btlVision.text}
+          <div>
+            <h3 className="text-base font-semibold text-primary sm:text-lg">{t.andiamoDetails.mission.title}</h3>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+              {t.andiamoDetails.mission.text}
             </p>
           </div>
         </div>
       </section>
 
-      {/* 4️⃣ Andiamo Events Hero Section */}
-      <section className="relative py-20 md:py-32 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-primary/5 to-primary/5" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className={`transform transition-all duration-1000 ease-out ${
-            animatedSections.has('hero') 
-              ? 'opacity-100 translate-y-0' 
-              : 'opacity-0 translate-y-12'
-          }`}>
-            <div className="inline-block mb-6">
-              <span className="text-sm md:text-base font-semibold text-primary px-4 py-2 rounded-full bg-primary/10 border border-primary/20 animate-in fade-in duration-1000">
-                {t.andiamoHero.label}
-              </span>
-            </div>
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-heading font-bold mb-6 text-primary leading-tight uppercase">
-              {t.andiamoHero.title}
-            </h1>
-            <p className="text-lg md:text-xl lg:text-2xl text-foreground/80 max-w-4xl mx-auto leading-relaxed">
-              {t.andiamoHero.subtitle}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* 5️⃣ Andiamo Events Description - Premium Redesign */}
-      <section className="py-24 md:py-32 lg:py-40 relative overflow-hidden">
-        {/* Animated Background Elements */}
-        <div className="absolute inset-0">
-          <div className="absolute top-1/4 left-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '6s' }}></div>
-          <div className="absolute bottom-1/4 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s', animationDelay: '1s' }}></div>
-        </div>
-        
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-            {/* Left Section - Text Content */}
-            <div className={`order-2 lg:order-1 transform transition-all duration-700 ease-out ${
-              animatedSections.has('story') 
-                ? 'opacity-100 translate-x-0' 
-                : 'opacity-0 -translate-x-8'
-            }`}>
-              <Card className="border-border/50 bg-card/50 backdrop-blur-sm shadow-2xl hover:shadow-primary/10 transition-all duration-500 hover:border-primary/30">
-                <CardContent className="p-8 md:p-12 lg:p-16">
-                  {/* Label */}
-                  <div className="mb-4">
-                    <span className="inline-block text-xs md:text-sm font-semibold text-primary px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 uppercase tracking-wider">
-                      {t.andiamoDescription.label}
-                    </span>
-                  </div>
-                  
-                  {/* Title */}
-                  <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-8 text-foreground leading-tight uppercase">
-                    {t.andiamoDescription.title}
-                  </h2>
-                  
-                  {/* Paragraphs */}
-                  <div className="space-y-6 mb-10">
-                    <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
-                      {t.andiamoDescription.paragraph1}
-                    </p>
-                    <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
-                      {t.andiamoDescription.paragraph2}
-                    </p>
-                  </div>
-                  
-                  {/* Micro-highlights */}
-                  <div className="flex flex-wrap gap-3 md:gap-4">
-                    {t.andiamoDescription.highlights.map((highlight, index) => (
-                      <div 
-                        key={index}
-                        className="group relative"
-                        style={{
-                          animationDelay: `${index * 100}ms`,
-                          transition: 'all 0.3s ease'
-                        }}
-                      >
-                        <div className="px-4 py-2 rounded-lg bg-muted/50 border border-border/50 text-sm md:text-base text-foreground/90 font-medium group-hover:bg-primary/10 group-hover:border-primary/30 group-hover:text-primary transition-all duration-300">
-                          {highlight}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-            
-            {/* Right Section - Image Container */}
-            <div className={`order-1 lg:order-2 transform transition-all duration-700 ease-out ${
-              animatedSections.has('story') 
-                ? 'opacity-100 translate-x-0 scale-100' 
-                : 'opacity-0 translate-x-8 scale-95'
-            }`} style={{
-              transitionDelay: '150ms'
-            }}>
-              <div className="relative group flex items-center justify-center min-h-[400px]">
-                {/* Glow Effect */}
-                <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 via-primary/10 to-transparent rounded-3xl blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                
-                {/* Image without container */}
-                {aboutImages.length > 0 ? (
-                  <img 
-                    src={aboutImages[0].src} 
-                    alt={aboutImages[0].alt || "Andiamo Events"} 
-                    className="relative z-10 w-full h-auto object-contain max-w-xs md:max-w-sm rounded-2xl transform group-hover:scale-105 transition-transform duration-500"
-                  />
-                ) : (
-                  <div className="relative z-10 text-5xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent tracking-tight transform group-hover:scale-105 transition-transform duration-500">
-                    ANDIAMO
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 6️⃣ International Opening & Mission - Two Blocks */}
-      <section className="py-16 md:py-24 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className={`grid md:grid-cols-2 gap-8 md:gap-12 transform transition-all duration-1000 ease-out ${
-            animatedSections.has('story') 
-              ? 'opacity-100 translate-y-0' 
-              : 'opacity-0 translate-y-12'
-          }`}>
-            <div className="space-y-4">
-              <h3 className="text-2xl md:text-3xl font-heading font-bold mb-4 text-primary uppercase">
-                {t.andiamoDetails.international.title}
-              </h3>
-              <p className="text-base md:text-lg text-foreground/80 leading-relaxed">
-                {t.andiamoDetails.international.text}
-              </p>
-            </div>
-            <div className="space-y-4">
-              <h3 className="text-2xl md:text-3xl font-heading font-bold mb-4 text-primary uppercase">
-                {t.andiamoDetails.mission.title}
-              </h3>
-              <p className="text-base md:text-lg text-foreground/80 leading-relaxed">
-                {t.andiamoDetails.mission.text}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Team Section */}
-      <section className="py-16 md:py-24 relative">
+      <section className="border-t border-border/50 py-12 sm:py-16">
         <TeamSection language={language} />
       </section>
 
-      {/* CTA Section - Modern Redesign */}
-      <section className="py-20 md:py-32 bg-gradient-to-br from-primary via-primary/80 to-primary/60 relative overflow-hidden">
-        {/* Enhanced animated background elements */}
-        <div className="absolute top-10 left-10 w-40 h-40 bg-white/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '4s' }}></div>
-        <div className="absolute bottom-20 right-20 w-32 h-32 bg-white/10 rounded-full blur-3xl animate-pulse delay-1000" style={{ animationDuration: '5s' }}></div>
-        <div className="absolute top-1/2 left-1/4 w-24 h-24 bg-white/10 rounded-full blur-3xl animate-pulse delay-2000" style={{ animationDuration: '6s' }}></div>
-        <div className="absolute top-1/3 right-1/3 w-20 h-20 bg-white/10 rounded-full blur-2xl animate-pulse delay-500" style={{ animationDuration: '7s' }}></div>
-        
-        {/* Animated grid pattern */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute inset-0" style={{
-            backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
-            backgroundSize: '50px 50px'
-          }}></div>
-        </div>
-        
-        <div className={`max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10 transform transition-all duration-1000 ease-out ${
-          animatedSections.has('cta') 
-            ? 'opacity-100 translate-y-0' 
-            : 'opacity-0 translate-y-12'
-        }`}>
-          <h2 className="text-2xl md:text-3xl lg:text-4xl font-heading font-bold mb-6 md:mb-8 text-white leading-tight whitespace-nowrap uppercase">
-            {language === 'en' ? 'We Create Memories' : 'Nous Créons des Souvenirs'}
-          </h2>
-          <div className="w-32 h-1 bg-gradient-to-r from-transparent via-white/50 to-transparent mx-auto rounded-full"></div>
-        </div>
+      <section className="border-t border-border/50 bg-primary py-12 text-center sm:py-14">
+        <h2 className="font-heading text-xl font-bold tracking-tight text-primary-foreground sm:text-2xl">
+          {language === "en" ? "We Create Memories" : "Nous Créons des Souvenirs"}
+        </h2>
       </section>
     </main>
   );

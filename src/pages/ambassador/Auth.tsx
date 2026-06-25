@@ -163,10 +163,6 @@ const Auth = ({ language }: AuthProps) => {
         passwordRequirements: "Password must be at least 6 characters",
         phoneFormat: "Enter valid phone number",
         applyLink: "Not an ambassador yet? Apply here"
-      },
-      brand: {
-        headline: "Your crowd. Your commission.",
-        tagline: "Sign in to track sales, manage orders, and grow with Andiamo Events."
       }
     },
     fr: {
@@ -203,10 +199,6 @@ const Auth = ({ language }: AuthProps) => {
         passwordRequirements: "Le mot de passe doit contenir au moins 6 caractères",
         phoneFormat: "Entrez un numéro de téléphone valide",
         applyLink: "Pas encore ambassadeur ? Postulez ici"
-      },
-      brand: {
-        headline: "Votre réseau. Vos commissions.",
-        tagline: "Connectez-vous pour suivre vos ventes, gérer vos commandes et grandir avec Andiamo Events."
       }
     }
   };
@@ -373,43 +365,11 @@ const Auth = ({ language }: AuthProps) => {
 
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-dark lg:flex-row">
-      <aside
-        className="ambassador-auth-aside relative hidden shrink-0 flex-col justify-between border-r border-border bg-card p-12 lg:flex lg:w-[min(44%,480px)]"
-        aria-hidden="true"
-      >
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.35]"
-          style={{
-            backgroundImage:
-              "linear-gradient(hsl(var(--border) / 0.4) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border) / 0.4) 1px, transparent 1px)",
-            backgroundSize: "48px 48px",
-          }}
-        />
-        <div className="absolute left-0 top-[18%] bottom-[18%] w-[3px] rounded-r-full bg-primary" />
-
-        <img
-          src="/email-assets/logo-white.png"
-          alt=""
-          className="relative z-10 h-8 w-auto"
-        />
-
-        <div className="relative z-10 space-y-5">
-          <h2 className="max-w-[16rem] font-heading text-[2rem] font-bold leading-[1.15] text-foreground">
-            {t.brand.headline}
-          </h2>
-          <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
-            {t.brand.tagline}
-          </p>
-        </div>
-
-        <p className="relative z-10 text-xs text-muted-foreground">© Andiamo Events</p>
-      </aside>
-
-      <main className="flex flex-1 items-center justify-center px-5 py-12 sm:px-10">
+    <div className="min-h-[100dvh] bg-background flex flex-col pt-[calc(4rem+var(--site-countdown-offset,0px))]">
+      <main className="flex flex-1 items-center justify-center px-5 py-10 sm:px-10 sm:py-12">
         <div className="w-full max-w-[400px]">
           <header
-            className="ambassador-auth-enter mb-9 text-center lg:text-left"
+            className="ambassador-auth-enter mb-9 text-center"
             style={{ animationDelay: "0.08s" }}
           >
             <h1 className="font-heading text-2xl font-bold tracking-tight text-primary sm:text-[1.75rem]">
@@ -510,4 +470,4 @@ const Auth = ({ language }: AuthProps) => {
   );
 };
 
-export default Auth; 
+export default Auth;

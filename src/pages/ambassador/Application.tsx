@@ -4,14 +4,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { logFormSubmission, logger } from "@/lib/logger";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { API_ROUTES } from '@/lib/api-routes';
 import { safeApiCall } from '@/lib/api-client';
-import { User, Users, Zap, Mail, Phone, MapPin, Instagram, FileText, Calendar, Award, Target, Gift, Crown, TrendingUp, XCircle, CheckCircle } from "lucide-react";
+import { XCircle } from "lucide-react";
+import { AmbassadorApplicationSuccessScreen } from '@/pages/ambassador/components/AmbassadorApplicationSuccessScreen';
 // @ts-ignore
 import DOMPurify from 'dompurify';
 import LoadingScreen from '@/components/ui/LoadingScreen';
@@ -21,12 +21,21 @@ import { JsonLdBreadcrumb, JsonLdWebPage } from '@/components/JsonLd';
 import { PAGE_DESCRIPTIONS } from '@/lib/seo';
 import { trackAmbassadorLead, createMetaEventId, getMetaAttributionContext } from '@/lib/meta';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
+import { cn } from '@/lib/utils';
 
 interface ApplicationProps {
   language: 'en' | 'fr';
 }
 
+const FIELD_INPUT_CLASS =
+  "h-11 sm:h-12 rounded-xl border-border/60 bg-background/80 focus-visible:ring-primary/30";
+const SELECT_TRIGGER_CLASS =
+  "h-11 sm:h-12 w-full rounded-xl border-border/60 bg-background/80 focus:ring-primary/30";
+const SELECT_ITEM_CLASS =
+  "focus:bg-primary/20 focus:text-primary data-[highlighted]:bg-primary/20 data-[highlighted]:text-primary";
+
 const Application = ({ language }: ApplicationProps) => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     fullName: '',
     age: '',
@@ -534,18 +543,6 @@ const Application = ({ language }: ApplicationProps) => {
         });
 
         setSubmitted(true);
-        
-        // Scroll to top to show success message after state update
-        setTimeout(() => {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 100);
-        
-        toast({ 
-          title: language === 'en' ? 'Success!' : 'Succès!', 
-          description: language === 'en' 
-            ? 'Your application has been submitted successfully.' 
-            : 'Votre candidature a été soumise avec succès.'
-        });
       }
     } catch (error: any) {
       logFormSubmission('Ambassador Application', false, {
@@ -580,54 +577,56 @@ const Application = ({ language }: ApplicationProps) => {
 
   if (applicationEnabled === false) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-        </div>
+      <div className="min-h-[100dvh] bg-background flex items-center justify-center p-5 sm:p-8 pt-[calc(4rem+var(--site-countdown-offset,0px)+1.25rem)]">
+        <div className="w-full max-w-md rounded-2xl border border-border/60 bg-card/90 px-6 py-10 sm:px-8 sm:py-12 text-center shadow-lg">
+          <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary/15">
+            <XCircle className="h-7 w-7 text-primary" />
+          </div>
 
-        <div className="max-w-3xl w-full relative z-10">
-          <div className="backdrop-blur-sm bg-card/40 border border-border/50 rounded-3xl p-8 md:p-12 shadow-2xl">
-            <div className="text-center space-y-8">
-              <div className="flex justify-center">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-ping" style={{ animationDuration: '3s' }}></div>
-                  <div className="relative bg-gradient-to-br from-primary via-primary/80 to-primary/60 p-6 md:p-8 rounded-2xl shadow-2xl">
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary/50 to-primary/50 rounded-2xl blur-sm"></div>
-                    <XCircle className="w-12 h-12 md:w-16 md:h-16 text-white relative z-10" />
-                  </div>
-                </div>
-              </div>
-              
-              <div className="space-y-6 pt-4">
-                <div className="space-y-3">
-                  <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
-                    {language === 'en' ? 'Applications Closed' : 'Candidatures Fermées'}
-                  </h1>
-                  <div className="h-1 w-24 bg-gradient-to-r from-primary to-primary/80 mx-auto rounded-full"></div>
-                </div>
-                
-                <p className="text-lg md:text-xl lg:text-2xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-                  {applicationMessage}
-                </p>
-              </div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+            {language === 'en' ? 'Applications Closed' : 'Candidatures Fermées'}
+          </h1>
 
-              <div className="pt-8">
-                <Link to="/ambassador/auth">
-                  <Button variant="outline" className="px-6 py-3">
-                    {t.login}
-                  </Button>
-                </Link>
-              </div>
-            </div>
+          <p className="mt-4 text-sm sm:text-base leading-relaxed text-muted-foreground">
+            {applicationMessage}
+          </p>
+
+          <div className="mt-8">
+            <Button
+              asChild
+              variant="outline"
+              className="rounded-xl border-border/60"
+            >
+              <Link to="/ambassador/auth">{t.login}</Link>
+            </Button>
           </div>
         </div>
       </div>
     );
   }
 
+  if (submitted) {
+    return (
+      <main className="min-h-[100dvh] bg-background" id="main-content">
+        <PageMeta
+          title="Become an Ambassador"
+          description={PAGE_DESCRIPTIONS.ambassador[language]}
+          path="/ambassador"
+        />
+        <AmbassadorApplicationSuccessScreen
+          message={t.success}
+          language={language}
+          onClose={() => navigate('/')}
+        />
+      </main>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-gradient-dark flex flex-col items-center justify-start p-0 md:p-8 relative overflow-hidden animate-page-intro" id="main-content">
+    <main
+      className="min-h-[100dvh] bg-background flex flex-col items-center relative overflow-x-hidden pt-[calc(4rem+var(--site-countdown-offset,0px))]"
+      id="main-content"
+    >
       <PageMeta
         title="Become an Ambassador"
         description={PAGE_DESCRIPTIONS.ambassador[language]}
@@ -644,295 +643,264 @@ const Application = ({ language }: ApplicationProps) => {
           { name: 'Ambassador Program', url: '/ambassador' },
         ]}
       />
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-float" />
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-float delay-1000" />
-        <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-primary/5 rounded-full blur-3xl animate-float delay-2000" />
-        
-        <div className="absolute inset-0 opacity-[0.03]" style={{
-          backgroundImage: `radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)`,
-          backgroundSize: '40px 40px',
-        }} />
-      </div>
 
-      <div 
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-primary/[0.07] to-transparent" />
+
+      <div
         ref={heroRef}
-        className="w-full max-w-4xl mx-auto text-center py-16 px-4 md:px-0 transform transition-all duration-1000 ease-out relative z-10"
+        className="relative z-10 w-full max-w-xl mx-auto px-5 pt-6 pb-6 sm:pt-8 sm:pb-8 text-center"
       >
-        <div className="flex flex-col items-center gap-6">
-          <h1 className="text-5xl md:text-6xl font-heading font-bold mb-3 text-foreground">
-            {t.heroTitle}
-          </h1>
-          <p className="text-xl md:text-2xl max-w-3xl mx-auto leading-relaxed text-muted-foreground">
-            {t.heroSubtitle}
-          </p>
-        </div>
+        <h1 className="font-heading text-[1.75rem] sm:text-4xl font-bold tracking-tight text-foreground">
+          {t.heroTitle}
+        </h1>
+        <p className="mt-2.5 sm:mt-3 text-sm sm:text-base leading-relaxed text-muted-foreground max-w-md mx-auto">
+          {t.heroSubtitle}
+        </p>
       </div>
-      
-      <div 
+
+      <div
         ref={formRef}
-        className="w-full max-w-4xl mx-auto mb-12 transform transition-all duration-1000 ease-out relative z-10"
+        className="relative z-10 w-full max-w-xl mx-auto px-4 sm:px-5 pb-[max(2rem,env(safe-area-inset-bottom))]"
       >
-        <Card 
-          className="shadow-2xl overflow-hidden bg-card border-border"
-          style={{
-            backgroundColor: 'hsl(var(--card))',
-            borderColor: 'hsl(var(--border))'
-          }}
-        >
-              <div 
-                className="relative p-6 border-b"
-                style={{
-                  backgroundColor: 'hsl(var(--card))',
-                  borderColor: 'hsl(var(--border))'
-                }}
-              >
-                <CardHeader className="text-center pb-0 relative z-10">
-                  <CardTitle className="text-3xl font-heading font-bold" style={{ color: '#E21836' }}>
-                    {t.formTitle}
-                  </CardTitle>
-                </CardHeader>
-              </div>
-              <CardContent className="p-8">
-              {submitted ? (
-                <div className="text-center space-y-4">
-                  <div className="flex flex-col items-center gap-3">
-                    <CheckCircle className="w-12 h-12 text-green-500 shrink-0" aria-hidden />
-                    <p className="font-semibold text-green-600 dark:text-green-400">{t.success}</p>
-                  </div>
-                  <Button 
-                    asChild 
-                    variant="outline" 
-                    className="w-full border-border bg-card text-foreground hover:border-primary hover:text-primary"
-                  >
-                    <Link to="/ambassador/auth">{t.login}</Link>
-                  </Button>
+        <div className="rounded-2xl border border-border/60 bg-card/90 shadow-lg overflow-hidden">
+          <div className="border-b border-border/50 px-5 py-5 sm:px-6 sm:py-6">
+            <h2 className="text-lg sm:text-xl font-semibold tracking-tight text-primary">
+              {t.formTitle}
+            </h2>
+            <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
+              {language === 'en' ? 'Fields marked * are required' : 'Les champs marqués * sont obligatoires'}
+            </p>
+          </div>
+
+          <div className="px-5 py-5 sm:px-6 sm:py-6">
+            <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                <div className="space-y-1.5">
+                  <Label htmlFor="fullName" className="text-sm font-medium text-foreground/90">
+                    {t.fullName} <span className="text-muted-foreground">*</span>
+                  </Label>
+                  <Input
+                    id="fullName"
+                    autoComplete="name"
+                    value={formData.fullName}
+                    onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+                    required
+                    className={FIELD_INPUT_CLASS}
+                  />
                 </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <p className="text-sm mb-4 text-muted-foreground">
-                    {language === 'en' ? 'Fields marked * are required' : 'Les champs marqués * sont obligatoires'}
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="fullName" className="text-sm font-medium text-foreground">
-                        {t.fullName} <span className="text-muted-foreground">*</span>
-                      </Label>
-                      <Input 
-                        id="fullName" 
-                        value={formData.fullName} 
-                        onChange={e => setFormData({ ...formData, fullName: e.target.value })} 
-                        required 
-                        className="h-12"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="age" className="text-sm font-medium">
-                        {t.age} <span className="text-muted-foreground opacity-60">*</span>
-                      </Label>
-                      <Input 
-                        id="age" 
-                        type="number" 
-                        min="16" 
-                        max="99" 
-                        value={formData.age} 
-                        onChange={e => setFormData({ ...formData, age: e.target.value })} 
-                        required 
-                        className="h-12"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="city" className="text-sm font-medium">
-                        {t.city} <span className="text-muted-foreground opacity-60">*</span>
-                      </Label>
-                      <Select 
-                        value={formData.city} 
-                        onValueChange={(value) => {
-                          // When switching cities, clear ville to force user to select a new one
-                          setFormData({ ...formData, city: value, ville: '' });
-                        }}
-                        required
-                      >
-                        <SelectTrigger className="h-12 w-full">
-                          <SelectValue placeholder={language === 'en' ? 'Select a city' : 'Sélectionner une ville'} />
-                        </SelectTrigger>
-                        <SelectContent 
-                          className="z-[9999]" 
-                          position="popper"
-                        >
-                          {CITIES.map((city) => (
-                            <SelectItem 
-                              key={city} 
-                              value={city}
-                              className="focus:bg-primary/20 focus:text-primary data-[highlighted]:bg-primary/20 data-[highlighted]:text-primary"
-                            >
-                              {city}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    {isSousse && (
-                      <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="ville" className="text-sm font-medium">
-                          {language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'} <span className="text-muted-foreground opacity-60">*</span>
-                        </Label>
-                        <Select 
-                          value={formData.ville} 
-                          onValueChange={(value) => {
-                            setFormData({ ...formData, ville: value });
-                          }}
-                          required
-                        >
-                          <SelectTrigger className="h-12 w-full">
-                            <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
-                          </SelectTrigger>
-                          <SelectContent 
-                            className="z-[9999]" 
-                            position="popper"
-                          >
-                            {SOUSSE_VILLES.map((ville) => (
-                              <SelectItem 
-                                key={ville} 
-                                value={ville}
-                                className="focus:bg-primary/20 focus:text-primary data-[highlighted]:bg-primary/20 data-[highlighted]:text-primary"
-                              >
-                                {ville}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
 
-                    {isTunis && (
-                      <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="ville" className="text-sm font-medium">
-                          {language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'} <span className="text-muted-foreground opacity-60">*</span>
-                        </Label>
-                        <Select 
-                          value={formData.ville} 
-                          onValueChange={(value) => {
-                            setFormData({ ...formData, ville: value });
-                          }}
-                          required
-                        >
-                          <SelectTrigger className="h-12 w-full">
-                            <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
-                          </SelectTrigger>
-                          <SelectContent 
-                            className="z-[9999]" 
-                            position="popper"
-                          >
-                            {TUNIS_VILLES.map((ville) => (
-                              <SelectItem 
-                                key={ville} 
-                                value={ville}
-                                className="focus:bg-primary/20 focus:text-primary data-[highlighted]:bg-primary/20 data-[highlighted]:text-primary"
-                              >
-                                {ville}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="age" className="text-sm font-medium text-foreground/90">
+                    {t.age} <span className="text-muted-foreground">*</span>
+                  </Label>
+                  <Input
+                    id="age"
+                    type="number"
+                    inputMode="numeric"
+                    min="16"
+                    max="99"
+                    value={formData.age}
+                    onChange={e => setFormData({ ...formData, age: e.target.value })}
+                    required
+                    className={FIELD_INPUT_CLASS}
+                  />
+                </div>
 
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="phone" className="text-sm font-medium">
-                        {t.phone} <span className="text-muted-foreground opacity-60">*</span>
-                      </Label>
-                      <Input 
-                        id="phone" 
-                        type="tel" 
-                        value={formData.phoneNumber} 
-                        onChange={e => setFormData({ ...formData, phoneNumber: e.target.value })} 
-                        required 
-                        className="h-12"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="email" className="text-sm font-medium">
-                        {t.email} <span className="text-muted-foreground opacity-60">*</span>
-                      </Label>
-                      <Input 
-                        id="email" 
-                        type="email" 
-                        value={formData.email} 
-                        onChange={e => setFormData({ ...formData, email: e.target.value })} 
-                        required 
-                        className="h-12"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="socialLink" className="text-sm font-medium">
-                        {t.socialLink} <span className="text-muted-foreground opacity-60">*</span>
-                      </Label>
-                      <Input 
-                        id="socialLink" 
-                        type="url" 
-                        value={formData.socialLink} 
-                        onChange={e => setFormData({ ...formData, socialLink: e.target.value })} 
-                        required 
-                        placeholder="https://www.instagram.com/username"
-                        className="h-12"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {language === 'en' 
-                          ? 'Must start with https://www.instagram.com/ or https://instagram.com/' 
-                          : 'Doit commencer par https://www.instagram.com/ ou https://instagram.com/'}
-                      </p>
-                    </div>
-                    
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="motivation" className="text-sm font-medium">
-                        {t.motivation} <span className="text-muted-foreground opacity-60">*</span>
-                      </Label>
-                      <Textarea 
-                        id="motivation" 
-                        value={formData.motivation} 
-                        onChange={e => setFormData({ ...formData, motivation: e.target.value })}
-                        required
-                        className="min-h-[140px] resize-y"
-                        placeholder={language === 'en' ? 'Tell us why you want to be an ambassador' : 'Dites-nous pourquoi vous voulez être ambassadeur'}
-                      />
-                    </div>
-                  </div>
-                  
-                  <Button 
-                    type="submit" 
-                    className="w-full btn-gradient h-14 text-lg font-medium" 
-                    disabled={isSubmitting}
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="city" className="text-sm font-medium text-foreground/90">
+                    {t.city} <span className="text-muted-foreground">*</span>
+                  </Label>
+                  <Select
+                    value={formData.city}
+                    onValueChange={(value) => {
+                      setFormData({ ...formData, city: value, ville: '' });
+                    }}
+                    required
                   >
-                    {isSubmitting ? (
-                      <>
-                        <Loader size="sm" className="mr-2 shrink-0 [background:hsl(var(--primary-foreground))]" />
-                        {t.submitting}
-                      </>
-                    ) : (
-                      t.submit
-                    )}
-                  </Button>
-                  
-                  <div className="text-center pt-2">
-                    <Button 
-                      asChild 
-                      variant="outline" 
-                      className="w-full hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border-border bg-card text-foreground hover:border-primary hover:text-primary"
+                    <SelectTrigger id="city" className={SELECT_TRIGGER_CLASS}>
+                      <SelectValue placeholder={language === 'en' ? 'Select a city' : 'Sélectionner une ville'} />
+                    </SelectTrigger>
+                    <SelectContent className="z-[9999]" position="popper">
+                      {CITIES.map((city) => (
+                        <SelectItem key={city} value={city} className={SELECT_ITEM_CLASS}>
+                          {city}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {isSousse && (
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="ville-sousse" className="text-sm font-medium text-foreground/90">
+                      {language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'}{' '}
+                      <span className="text-muted-foreground">*</span>
+                    </Label>
+                    <Select
+                      value={formData.ville}
+                      onValueChange={(value) => {
+                        setFormData({ ...formData, ville: value });
+                      }}
+                      required
                     >
-                      <Link to="/ambassador/auth">{t.login}</Link>
-                    </Button>
+                      <SelectTrigger id="ville-sousse" className={SELECT_TRIGGER_CLASS}>
+                        <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999]" position="popper">
+                        {SOUSSE_VILLES.map((ville) => (
+                          <SelectItem key={ville} value={ville} className={SELECT_ITEM_CLASS}>
+                            {ville}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                </form>
-              )}
-            </CardContent>
-        </Card>
+                )}
+
+                {isTunis && (
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="ville-tunis" className="text-sm font-medium text-foreground/90">
+                      {language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'}{' '}
+                      <span className="text-muted-foreground">*</span>
+                    </Label>
+                    <Select
+                      value={formData.ville}
+                      onValueChange={(value) => {
+                        setFormData({ ...formData, ville: value });
+                      }}
+                      required
+                    >
+                      <SelectTrigger id="ville-tunis" className={SELECT_TRIGGER_CLASS}>
+                        <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999]" position="popper">
+                        {TUNIS_VILLES.map((ville) => (
+                          <SelectItem key={ville} value={ville} className={SELECT_ITEM_CLASS}>
+                            {ville}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="phone" className="text-sm font-medium text-foreground/90">
+                    {t.phone} <span className="text-muted-foreground">*</span>
+                  </Label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 select-none text-sm text-muted-foreground">
+                      +216
+                    </span>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel-national"
+                      placeholder="28123456"
+                      value={formData.phoneNumber}
+                      onChange={(e) => {
+                        let digits = e.target.value.replace(/\D/g, "");
+                        if (digits.startsWith("216")) {
+                          digits = digits.slice(3);
+                        }
+                        digits = digits.replace(/^0+/, "").slice(0, 8);
+                        setFormData({ ...formData, phoneNumber: digits });
+                      }}
+                      required
+                      className={cn(FIELD_INPUT_CLASS, "pl-14")}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="email" className="text-sm font-medium text-foreground/90">
+                    {t.email} <span className="text-muted-foreground">*</span>
+                  </Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    value={formData.email}
+                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                    required
+                    className={FIELD_INPUT_CLASS}
+                  />
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="socialLink" className="text-sm font-medium text-foreground/90">
+                    {t.socialLink} <span className="text-muted-foreground">*</span>
+                  </Label>
+                  <Input
+                    id="socialLink"
+                    type="url"
+                    inputMode="url"
+                    autoComplete="url"
+                    value={formData.socialLink}
+                    onChange={e => setFormData({ ...formData, socialLink: e.target.value })}
+                    required
+                    placeholder="https://www.instagram.com/username"
+                    className={FIELD_INPUT_CLASS}
+                  />
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {language === 'en'
+                      ? 'Must start with https://www.instagram.com/ or https://instagram.com/'
+                      : 'Doit commencer par https://www.instagram.com/ ou https://instagram.com/'}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="motivation" className="text-sm font-medium text-foreground/90">
+                    {t.motivation} <span className="text-muted-foreground">*</span>
+                  </Label>
+                  <Textarea
+                    id="motivation"
+                    value={formData.motivation}
+                    onChange={e => setFormData({ ...formData, motivation: e.target.value })}
+                    required
+                    className={cn(
+                      "min-h-[120px] sm:min-h-[140px] resize-y rounded-xl border-border/60 bg-background/80 focus-visible:ring-primary/30"
+                    )}
+                    placeholder={
+                      language === 'en'
+                        ? 'Tell us why you want to be an ambassador'
+                        : 'Dites-nous pourquoi vous voulez être ambassadeur'
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-1">
+                <Button
+                  type="submit"
+                  className="w-full h-12 sm:h-[3.25rem] rounded-xl text-base font-medium btn-gradient"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader size="sm" className="mr-2 shrink-0 [background:hsl(var(--primary-foreground))]" />
+                      {t.submitting}
+                    </>
+                  ) : (
+                    t.submit
+                  )}
+                </Button>
+
+                <p className="text-center text-sm text-muted-foreground">
+                  {language === 'en' ? 'Already approved?' : 'Déjà approuvé ?'}{' '}
+                  <Link
+                    to="/ambassador/auth"
+                    className="font-medium text-primary hover:text-primary/80 underline-offset-4 hover:underline"
+                  >
+                    {language === 'en' ? 'Login here' : 'Connectez-vous ici'}
+                  </Link>
+                </p>
+              </div>
+            </form>
+          </div>
+        </div>
       </div>
     </main>
   );
