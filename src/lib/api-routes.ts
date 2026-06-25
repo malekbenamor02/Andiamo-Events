@@ -180,8 +180,6 @@ export const API_ROUTES = {
   ADMIN_UPDATE_ORDER_EMAIL: '/api/admin/update-order-email',
   ADMIN_UPDATE_ORDER_NOTES: '/api/admin/update-order-notes',
   
-  // Sales Settings
-  UPDATE_SALES_SETTINGS: '/api/update-sales-settings',
   
   // Order Completion
   SEND_ORDER_COMPLETION_EMAIL: '/api/send-order-completion-email',

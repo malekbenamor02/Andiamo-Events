@@ -5,6 +5,7 @@
  * This is used to control whether ambassadors can create manual orders.
  */
 
+import { upsertSiteContentViaApi } from "@/lib/adminSiteContent";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface SalesSettings {
@@ -50,16 +51,7 @@ export const fetchSalesSettings = async (): Promise<SalesSettings> => {
  * @returns Promise<void>
  */
 export const updateSalesSettings = async (enabled: boolean): Promise<void> => {
-  const response = await fetch('/api/update-sales-settings', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled }),
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || body.details || 'Failed to update sales settings');
-  }
+  await upsertSiteContentViaApi('sales_settings', { enabled });
 };
 
 /**
