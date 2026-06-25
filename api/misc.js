@@ -334,6 +334,7 @@ async function getAcademyApp() {
     const {
       requireAdminAuth,
       requireSuperAdmin,
+      requireAdminPermission,
     } = requireFromRoot(nodePath.join(__dirname, '_lib', 'admin-auth-express.cjs'));
     const { registerAcademyRoutes } = requireFromRoot(
       nodePath.join(__dirname, '..', 'academyRoutes.cjs')
@@ -342,7 +343,7 @@ async function getAcademyApp() {
     app.use(cookieParser());
     app.use(express.json({ limit: '256kb' }));
     app.use(express.urlencoded({ extended: true, limit: '256kb' }));
-    registerAcademyRoutes(app, { requireAdminAuth, requireSuperAdmin });
+    registerAcademyRoutes(app, { requireAdminAuth, requireSuperAdmin, requireAdminPermission });
     return app;
   })();
   return academyAppPromise;
