@@ -89,5 +89,4 @@ Disallow: /ambassador/auth
 Disallow: /cod-order
 Disallow: /influencer/
 
-# AI-readable site guide: https://www.andiamoevents.com/llms.txt
 Sitemap: https://www.andiamoevents.com/sitemap.xml

@@ -677,10 +677,6 @@
       "destination": "/api/misc?route=sitemap"
     },
     {
-      "source": "/llms.txt",
-      "destination": "/api/misc?route=llms"
-    },
-    {
       "source": "/xmlrpc.php",
       "destination": "/api/misc.js"
     },
