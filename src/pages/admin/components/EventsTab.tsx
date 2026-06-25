@@ -660,6 +660,7 @@ export function EventsTab(p: EventsTabProps) {
       <AdminTabHeader
         title="Events Management"
         actions={
+                  <>
                   <Dialog open={p.isEventDialogOpen} onOpenChange={p.setIsEventDialogOpen}>
                     <DialogTrigger asChild>
                       <Button 
@@ -3919,6 +3920,7 @@ export function EventsTab(p: EventsTabProps) {
                       </div>
                     </DialogContent>
                   </Dialog>
+                  </>
         }
       />
                 <AdminTabCardGrid>
