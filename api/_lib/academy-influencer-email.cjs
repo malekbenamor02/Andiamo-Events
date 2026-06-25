@@ -13,14 +13,8 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-function influencerCredentialsBlockHtml(loginUrl, email, temporaryPassword) {
+function influencerCredentialsBlockHtml(email, temporaryPassword) {
   return `<div class="order-info-block">
-    <div class="info-row">
-      <div class="info-label">Login URL</div>
-      <div class="info-value">
-        <a href="${escapeAttr(loginUrl)}" class="support-email" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;word-break:break-all;">${escapeHtml(loginUrl)}</a>
-      </div>
-    </div>
     <div class="info-row">
       <div class="info-label">Email</div>
       <div class="info-value">${escapeHtml(email)}</div>
@@ -30,6 +24,10 @@ function influencerCredentialsBlockHtml(loginUrl, email, temporaryPassword) {
       <div class="info-value">${escapeHtml(temporaryPassword)}</div>
     </div>
   </div>`;
+}
+
+function influencerLoginButtonHtml(loginUrl) {
+  return `<a href="${escapeAttr(loginUrl)}" class="cta-button">Access Your Dashboard</a>`;
 }
 
 function influencerInvitePlainTextFooterLines() {
@@ -51,38 +49,40 @@ function buildInfluencerInviteEmail({ fullName, email, temporaryPassword, loginP
   const loginUrl = `${origin}${loginPath.startsWith('/') ? loginPath : `/${loginPath}`}`;
   const firstName = (fullName || '').trim().split(/\s+/)[0] || 'there';
 
-  const title = 'Dashboard access';
-  const subtitle = 'Andiamo Academy — Influencer';
+  const title = 'Welcome to your dashboard';
+  const subtitle = 'Andiamo Academy — Influencer Program';
   const bodyHtml = `
     <p class="greeting">Hello <strong>${escapeHtml(firstName)}</strong>,</p>
     <p class="message">
-      A super admin created an influencer account for you on Andiamo Academy. Use the credentials below
-      to sign in and view academy registrations generated through your assigned promo codes.
+      You have been invited to join the Andiamo Academy influencer program. Your personal dashboard
+      lets you track academy registrations generated through your assigned promo codes.
     </p>
-    ${influencerCredentialsBlockHtml(loginUrl, email, temporaryPassword)}
+    ${influencerCredentialsBlockHtml(email, temporaryPassword)}
+    ${influencerLoginButtonHtml(loginUrl)}
     <p class="message">
-      <strong>Important:</strong> You will be asked to change this temporary password immediately after your first login.
+      <strong>Important:</strong> For your security, you will be asked to set a new password immediately after your first sign-in.
     </p>
     <p class="message" style="font-size:13px;color:#888;">
       Your dashboard shows approved sales and pending registrations linked to your promo codes only — not customer contact details.
     </p>`;
 
-  const subject = 'Your Andiamo Academy Influencer Dashboard Access';
+  const subject = 'Welcome to Your Andiamo Academy Influencer Dashboard';
 
-  const html = wrapAcademyEmail({ title, subtitle, bodyHtml });
+  const html = wrapAcademyEmail({ title, subtitle, bodyHtml, includeLogo: false });
 
   const text = [
     subject,
     '',
     `Hello ${firstName},`,
     '',
-    'A super admin created an influencer account for you on Andiamo Academy.',
+    'You have been invited to join the Andiamo Academy influencer program.',
+    'Your dashboard lets you track registrations generated through your assigned promo codes.',
     '',
-    'Login URL: ' + loginUrl,
+    'Sign in: ' + loginUrl,
     'Email: ' + email,
     'Temporary password: ' + temporaryPassword,
     '',
-    'You must change your password after first login.',
+    'For your security, you must set a new password after your first sign-in.',
     '',
     'Your dashboard shows sales linked to your promo codes only — not customer contact details.',
     ...influencerInvitePlainTextFooterLines(),

@@ -125,7 +125,8 @@ function academyPlainTextLines(reg, lines) {
   ].join('\n');
 }
 
-function wrapAcademyEmail({ title, subtitle, bodyHtml }) {
+function wrapAcademyEmail({ title, subtitle, bodyHtml, includeLogo = true }) {
+  const logoHeader = includeLogo ? academyEmailLogoHeaderHtml() : '';
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -137,7 +138,7 @@ function wrapAcademyEmail({ title, subtitle, bodyHtml }) {
   <style>${transactionalEmailDarkStylesCss()}</style>
 </head>
 <body>
-  ${academyEmailLogoHeaderHtml()}
+  ${logoHeader}
   <div class="email-wrapper">
     <div class="content-card">
       <div class="title-section">

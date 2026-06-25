@@ -48,7 +48,7 @@
   --tw-ring-offset-shadow: 0 0 #0000 !important;
   --tw-ring-offset-width: 0 !important;
   --tw-ring-width: 0 !important;
-  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  box-shadow: none !important;
   outline: none !important;
 }
 .event-edit-dialog div.border-2.border-dashed.rounded-lg {
@@ -79,7 +79,7 @@
   --tw-ring-offset-shadow: 0 0 #0000 !important;
   --tw-ring-offset-width: 0 !important;
   --tw-ring-width: 0 !important;
-  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  box-shadow: none !important;
   outline: none !important;
 }
 
@@ -96,7 +96,7 @@
   --tw-ring-offset-shadow: 0 0 #0000 !important;
   --tw-ring-offset-width: 0 !important;
   --tw-ring-width: 0 !important;
-  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  box-shadow: none !important;
   outline: none !important;
 }
 
@@ -113,7 +113,7 @@
 .cod-ambassador-orders-filters [role="combobox"]:focus-visible {
   --tw-ring-shadow: 0 0 #0000 !important;
   --tw-ring-offset-shadow: 0 0 #0000 !important;
-  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  box-shadow: none !important;
   outline: none !important;
 }
 
@@ -131,7 +131,7 @@
 .admin-dashboard-toolbar [role="combobox"]:focus-visible {
   --tw-ring-shadow: 0 0 #0000 !important;
   --tw-ring-offset-shadow: 0 0 #0000 !important;
-  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  box-shadow: none !important;
   outline: none !important;
 }
 
@@ -170,7 +170,7 @@
   --tw-ring-offset-shadow: 0 0 #0000 !important;
   --tw-ring-offset-width: 0 !important;
   --tw-ring-width: 0 !important;
-  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  box-shadow: none !important;
   outline: none !important;
 }
 
@@ -516,11 +516,12 @@ All colors MUST be HSL.
     line-height: 1.6;
   }
 
-  /* Keep form fields from turning "blue" while typing (focus/autofill) */
+  /* Keep form fields white in light mode (focus/autofill); dark uses input surface */
   input,
   textarea,
-  select {
-    background-color: hsl(var(--input));
+  select,
+  [role="combobox"] {
+    background-color: hsl(var(--card));
     color: hsl(var(--foreground));
     caret-color: hsl(var(--foreground));
   }
@@ -530,7 +531,29 @@ All colors MUST be HSL.
   textarea:focus,
   textarea:focus-visible,
   select:focus,
-  select:focus-visible {
+  select:focus-visible,
+  [role="combobox"]:focus,
+  [role="combobox"]:focus-visible {
+    background-color: hsl(var(--card));
+    box-shadow: none;
+    outline: none;
+  }
+
+  .dark input,
+  .dark textarea,
+  .dark select,
+  .dark [role="combobox"] {
+    background-color: hsl(var(--input));
+  }
+
+  .dark input:focus,
+  .dark input:focus-visible,
+  .dark textarea:focus,
+  .dark textarea:focus-visible,
+  .dark select:focus,
+  .dark select:focus-visible,
+  .dark [role="combobox"]:focus,
+  .dark [role="combobox"]:focus-visible {
     background-color: hsl(var(--input));
   }
 
@@ -546,18 +569,38 @@ All colors MUST be HSL.
   select:-webkit-autofill:focus {
     -webkit-text-fill-color: hsl(var(--foreground)) !important;
     caret-color: hsl(var(--foreground)) !important;
+    -webkit-box-shadow: 0 0 0px 1000px hsl(var(--card)) inset !important;
+    box-shadow: 0 0 0px 1000px hsl(var(--card)) inset !important;
+    transition: background-color 9999s ease-out 0s;
+  }
+
+  .dark input:-webkit-autofill,
+  .dark textarea:-webkit-autofill,
+  .dark select:-webkit-autofill,
+  .dark input:-webkit-autofill:hover,
+  .dark textarea:-webkit-autofill:hover,
+  .dark select:-webkit-autofill:hover,
+  .dark input:-webkit-autofill:focus,
+  .dark textarea:-webkit-autofill:focus,
+  .dark select:-webkit-autofill:focus {
     -webkit-box-shadow: 0 0 0px 1000px hsl(var(--input)) inset !important;
     box-shadow: 0 0 0px 1000px hsl(var(--input)) inset !important;
-    transition: background-color 9999s ease-out 0s;
   }
 
   /* Standards-based autofill selector (supported in modern browsers) */
   input:autofill,
   textarea:autofill,
   select:autofill {
-    background-color: hsl(var(--input)) !important;
+    background-color: hsl(var(--card)) !important;
     color: hsl(var(--foreground)) !important;
     caret-color: hsl(var(--foreground)) !important;
+    box-shadow: 0 0 0px 1000px hsl(var(--card)) inset !important;
+  }
+
+  .dark input:autofill,
+  .dark textarea:autofill,
+  .dark select:autofill {
+    background-color: hsl(var(--input)) !important;
     box-shadow: 0 0 0px 1000px hsl(var(--input)) inset !important;
   }
 }
