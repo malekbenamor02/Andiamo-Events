@@ -180,7 +180,7 @@ export function AdminTabAccessEditor({
             <Label className="text-sm font-medium">
               {language === "en" ? "Allowed dashboard tabs" : "Onglets autorisés"}
             </Label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto overscroll-contain scrollbar-hide touch-pan-y pr-1">
               {ADMIN_TAB_REGISTRY.map((tab) => {
                 const isSensitive = SENSITIVE_TAB_KEYS.includes(tab.key);
                 return (
@@ -217,7 +217,7 @@ export function AdminTabAccessEditor({
                   : "Sélectionnez d'abord au moins un onglet autorisé."}
               </p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto overscroll-contain scrollbar-hide touch-pan-y pr-1">
                 {value.allowedTabKeys.map((key) => {
                   const tab = ADMIN_TAB_REGISTRY.find((t) => t.key === key);
                   if (!tab) return null;
