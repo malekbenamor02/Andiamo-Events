@@ -21,6 +21,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Drawer,
+  DrawerContent,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -29,6 +36,7 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -37,6 +45,8 @@ import { normalizeAcademyPromoCodeInput } from '@/lib/academy/promoCode';
 import Loader from '@/components/ui/Loader';
 import { ExternalLink, Mail, RefreshCw } from 'lucide-react';
 import { AcademyInfluencersSection } from './AcademyInfluencersSection';
+import { AcademyRegistrationReviewConfirm } from './AcademyRegistrationReviewConfirm';
+import type { AcademyRegistrationReviewAction } from './AcademyRegistrationReviewConfirm';
 import {
   AdminTabHeader,
   ADMIN_FILTERS_PANEL,
@@ -119,6 +129,9 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'outline',
 };
 
+const ACADEMY_SHEET_CLASS =
+  'z-[60] flex max-h-[92dvh] flex-col rounded-t-[1.25rem] border-border/50 shadow-[0_-12px_48px_rgba(0,0,0,0.45)]';
+
 /** Same dot style as Online Orders table (w-3 h-3 rounded-full + tooltip). */
 function academyStatusDotClass(status: string): string {
   if (status === 'approved') return 'bg-green-500';
@@ -183,6 +196,21 @@ function academyPaymentLabel(method: string, isEn: boolean): string {
   return row ? (isEn ? row.en : row.fr) : method;
 }
 
+/** Manual proof flows only — online (card) is auto-approved / auto-cancelled. */
+function isManualAcademyPayment(paymentMethod: string): boolean {
+  return paymentMethod === 'rib' || paymentMethod === 'd17';
+}
+
+function canShowAcademyApprove(reg: Pick<AcademyRegistration, 'payment_method' | 'status'>): boolean {
+  if (!isManualAcademyPayment(reg.payment_method)) return false;
+  return ['proof_received', 'pending_payment'].includes(reg.status);
+}
+
+function canShowAcademyReject(reg: Pick<AcademyRegistration, 'payment_method' | 'status'>): boolean {
+  if (!isManualAcademyPayment(reg.payment_method)) return false;
+  return reg.status !== 'rejected' && reg.status !== 'approved';
+}
+
 function DetailField({
   label,
   children,
@@ -225,6 +253,7 @@ function AcademyTabLoadingPanel({
 
 export function AcademyTab({ language, canManageInfluencers = false }: AcademyTabProps) {
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const isEn = language === 'en';
   const [subTab, setSubTab] = useState('registrations');
   const [registrations, setRegistrations] = useState<AcademyRegistration[]>([]);
@@ -241,6 +270,9 @@ export function AcademyTab({ language, canManageInfluencers = false }: AcademyTa
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AcademyRegistration | null>(null);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
+  const [reviewConfirmOpen, setReviewConfirmOpen] = useState(false);
+  const [reviewAction, setReviewAction] = useState<AcademyRegistrationReviewAction | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [editEmail, setEditEmail] = useState('');
@@ -315,27 +347,46 @@ export function AcademyTab({ language, canManageInfluencers = false }: AcademyTa
   };
 
   const handleApprove = async (id: string) => {
-    try {
-      await adminFetch(API_ROUTES.ADMIN_ACADEMY_REGISTRATION_APPROVE(id), { method: 'POST' });
-      toast({ title: isEn ? 'Approved' : 'Approuvé' });
-      loadAll();
-      setSelected(null);
-    } catch (e: unknown) {
-      toast({ variant: 'destructive', description: e instanceof Error ? e.message : undefined });
-    }
+    await adminFetch(API_ROUTES.ADMIN_ACADEMY_REGISTRATION_APPROVE(id), { method: 'POST' });
+    toast({ title: isEn ? 'Approved' : 'Approuvé' });
+    loadAll();
+    setSelected(null);
   };
 
   const handleReject = async (id: string) => {
+    await adminFetch(API_ROUTES.ADMIN_ACADEMY_REGISTRATION_REJECT(id), {
+      method: 'POST',
+      body: JSON.stringify({ reason: '' }),
+    });
+    toast({ title: isEn ? 'Rejected' : 'Refusé' });
+    loadAll();
+    setSelected(null);
+  };
+
+  const openReviewConfirm = (action: AcademyRegistrationReviewAction) => {
+    if (!selected) return;
+    if (action === 'approve' && !canShowAcademyApprove(selected)) return;
+    if (action === 'reject' && !canShowAcademyReject(selected)) return;
+    setReviewAction(action);
+    setReviewConfirmOpen(true);
+  };
+
+  const confirmReviewAction = async () => {
+    if (!selected || !reviewAction) return;
+    if (reviewAction === 'approve' && !canShowAcademyApprove(selected)) return;
+    if (reviewAction === 'reject' && !canShowAcademyReject(selected)) return;
+    setReviewSubmitting(true);
     try {
-      await adminFetch(API_ROUTES.ADMIN_ACADEMY_REGISTRATION_REJECT(id), {
-        method: 'POST',
-        body: JSON.stringify({ reason: '' }),
-      });
-      toast({ title: isEn ? 'Rejected' : 'Refusé' });
-      loadAll();
-      setSelected(null);
+      if (reviewAction === 'approve') {
+        await handleApprove(selected.id);
+      } else {
+        await handleReject(selected.id);
+      }
+      setReviewConfirmOpen(false);
     } catch (e: unknown) {
       toast({ variant: 'destructive', description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setReviewSubmitting(false);
     }
   };
 
@@ -376,6 +427,255 @@ export function AcademyTab({ language, canManageInfluencers = false }: AcademyTa
     } catch (e: unknown) {
       toast({ variant: 'destructive', description: e instanceof Error ? e.message : undefined });
     }
+  };
+
+  const renderRegistrationDetail = (layout: 'mobile' | 'desktop') => {
+    if (!selected) return null;
+
+    const d = (detail || selected) as AcademyRegistration & {
+      discount_amount_dt?: number;
+      fee_amount_dt?: number;
+      proof_signed_url?: string;
+      rejection_reason?: string | null;
+      academy_promo_codes?: { code: string } | null;
+    };
+    const promo = d.academy_promo_codes;
+    const createdAt = d.created_at
+      ? new Date(d.created_at).toLocaleString(isEn ? 'en-GB' : 'fr-FR', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        })
+      : null;
+    const panelClass =
+      layout === 'mobile'
+        ? 'rounded-xl border border-border/50 bg-card/20 p-4 space-y-3'
+        : 'rounded-lg border bg-muted/20 p-4 space-y-3';
+
+    const header =
+      layout === 'mobile' ? (
+        <DrawerHeader className="space-y-2 px-5 pb-4 pt-1 text-left">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <DrawerTitle className="font-mono text-base tracking-tight">
+              {selected.registration_number}
+            </DrawerTitle>
+            <Badge variant={(STATUS_COLORS[selected.status] as 'default') || 'outline'}>
+              {academyStatusLabel(selected.status, isEn)}
+            </Badge>
+          </div>
+          {createdAt && (
+            <p className="text-xs text-muted-foreground">
+              {isEn ? 'Registered' : 'Inscrit le'} {createdAt}
+            </p>
+          )}
+        </DrawerHeader>
+      ) : (
+        <DialogHeader className="space-y-3 pb-0">
+          <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
+            <DialogTitle className="font-mono text-lg tracking-tight">
+              {selected.registration_number}
+            </DialogTitle>
+            <Badge variant={(STATUS_COLORS[selected.status] as 'default') || 'outline'}>
+              {academyStatusLabel(selected.status, isEn)}
+            </Badge>
+          </div>
+          {createdAt && (
+            <p className="text-xs text-muted-foreground">
+              {isEn ? 'Registered' : 'Inscrit le'} {createdAt}
+            </p>
+          )}
+        </DialogHeader>
+      );
+
+    const body = (
+      <div className={cn('space-y-5 text-sm', layout === 'desktop' && 'pt-2')}>
+        <section className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {isEn ? 'Participant' : 'Participant'}
+          </h3>
+          <div className={panelClass}>
+            <DetailField label={isEn ? 'Full name' : 'Nom complet'}>
+              <span className="font-medium text-base">{selected.full_name}</span>
+            </DetailField>
+            <DetailField label={isEn ? 'Phone' : 'Téléphone'}>
+              <span className="font-mono">{selected.phone}</span>
+            </DetailField>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {isEn ? 'Contact' : 'Contact'}
+          </h3>
+          <div className={panelClass}>
+            <DetailField label="Email">
+              <div className="flex flex-col gap-2">
+                <Input
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="font-mono text-sm"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full sm:w-auto sm:self-start"
+                  onClick={async () => {
+                    await adminFetch(API_ROUTES.ADMIN_ACADEMY_REGISTRATION(selected.id), {
+                      method: 'PATCH',
+                      body: JSON.stringify({ email: editEmail }),
+                    });
+                    toast({ title: isEn ? 'Email updated' : 'E-mail mis à jour' });
+                    loadAll();
+                  }}
+                >
+                  {isEn ? 'Save email' : 'Enregistrer'}
+                </Button>
+              </div>
+            </DetailField>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {isEn ? 'Registration' : 'Inscription'}
+          </h3>
+          <div className={cn(panelClass, 'grid grid-cols-2 gap-4 space-y-0')}>
+            <DetailField label={isEn ? 'Formula' : 'Formule'}>
+              {academyFormulaLabel(selected.formule, isEn)}
+            </DetailField>
+            <DetailField label={isEn ? 'Payment' : 'Paiement'}>
+              {academyPaymentLabel(selected.payment_method, isEn)}
+            </DetailField>
+            {promo?.code && (
+              <DetailField label={isEn ? 'Promo code' : 'Code promo'} className="col-span-2">
+                <span className="font-mono">{promo.code}</span>
+              </DetailField>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {isEn ? 'Amount' : 'Montant'}
+          </h3>
+          <div className={cn(panelClass, 'space-y-2')}>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">{isEn ? 'Base' : 'Base'}</span>
+              <span>{Number(d.base_amount_dt ?? selected.base_amount_dt).toFixed(2)} DT</span>
+            </div>
+            {Number(d.discount_amount_dt ?? 0) > 0 && (
+              <div className="flex justify-between gap-4 text-green-600 dark:text-green-400">
+                <span>{isEn ? 'Discount' : 'Remise'}</span>
+                <span>-{Number(d.discount_amount_dt).toFixed(2)} DT</span>
+              </div>
+            )}
+            {Number(d.fee_amount_dt ?? 0) > 0 && (
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">{isEn ? 'Online fee' : 'Frais en ligne'}</span>
+                <span>{Number(d.fee_amount_dt).toFixed(2)} DT</span>
+              </div>
+            )}
+            <Separator />
+            <div className="flex justify-between gap-4 font-semibold text-base">
+              <span>{isEn ? 'Total' : 'Total'}</span>
+              <span>{Number(selected.total_amount_dt).toFixed(2)} DT</span>
+            </div>
+          </div>
+        </section>
+
+        {d.proof_signed_url && (
+          <Button variant="outline" size="sm" className="w-full" asChild>
+            <a href={d.proof_signed_url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4 mr-2" />
+              {isEn ? 'View payment proof' : 'Voir la preuve de paiement'}
+            </a>
+          </Button>
+        )}
+
+        {d.rejection_reason && (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm">
+            <p className="text-xs font-medium text-destructive mb-1">
+              {isEn ? 'Rejection reason' : 'Motif de refus'}
+            </p>
+            <p>{d.rejection_reason}</p>
+          </div>
+        )}
+      </div>
+    );
+
+    const hasRegistrationActions =
+      canShowAcademyApprove(selected) ||
+      canShowAcademyReject(selected) ||
+      selected.status === 'approved';
+
+    const actions = (
+      <div className={cn('flex flex-wrap gap-2', layout === 'mobile' && 'w-full')}>
+        {canShowAcademyApprove(selected) && (
+          <Button
+            size="sm"
+            className={layout === 'mobile' ? 'flex-1' : undefined}
+            onClick={() => openReviewConfirm('approve')}
+          >
+            {isEn ? 'Approve' : 'Approuver'}
+          </Button>
+        )}
+        {canShowAcademyReject(selected) && (
+          <Button
+            size="sm"
+            variant="destructive"
+            className={layout === 'mobile' ? 'flex-1' : undefined}
+            onClick={() => openReviewConfirm('reject')}
+          >
+            {isEn ? 'Reject' : 'Refuser'}
+          </Button>
+        )}
+        {selected.status === 'approved' && (
+          <Button
+            size="sm"
+            variant="outline"
+            className={layout === 'mobile' ? 'w-full' : undefined}
+            onClick={async () => {
+              await adminFetch(API_ROUTES.ADMIN_ACADEMY_REGISTRATION_RESEND(selected.id), {
+                method: 'POST',
+                body: JSON.stringify({ template: 'approved' }),
+              });
+              toast({ title: isEn ? 'Email sent' : 'E-mail envoyé' });
+            }}
+          >
+            <Mail className="h-4 w-4 mr-1" />
+            {isEn ? 'Resend email' : 'Renvoyer'}
+          </Button>
+        )}
+      </div>
+    );
+
+    if (layout === 'mobile') {
+      return (
+        <>
+          {header}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-2">
+            {body}
+          </div>
+          {hasRegistrationActions && (
+            <DrawerFooter className="border-t border-border/40 px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              {actions}
+            </DrawerFooter>
+          )}
+        </>
+      );
+    }
+
+    return (
+      <>
+        {header}
+        {body}
+        {hasRegistrationActions && (
+          <>
+            <Separator className="my-4" />
+            {actions}
+          </>
+        )}
+      </>
+    );
   };
 
   return (
@@ -463,19 +763,22 @@ export function AcademyTab({ language, canManageInfluencers = false }: AcademyTa
                     <TableHead>{isEn ? 'Payment' : 'Paiement'}</TableHead>
                     <TableHead className="text-center w-16">Status</TableHead>
                     <TableHead>{isEn ? 'Total' : 'Total'}</TableHead>
-                    <TableHead />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
                         {isEn ? 'No registrations found' : 'Aucune inscription trouvée'}
                       </TableCell>
                     </TableRow>
                   ) : (
                     filtered.map((r) => (
-                      <TableRow key={r.id}>
+                      <TableRow
+                        key={r.id}
+                        className="cursor-pointer transition-colors hover:bg-muted/40"
+                        onClick={() => openDetail(r)}
+                      >
                         <TableCell className="font-mono text-xs">{r.registration_number}</TableCell>
                         <TableCell>{r.full_name}</TableCell>
                         <TableCell>{r.email}</TableCell>
@@ -485,11 +788,6 @@ export function AcademyTab({ language, canManageInfluencers = false }: AcademyTa
                           <AcademyStatusDot status={r.status} isEn={isEn} />
                         </TableCell>
                         <TableCell>{Number(r.total_amount_dt).toFixed(2)} DT</TableCell>
-                        <TableCell>
-                          <Button size="sm" variant="outline" onClick={() => openDetail(r)}>
-                            {isEn ? 'View' : 'Voir'}
-                          </Button>
-                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -750,193 +1048,40 @@ export function AcademyTab({ language, canManageInfluencers = false }: AcademyTa
         </TabsContent>
       </Tabs>
 
-      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto scrollbar-hidden">
-          {selected && (() => {
-            const d = (detail || selected) as AcademyRegistration & {
-              discount_amount_dt?: number;
-              fee_amount_dt?: number;
-              proof_signed_url?: string;
-              rejection_reason?: string | null;
-              academy_promo_codes?: { code: string } | null;
-            };
-            const promo = d.academy_promo_codes;
-            const createdAt = d.created_at
-              ? new Date(d.created_at).toLocaleString(isEn ? 'en-GB' : 'fr-FR', {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })
-              : null;
+      {isMobile ? (
+        <Drawer open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+          <DrawerContent className={ACADEMY_SHEET_CLASS}>
+            {renderRegistrationDetail('mobile')}
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto scrollbar-hidden">
+            {renderRegistrationDetail('desktop')}
+          </DialogContent>
+        </Dialog>
+      )}
 
-            return (
-              <>
-                <DialogHeader className="space-y-3 pb-0">
-                  <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
-                    <DialogTitle className="font-mono text-lg tracking-tight">
-                      {selected.registration_number}
-                    </DialogTitle>
-                    <Badge variant={(STATUS_COLORS[selected.status] as 'default') || 'outline'}>
-                      {academyStatusLabel(selected.status, isEn)}
-                    </Badge>
-                  </div>
-                  {createdAt && (
-                    <p className="text-xs text-muted-foreground">
-                      {isEn ? 'Registered' : 'Inscrit le'} {createdAt}
-                    </p>
-                  )}
-                </DialogHeader>
-
-                <div className="space-y-5 text-sm pt-2">
-                  <section className="space-y-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {isEn ? 'Participant' : 'Participant'}
-                    </h3>
-                    <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
-                      <DetailField label={isEn ? 'Full name' : 'Nom complet'}>
-                        <span className="font-medium text-base">{selected.full_name}</span>
-                      </DetailField>
-                      <DetailField label={isEn ? 'Phone' : 'Téléphone'}>
-                        <span className="font-mono">{selected.phone}</span>
-                      </DetailField>
-                    </div>
-                  </section>
-
-                  <section className="space-y-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {isEn ? 'Contact' : 'Contact'}
-                    </h3>
-                    <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
-                      <DetailField label="Email">
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <Input
-                            value={editEmail}
-                            onChange={(e) => setEditEmail(e.target.value)}
-                            className="font-mono text-sm"
-                          />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="shrink-0"
-                            onClick={async () => {
-                              await adminFetch(API_ROUTES.ADMIN_ACADEMY_REGISTRATION(selected.id), {
-                                method: 'PATCH',
-                                body: JSON.stringify({ email: editEmail }),
-                              });
-                              toast({ title: isEn ? 'Email updated' : 'E-mail mis à jour' });
-                              loadAll();
-                            }}
-                          >
-                            {isEn ? 'Save email' : 'Enregistrer'}
-                          </Button>
-                        </div>
-                      </DetailField>
-                    </div>
-                  </section>
-
-                  <section className="space-y-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {isEn ? 'Registration' : 'Inscription'}
-                    </h3>
-                    <div className="rounded-lg border bg-muted/20 p-4 grid grid-cols-2 gap-4">
-                      <DetailField label={isEn ? 'Formula' : 'Formule'}>
-                        {academyFormulaLabel(selected.formule, isEn)}
-                      </DetailField>
-                      <DetailField label={isEn ? 'Payment' : 'Paiement'}>
-                        {academyPaymentLabel(selected.payment_method, isEn)}
-                      </DetailField>
-                      {promo?.code && (
-                        <DetailField label={isEn ? 'Promo code' : 'Code promo'} className="col-span-2">
-                          <span className="font-mono">{promo.code}</span>
-                        </DetailField>
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="space-y-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {isEn ? 'Amount' : 'Montant'}
-                    </h3>
-                    <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">{isEn ? 'Base' : 'Base'}</span>
-                        <span>{Number(d.base_amount_dt ?? selected.base_amount_dt).toFixed(2)} DT</span>
-                      </div>
-                      {Number(d.discount_amount_dt ?? 0) > 0 && (
-                        <div className="flex justify-between gap-4 text-green-600 dark:text-green-400">
-                          <span>{isEn ? 'Discount' : 'Remise'}</span>
-                          <span>-{Number(d.discount_amount_dt).toFixed(2)} DT</span>
-                        </div>
-                      )}
-                      {Number(d.fee_amount_dt ?? 0) > 0 && (
-                        <div className="flex justify-between gap-4">
-                          <span className="text-muted-foreground">
-                            {isEn ? 'Online fee' : 'Frais en ligne'}
-                          </span>
-                          <span>{Number(d.fee_amount_dt).toFixed(2)} DT</span>
-                        </div>
-                      )}
-                      <Separator />
-                      <div className="flex justify-between gap-4 font-semibold text-base">
-                        <span>{isEn ? 'Total' : 'Total'}</span>
-                        <span>{Number(selected.total_amount_dt).toFixed(2)} DT</span>
-                      </div>
-                    </div>
-                  </section>
-
-                  {d.proof_signed_url && (
-                    <Button variant="outline" size="sm" className="w-full sm:w-auto" asChild>
-                      <a href={d.proof_signed_url} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        {isEn ? 'View payment proof' : 'Voir la preuve de paiement'}
-                      </a>
-                    </Button>
-                  )}
-
-                  {d.rejection_reason && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
-                      <p className="text-xs font-medium text-destructive mb-1">
-                        {isEn ? 'Rejection reason' : 'Motif de refus'}
-                      </p>
-                      <p>{d.rejection_reason}</p>
-                    </div>
-                  )}
-
-                  <Separator />
-
-                  <div className="flex flex-wrap gap-2">
-                    {['proof_received', 'paid_online', 'pending_payment'].includes(selected.status) && (
-                      <Button size="sm" onClick={() => handleApprove(selected.id)}>
-                        {isEn ? 'Approve' : 'Approuver'}
-                      </Button>
-                    )}
-                    {selected.status !== 'rejected' && selected.status !== 'approved' && (
-                      <Button size="sm" variant="destructive" onClick={() => handleReject(selected.id)}>
-                        {isEn ? 'Reject' : 'Refuser'}
-                      </Button>
-                    )}
-                    {selected.status === 'approved' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={async () => {
-                          await adminFetch(API_ROUTES.ADMIN_ACADEMY_REGISTRATION_RESEND(selected.id), {
-                            method: 'POST',
-                            body: JSON.stringify({ template: 'approved' }),
-                          });
-                          toast({ title: isEn ? 'Email sent' : 'E-mail envoyé' });
-                        }}
-                      >
-                        <Mail className="h-4 w-4 mr-1" />
-                        {isEn ? 'Resend email' : 'Renvoyer'}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
+      <AcademyRegistrationReviewConfirm
+        open={reviewConfirmOpen}
+        onOpenChange={setReviewConfirmOpen}
+        action={reviewAction}
+        language={language}
+        registration={
+          selected
+            ? {
+                id: selected.id,
+                registration_number: selected.registration_number,
+                full_name: selected.full_name,
+                email: selected.email,
+                formule: selected.formule,
+              }
+            : null
+        }
+        formulaLabel={selected ? academyFormulaLabel(selected.formule, isEn) : ''}
+        onConfirm={confirmReviewAction}
+        isSubmitting={reviewSubmitting}
+      />
     </div>
     </TooltipProvider>
   );
