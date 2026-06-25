@@ -1,30 +1,15 @@
 /**
  * Admin Dashboard — Overview tab.
- * Extracted from Dashboard.tsx for maintainability.
  */
 
 import React from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   CheckCircle,
   XCircle,
   Clock,
-  Users,
-  TrendingUp,
-  Calendar as CalendarIcon,
   MapPin,
-  Plus,
-  FileText,
-  Ticket,
-  Target,
-  Activity,
-  PieChart,
-  Eye,
   Pause,
-  TrendingDown,
 } from "lucide-react";
 import {
   LineChart,
@@ -38,6 +23,7 @@ import {
 } from "recharts";
 import type { AmbassadorApplication, Event } from "../types";
 import { formatDateDMY } from "@/lib/date-utils";
+import { cn } from "@/lib/utils";
 
 export interface OverviewTabProps {
   language: "en" | "fr";
@@ -52,14 +38,139 @@ export interface OverviewTabProps {
     pendingRevenue: number;
     soldTickets: number;
   };
-  /** When false, the four financial KPIs (revenue / sold tickets) are hidden — super_admin only */
   showFinancialKpis: boolean;
   adminName: string | null;
   pendingAmbassadorOrdersCount: number;
   previousPendingAmbassadorOrdersCount: number | null;
-  activityChartData: { name: string; applications: number; approved: number; orders: number; revenue: number; eventsCreated: number }[];
+  activityChartData: {
+    name: string;
+    applications: number;
+    approved: number;
+    orders: number;
+    revenue: number;
+    eventsCreated: number;
+  }[];
   setActiveTab: (tab: string) => void;
   getStatusBadge: (status: string) => React.ReactNode;
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="mb-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+      {children}
+    </h3>
+  );
+}
+
+function MetricTile({
+  label,
+  value,
+  hint,
+  accent = "neutral",
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  accent?: "amber" | "green" | "primary" | "neutral";
+}) {
+  const accentStyles = {
+    amber: {
+      border: "border-l-amber-500",
+      value: "text-amber-500",
+    },
+    green: {
+      border: "border-l-emerald-500",
+      value: "text-emerald-500",
+    },
+    primary: {
+      border: "border-l-primary",
+      value: "text-primary",
+    },
+    neutral: {
+      border: "border-l-border",
+      value: "text-foreground",
+    },
+  }[accent];
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-border/60 border-l-[3px] bg-card px-4 py-3.5",
+        accentStyles.border,
+      )}
+    >
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={cn("mt-1.5 text-2xl font-semibold tabular-nums tracking-tight", accentStyles.value)}>
+        {value}
+      </p>
+      {hint ? <p className="mt-0.5 text-[11px] text-muted-foreground/80">{hint}</p> : null}
+    </div>
+  );
+}
+
+function Panel({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn("rounded-lg border border-border/60 bg-card", className)}>{children}</div>
+  );
+}
+
+function copy(language: "en" | "fr") {
+  if (language === "fr") {
+    return {
+      welcome: "Bon retour",
+      signedIn: "Connecté en tant que",
+      subtitle: "Aperçu de vos événements",
+      overview: "Vue d'ensemble",
+      activity: "Activité",
+      last7: "7 derniers jours",
+      applications: "Candidatures",
+      pending: "En attente",
+      approved: "Approuvées",
+      rejected: "Rejetées",
+      totalApplications: "Total",
+      upcomingEvents: "Événements à venir",
+      viewAll: "Tout voir",
+      noUpcoming: "Aucun événement à venir",
+      recentActivity: "Activité récente",
+      awaitingReview: "En attente de révision",
+      activeAmbassadors: "Ambassadeurs actifs",
+      allTimeEvents: "Tous les événements",
+      totalRevenue: "Revenus totaux",
+      paidRevenue: "Revenus payés",
+      pendingRevenue: "Revenus en attente",
+      soldTickets: "Billets vendus",
+      chartApplications: "Candidatures",
+      chartOrders: "Commandes",
+      chartRevenue: "Revenus (TND)",
+    };
+  }
+  return {
+    welcome: "Welcome back",
+    signedIn: "Signed in as",
+    subtitle: "Overview of your events",
+    overview: "Overview",
+    activity: "Activity",
+    last7: "Last 7 days",
+    applications: "Applications",
+    pending: "Pending",
+    approved: "Approved",
+    rejected: "Rejected",
+    totalApplications: "Total",
+    upcomingEvents: "Upcoming events",
+    viewAll: "View all",
+    noUpcoming: "No upcoming events",
+    recentActivity: "Recent activity",
+    awaitingReview: "Awaiting review",
+    activeAmbassadors: "Active ambassadors",
+    allTimeEvents: "All events",
+    totalRevenue: "Total revenue",
+    paidRevenue: "Paid revenue",
+    pendingRevenue: "Pending revenue",
+    soldTickets: "Sold tickets",
+    chartApplications: "Applications",
+    chartOrders: "Orders",
+    chartRevenue: "Revenue (TND)",
+  };
 }
 
 export function OverviewTab({
@@ -73,685 +184,345 @@ export function OverviewTab({
   showFinancialKpis,
   adminName,
   pendingAmbassadorOrdersCount,
-  previousPendingAmbassadorOrdersCount,
   activityChartData,
   setActiveTab,
   getStatusBadge,
 }: OverviewTabProps) {
   const isMobile = useIsMobile();
+  const c = copy(language);
+  const rejectedCount = applications.filter((a) => a.status === "rejected").length;
+  const totalApps = applications.length;
+
+  const upcomingEvents = events
+    .filter((e) => e.event_type === "upcoming" && new Date(e.date) >= new Date())
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(0, 3);
 
   return (
-    <div className="space-y-6">
-      {/* Welcome Header */}
-      <div>
-        <Card
-          className="shadow-xl bg-card border-border"
-          style={{
-            backgroundColor: "hsl(var(--card))",
-            borderColor: "hsl(var(--border))",
-          }}
-        >
-          <CardContent className="p-8">
-            <div className="flex flex-col md:flex-row items-center md:items-center justify-between gap-6">
-              <div className="space-y-2 text-center md:text-left">
-                <h2 className="text-3xl font-heading font-bold" style={{ color: "#E21836" }}>
-                  {language === "en" ? "Welcome Back!" : "Bon Retour !"}
-                </h2>
-                {adminName ? (
-                  <p className="text-base font-heading font-medium text-foreground/90">
-                    {language === "en" ? "Signed in as " : "Connecté en tant que "}
-                    <span className="font-semibold text-foreground">
-                      {adminName}
-                    </span>
-                  </p>
-                ) : null}
-                <p className="text-lg font-heading text-muted-foreground">
-                  {language === "en"
-                    ? "Here's what's happening with your events today"
-                    : "Voici ce qui se passe avec vos événements aujourd'hui"}
+    <div className="space-y-8">
+      {/* Welcome strip */}
+      <Panel className="p-4 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-foreground">
+              {c.welcome}
+              {adminName ? (
+                <span className="font-medium text-primary">
+                  {language === "en" ? ", " : ", "}
+                  {adminName}
+                </span>
+              ) : null}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{c.subtitle}</p>
+          </div>
+
+          {showFinancialKpis && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+              <div className="text-left sm:text-right">
+                <p className="text-[11px] text-muted-foreground">{c.totalRevenue}</p>
+                <p className="text-sm font-semibold tabular-nums text-primary">
+                  {displayStats.totalRevenue.toLocaleString()} TND
                 </p>
               </div>
-              {/* Financial KPIs: super_admin only (includes POS in dashboard totals) */}
-              {showFinancialKpis ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-start gap-x-10 gap-y-3">
-                <div className="text-center">
-                  <p className="text-sm font-heading text-muted-foreground">
-                    {language === "en" ? "Total Revenue" : "Revenus Totaux"}
-                  </p>
-                  <p className="text-lg font-bold font-heading" style={{ color: "#E21836" }}>
-                    {displayStats.totalRevenue.toLocaleString()} TND
-                  </p>
-                </div>
-
-                <div className="text-center">
-                  <p className="text-sm font-heading text-muted-foreground">
-                    {language === "en" ? "Paid Revenue" : "Revenus Payés"}
-                  </p>
-                  <p className="text-lg font-bold font-heading" style={{ color: "#10B981" }}>
-                    {displayStats.paidRevenue.toLocaleString()} TND
-                  </p>
-                </div>
-
-                <div className="text-center">
-                  <p className="text-sm font-heading text-muted-foreground">
-                    {language === "en" ? "Pending Revenue" : "Revenus en Attente"}
-                  </p>
-                  <p className="text-lg font-bold font-heading" style={{ color: "#F59E0B" }}>
-                    {displayStats.pendingRevenue.toLocaleString()} TND
-                  </p>
-                </div>
-
-                <div className="text-center">
-                  <p className="text-sm font-heading text-muted-foreground">
-                    {language === "en" ? "Sold Tickets" : "Billets Vendus"}
-                  </p>
-                  <p className="text-lg font-bold font-heading" style={{ color: "#E21836" }}>
-                    {displayStats.soldTickets.toLocaleString()}
-                  </p>
-                </div>
+              <div className="text-left sm:text-right">
+                <p className="text-[11px] text-muted-foreground">{c.paidRevenue}</p>
+                <p className="text-sm font-semibold tabular-nums text-emerald-500">
+                  {displayStats.paidRevenue.toLocaleString()} TND
+                </p>
               </div>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Enhanced KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full px-2">
-        {/* Pending Applications Card */}
-        <Card
-          className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
-          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#3A3A3A";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "hsl(var(--border))";
-          }}
-        >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl" />
-          <CardContent className="p-6 relative z-10">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(107, 107, 107, 0.2)" }}>
-                <Clock className="w-6 h-6" style={{ color: "#F59E0B" }} />
+              <div className="text-left sm:text-right">
+                <p className="text-[11px] text-muted-foreground">{c.pendingRevenue}</p>
+                <p className="text-sm font-semibold tabular-nums text-amber-500">
+                  {displayStats.pendingRevenue.toLocaleString()} TND
+                </p>
+              </div>
+              <div className="text-left sm:text-right">
+                <p className="text-[11px] text-muted-foreground">{c.soldTickets}</p>
+                <p className="text-sm font-semibold tabular-nums text-primary">
+                  {displayStats.soldTickets.toLocaleString()}
+                </p>
               </div>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm font-heading text-muted-foreground">
-                {t.pendingApplications}
-              </p>
-              <p className="text-3xl font-bold font-heading" style={{ color: "#F59E0B" }}>
-                {pendingApplications.length}
-              </p>
-              <p className="text-xs font-heading text-muted-foreground">
-                {language === "en" ? "Awaiting review" : "En attente de révision"}
-              </p>
-            </div>
-            <div className="mt-4">
-              <div className="h-8 flex items-end gap-1">
-                {activityChartData.map((day, i) => {
-                  const maxApps = Math.max(...activityChartData.map((x) => x.applications), 1);
-                  return (
-                    <div
-                      key={i}
-                      className="flex-1 flex flex-col justify-end items-center gap-0.5 h-8"
-                      title={`${day.name}: ${day.applications}`}
-                    >
-                      <div
-                        className="w-full bg-yellow-500/30 rounded-t transition-all duration-300 hover:bg-yellow-500/50 min-h-[2px]"
-                        style={{ height: `${(day.applications / maxApps) * 100}%` }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex gap-1 mt-1">
-                {activityChartData.map((day, i) => (
-                  <div key={i} className="flex-1 text-[10px] text-center text-muted-foreground font-heading truncate" title={day.name}>
-                    {day.name}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
+      </Panel>
 
-        {/* Approved Applications Card */}
-        <Card
-          className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
-          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#3A3A3A";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "hsl(var(--border))";
-          }}
-        >
-          <div
-            className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl"
-            style={{ backgroundColor: "rgba(34, 197, 94, 0.05)" }}
+      {/* Key metrics */}
+      <section>
+        <SectionHeading>{c.overview}</SectionHeading>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricTile
+            label={t.pendingApplications}
+            value={pendingApplications.length}
+            hint={c.awaitingReview}
+            accent="amber"
           />
-          <CardContent className="p-6 relative z-10">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(34, 197, 94, 0.2)" }}>
-                <CheckCircle className="w-6 h-6" style={{ color: "#22C55E" }} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground font-heading">{t.approvedApplications}</p>
-              <p className="text-3xl font-bold font-heading font-heading" style={{ color: "#22C55E" }}>
-                {approvedCount}
-              </p>
-              <p className="text-xs text-muted-foreground font-heading">
-                {language === "en" ? "Active ambassadors" : "Ambassadeurs actifs"}
-              </p>
-            </div>
-            <div className="mt-4">
-              <div className="h-8 flex items-end gap-1">
-                {activityChartData.map((day, i) => {
-                  const maxApproved = Math.max(...activityChartData.map((x) => x.approved), 1);
-                  return (
-                    <div
-                      key={i}
-                      className="flex-1 flex flex-col justify-end items-center gap-0.5 h-8"
-                      title={`${day.name}: ${day.approved}`}
-                    >
-                      <div
-                        className="w-full rounded-t transition-all duration-300 min-h-[2px]"
-                        style={{ backgroundColor: "rgba(34, 197, 94, 0.3)", height: `${((day.approved ?? 0) / maxApproved) * 100}%` }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(34, 197, 94, 0.5)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(34, 197, 94, 0.3)")}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex gap-1 mt-1">
-                {activityChartData.map((day, i) => (
-                  <div key={i} className="flex-1 text-[10px] text-center text-muted-foreground font-heading truncate" title={day.name}>
-                    {day.name}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Total Events Card */}
-        <Card
-          className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
-          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#3A3A3A";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "hsl(var(--border))";
-          }}
-        >
-          <div
-            className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl"
-            style={{ backgroundColor: "rgba(226, 24, 54, 0.05)" }}
+          <MetricTile
+            label={t.approvedApplications}
+            value={approvedCount}
+            hint={c.activeAmbassadors}
+            accent="green"
           />
-          <CardContent className="p-6 relative z-10">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(226, 24, 54, 0.2)" }}>
-                <CalendarIcon className="w-6 h-6" style={{ color: "#E21836" }} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground font-heading">{t.totalEvents}</p>
-              <p className="text-3xl font-bold font-heading" style={{ color: "#E21836" }}>
-                {events.length}
-              </p>
-              <p className="text-xs text-muted-foreground font-heading">
-                {language === "en" ? "All time events" : "Événements de tous les temps"}
-              </p>
-            </div>
-            <div className="mt-4">
-              <div className="h-8 flex items-end gap-1">
-                {activityChartData.map((day, i) => {
-                  const maxEvents = Math.max(...activityChartData.map((x) => x.eventsCreated), 1);
-                  return (
-                    <div
-                      key={i}
-                      className="flex-1 flex flex-col justify-end items-center gap-0.5 h-8"
-                      title={`${day.name}: ${day.eventsCreated}`}
-                    >
-                      <div
-                        className="w-full rounded-t transition-all duration-300 min-h-[2px]"
-                        style={{ backgroundColor: "rgba(226, 24, 54, 0.3)", height: `${(day.eventsCreated / maxEvents) * 100}%` }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(226, 24, 54, 0.5)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(226, 24, 54, 0.3)")}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex gap-1 mt-1">
-                {activityChartData.map((day, i) => (
-                  <div key={i} className="flex-1 text-[10px] text-center text-muted-foreground font-heading truncate" title={day.name}>
-                    {day.name}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          <MetricTile label={t.totalEvents} value={events.length} hint={c.allTimeEvents} accent="primary" />
+          <MetricTile label={t.ambassadorOrdersPending} value={pendingAmbassadorOrdersCount} accent="neutral" />
+        </div>
+      </section>
 
-        {/* Ambassador Orders Pending Card */}
-        <Card
-          className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
-          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#3A3A3A";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "hsl(var(--border))";
-          }}
-        >
-          <div
-            className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl"
-            style={{ backgroundColor: "rgba(107, 114, 128, 0.1)" }}
-          />
-          <CardContent className="p-6 relative z-10">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(107, 107, 107, 0.2)" }}>
-                <Users className="w-6 h-6" style={{ color: "#6B6B6B" }} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground font-heading">{t.ambassadorOrdersPending}</p>
-              <p className="text-3xl font-bold font-heading text-foreground">{pendingAmbassadorOrdersCount}</p>
-            </div>
-            <div className="mt-4">
-              <div className="h-8 flex items-end gap-1">
-                {activityChartData.map((day, i) => {
-                  const maxOrders = Math.max(...activityChartData.map((x) => x.orders), 1);
-                  return (
-                    <div
-                      key={i}
-                      className="flex-1 flex flex-col justify-end items-center gap-0.5 h-8"
-                      title={`${day.name}: ${day.orders}`}
-                    >
-                      <div
-                        className="w-full bg-zinc-500/40 rounded-t transition-all duration-300 hover:bg-zinc-400/60 min-h-[2px]"
-                        style={{ height: `${(day.orders / maxOrders) * 100}%` }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex gap-1 mt-1">
-                {activityChartData.map((day, i) => (
-                  <div key={i} className="flex-1 text-[10px] text-center text-muted-foreground font-heading truncate" title={day.name}>
-                    {day.name}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts & Analytics Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card
-          className="hover:shadow-lg transition-all duration-300"
-          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#3A3A3A";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "hsl(var(--border))";
-          }}
-        >
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Activity className="w-5 h-5 text-primary" />
-                <span className="font-heading">
-                  {language === "en" ? "Activity Overview" : "Aperçu de l'Activité"}
-                </span>
-              </div>
-              <Badge variant="outline" className="font-heading">
-                {language === "en" ? "Last 7 days" : "7 derniers jours"}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
+      {/* Charts */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <section>
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              {c.activity}
+            </span>
+            <span className="text-[11px] text-muted-foreground">{c.last7}</span>
+          </div>
+          <Panel className="p-4">
+            <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={activityChartData} margin={{ top: 8, right: 30, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
-                  <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
-                  <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                <LineChart data={activityChartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={32}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={32}
+                  />
                   <RechartsTooltip
-                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
-                    labelStyle={{ color: "#fff" }}
+                    contentStyle={{
+                      background: "hsl(var(--popover))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
                     formatter={(value: number, name: string) => {
                       const labels: Record<string, string> = {
-                        applications: language === "en" ? "Applications" : "Candidatures",
-                        orders: language === "en" ? "Orders" : "Commandes",
-                        revenue: language === "en" ? "Revenue (TND)" : "Chiffre (TND)",
+                        applications: c.chartApplications,
+                        orders: c.chartOrders,
+                        revenue: c.chartRevenue,
                       };
-                      return [name === "revenue" ? `${Number(value).toLocaleString()} TND` : value, labels[name] || name];
+                      return [
+                        name === "revenue" ? `${Number(value).toLocaleString()} TND` : value,
+                        labels[name] || name,
+                      ];
                     }}
                   />
-                  <Legend
-                    wrapperStyle={{ fontSize: 12 }}
-                    formatter={(value) =>
-                      value === "revenue"
-                        ? language === "en"
-                          ? "Revenue (TND)"
-                          : "Chiffre (TND)"
-                        : value === "applications"
-                          ? language === "en"
-                            ? "Applications"
-                            : "Candidatures"
-                          : language === "en"
-                            ? "Orders"
-                            : "Commandes"
-                    }
+                  <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />
+                  <Line
+                    type="monotone"
+                    dataKey="applications"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={1.5}
+                    dot={false}
+                    yAxisId="left"
+                    name="applications"
                   />
-                  <Line type="monotone" dataKey="applications" stroke="#E21836" strokeWidth={2} dot={{ fill: "#E21836", r: 4 }} yAxisId="left" name="applications" />
-                  <Line type="monotone" dataKey="orders" stroke="#10B981" strokeWidth={2} dot={{ fill: "#10B981", r: 4 }} yAxisId="left" name="orders" />
-                  <Line type="monotone" dataKey="revenue" stroke="#F59E0B" strokeWidth={2} dot={{ fill: "#F59E0B", r: 4 }} yAxisId="right" name="revenue" />
+                  <Line
+                    type="monotone"
+                    dataKey="orders"
+                    stroke="#10b981"
+                    strokeWidth={1.5}
+                    dot={false}
+                    yAxisId="left"
+                    name="orders"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#f59e0b"
+                    strokeWidth={1.5}
+                    dot={false}
+                    yAxisId="right"
+                    name="revenue"
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
-          </CardContent>
-        </Card>
+          </Panel>
+        </section>
 
-        <Card className="hover:shadow-lg transition-all duration-300">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <PieChart className="w-5 h-5 text-primary" />
-                <span className="font-heading">
-                  {language === "en" ? "Applications Status" : "Statut des Candidatures"}
-                </span>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <section>
+          <SectionHeading>{c.applications}</SectionHeading>
+          <Panel className="p-4">
             <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-heading text-muted-foreground">
-                    {language === "en" ? "Pending" : "En Attente"}
-                  </span>
-                  <span className="text-sm font-bold font-heading">{pendingApplications.length}</span>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-full transition-all duration-500"
-                    style={{
-                      width: `${applications.length > 0 ? (pendingApplications.length / applications.length) * 100 : 0}%`,
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-heading text-muted-foreground">
-                    {language === "en" ? "Approved" : "Approuvé"}
-                  </span>
-                  <span className="text-sm font-bold font-heading">{approvedCount}</span>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all duration-500"
-                    style={{
-                      width: `${applications.length > 0 ? (approvedCount / applications.length) * 100 : 0}%`,
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-heading text-muted-foreground">
-                    {language === "en" ? "Rejected" : "Rejeté"}
-                  </span>
-                  <span className="text-sm font-bold font-heading">
-                    {applications.filter((a) => a.status === "rejected").length}
-                  </span>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all duration-500"
-                    style={{
-                      width: `${
-                        applications.length > 0
-                          ? (applications.filter((a) => a.status === "rejected").length / applications.length) * 100
-                          : 0
-                      }%`,
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="pt-4 border-t border-border">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-heading font-semibold">
-                    {language === "en" ? "Total Applications" : "Total des Candidatures"}
-                  </span>
-                  <span className="text-lg font-bold font-heading text-primary">{applications.length}</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Actions & Upcoming Events */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card
-          className="hover:shadow-lg transition-all duration-300 bg-card border-border"
-          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#3A3A3A";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "hsl(var(--border))";
-          }}
-        >
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-heading text-foreground">
-              <Target className="w-5 h-5" style={{ color: "#E21836" }} />
-              {language === "en" ? "Quick Actions" : "Actions Rapides"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {!isMobile && (
-              <Button
-                onClick={() => setActiveTab("events")}
-                className="w-full justify-start font-heading"
-                style={{ backgroundColor: "#E21836", color: "hsl(var(--primary-foreground))", border: "none" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#C4162F";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#E21836";
-                }}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                {language === "en" ? "Create New Event" : "Créer un Nouvel Événement"}
-              </Button>
-            )}
-            {!isMobile && (
-              <Button
-                onClick={() => setActiveTab("applications")}
-                variant="outline"
-                className="w-full justify-start font-heading border-border bg-card text-foreground hover:bg-accent hover:text-primary"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                {language === "en" ? "Review Applications" : "Examiner les Candidatures"}
-              </Button>
-            )}
-            {!isMobile && (
-              <Button
-                onClick={() => setActiveTab("ambassadors")}
-                variant="outline"
-                className="w-full justify-start font-heading border-border bg-card text-foreground hover:bg-accent hover:text-primary"
-              >
-                <Users className="w-4 h-4 mr-2" />
-                {language === "en" ? "Manage Ambassadors" : "Gérer les Ambassadeurs"}
-              </Button>
-            )}
-            <Button
-              onClick={() => setActiveTab("tickets")}
-              variant="outline"
-              className="w-full justify-start font-heading border-border bg-card text-foreground hover:bg-accent hover:text-primary"
-            >
-              <Ticket className="w-4 h-4 mr-2" />
-              {language === "en" ? "View Ticket Sales" : "Voir les Ventes de Billets"}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2 hover:shadow-lg transition-all duration-300">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-primary" />
-                <span className="font-heading">
-                  {language === "en" ? "Upcoming Events" : "Événements à Venir"}
-                </span>
-              </div>
-              {!isMobile && (
-                <Button onClick={() => setActiveTab("events")} variant="ghost" size="sm" className="font-heading">
-                  {language === "en" ? "View All" : "Voir Tout"}
-                </Button>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {events
-                .filter((e) => e.event_type === "upcoming" && new Date(e.date) >= new Date())
-                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                .slice(0, 3)
-                .map((event, index) => (
-                  <div
-                    key={event.id}
-                    className={`p-4 bg-muted/50 rounded-lg border border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-md ${isMobile ? "" : "cursor-pointer"} group`}
-                    onClick={isMobile ? undefined : () => setActiveTab("events")}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 space-y-1">
-                        <h4 className="font-semibold font-heading group-hover:text-primary transition-colors">
-                          {event.name}
-                        </h4>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground font-heading">
-                          <div className="flex items-center gap-1">
-                            <CalendarIcon className="w-3 h-3" />
-                            {formatDateDMY(event.date, language)}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            {event.venue}
-                          </div>
-                        </div>
-                      </div>
-                      <Badge variant="outline" className="font-heading">
-                        {event.event_type || "upcoming"}
-                      </Badge>
-                    </div>
+              {[
+                {
+                  label: c.pending,
+                  count: pendingApplications.length,
+                  pct: totalApps > 0 ? (pendingApplications.length / totalApps) * 100 : 0,
+                  bar: "bg-amber-500",
+                },
+                {
+                  label: c.approved,
+                  count: approvedCount,
+                  pct: totalApps > 0 ? (approvedCount / totalApps) * 100 : 0,
+                  bar: "bg-emerald-500",
+                },
+                {
+                  label: c.rejected,
+                  count: rejectedCount,
+                  pct: totalApps > 0 ? (rejectedCount / totalApps) * 100 : 0,
+                  bar: "bg-red-500",
+                },
+              ].map((row) => (
+                <div key={row.label}>
+                  <div className="mb-1.5 flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{row.label}</span>
+                    <span className="tabular-nums font-medium text-foreground">{row.count}</span>
                   </div>
-                ))}
-              {events.filter((e) => e.event_type === "upcoming" && new Date(e.date) >= new Date()).length === 0 && (
-                <div className="text-center py-8 text-muted-foreground font-heading">
-                  {language === "en" ? "No upcoming events" : "Aucun événement à venir"}
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={cn("h-full rounded-full transition-all", row.bar)}
+                      style={{ width: `${row.pct}%` }}
+                    />
+                  </div>
                 </div>
-              )}
+              ))}
+              <div className="flex items-center justify-between border-t border-border/60 pt-3 text-sm">
+                <span className="text-muted-foreground">{c.totalApplications}</span>
+                <span className="font-semibold tabular-nums text-primary">{totalApps}</span>
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          </Panel>
+        </section>
       </div>
 
-      {/* Recent Activity */}
-      <Card className="hover:shadow-lg transition-all duration-300">
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-primary animate-pulse" />
-              <span className="font-heading">
-                {language === "en" ? "Recent Activity" : "Activité Récente"}
-              </span>
-            </div>
-            {!isMobile && (
-              <Button onClick={() => setActiveTab("applications")} variant="ghost" size="sm" className="font-heading">
-                {language === "en" ? "View All" : "Voir Tout"}
-              </Button>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {applications.slice(0, 5).map((app, index) => (
-              <div
-                key={app.id}
-                className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-lg border border-border/50 hover:border-primary/50 transform transition-all duration-300 hover:scale-[1.02] hover:shadow-md group"
-              >
-                <div className="flex items-center gap-4 flex-1">
-                  <div
-                    className="p-2 rounded-lg"
-                    style={{
-                      backgroundColor:
-                        app.status === "approved"
-                          ? "rgba(34, 197, 94, 0.2)"
-                          : app.status === "rejected" || app.status === "removed"
-                            ? "rgba(239, 68, 68, 0.2)"
-                            : app.status === "suspended"
-                              ? "rgba(107, 114, 128, 0.2)"
-                              : "rgba(249, 115, 22, 0.2)",
-                    }}
-                  >
-                    {app.status === "approved" ? (
-                      <CheckCircle className="w-5 h-5" style={{ color: "#22C55E" }} />
-                    ) : app.status === "rejected" || app.status === "removed" ? (
-                      <XCircle className="w-5 h-5" style={{ color: "#EF4444" }} />
-                    ) : app.status === "suspended" ? (
-                      <Pause className="w-5 h-5" style={{ color: "#6B7280" }} />
-                    ) : (
-                      <Clock className="w-5 h-5" style={{ color: "#F97316" }} />
+      {/* Upcoming events */}
+      <section>
+        <div className="mb-2.5 flex items-center justify-between gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            {c.upcomingEvents}
+          </span>
+          {!isMobile && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("events")}
+              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {c.viewAll}
+            </button>
+          )}
+        </div>
+        <Panel>
+          {upcomingEvents.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">{c.noUpcoming}</p>
+          ) : (
+            <div className="divide-y divide-border/50">
+              {upcomingEvents.map((event) => (
+                <div
+                  key={event.id}
+                  className={cn(
+                    "flex items-center justify-between gap-3 px-4 py-3",
+                    !isMobile && "cursor-pointer hover:bg-muted/30",
+                  )}
+                  onClick={isMobile ? undefined : () => setActiveTab("events")}
+                  onKeyDown={
+                    isMobile
+                      ? undefined
+                      : (e) => {
+                          if (e.key === "Enter" || e.key === " ") setActiveTab("events");
+                        }
+                  }
+                  role={isMobile ? undefined : "button"}
+                  tabIndex={isMobile ? undefined : 0}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {event.name}
+                      <span className="ml-2 font-normal text-primary/80">
+                        {formatDateDMY(event.date, language)}
+                      </span>
+                    </p>
+                    {event.venue && (
+                      <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+                        <MapPin className="h-3 w-3 shrink-0" strokeWidth={1.75} />
+                        {event.venue}
+                      </p>
                     )}
                   </div>
-                  <div className="flex-1">
-                    <p className="font-semibold font-heading group-hover:text-primary transition-colors">
-                      {app.full_name}
-                    </p>
-                    <p className="text-sm text-muted-foreground font-heading">
-                      {app.city} • {app.phone_number}
-                    </p>
+                  <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+                    {event.event_type || "upcoming"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </section>
+
+      {/* Recent activity */}
+      <section>
+        <div className="mb-2.5 flex items-center justify-between gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            {c.recentActivity}
+          </span>
+          {!isMobile && applications.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("applications")}
+              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {c.viewAll}
+            </button>
+          )}
+        </div>
+        <Panel>
+          {applications.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t.noApplications}</p>
+          ) : (
+            <div className="divide-y divide-border/50">
+              {applications.slice(0, 5).map((app) => (
+                <div
+                  key={app.id}
+                  className="flex items-center justify-between gap-3 px-4 py-3"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <StatusDot status={app.status} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{app.full_name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {app.city}
+                        {app.phone_number ? ` · ${app.phone_number}` : ""}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
                   {getStatusBadge(app.status)}
-                  {!isMobile && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setActiveTab("applications")}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity font-heading"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                  )}
                 </div>
-              </div>
-            ))}
-            {applications.length === 0 && (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                  <FileText className="w-8 h-8 text-muted-foreground" />
-                </div>
-                <p className="text-muted-foreground font-heading">{t.noApplications}</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </section>
     </div>
   );
+}
+
+function StatusDot({ status }: { status: string }) {
+  const config =
+    status === "approved"
+      ? { Icon: CheckCircle, className: "text-emerald-500" }
+      : status === "rejected" || status === "removed"
+        ? { Icon: XCircle, className: "text-red-500" }
+        : status === "suspended"
+          ? { Icon: Pause, className: "text-muted-foreground" }
+          : { Icon: Clock, className: "text-amber-500" };
+
+  const { Icon, className } = config;
+
+  return <Icon className={cn("h-4 w-4 shrink-0", className)} strokeWidth={1.75} aria-hidden />;
 }

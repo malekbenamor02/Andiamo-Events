@@ -7,6 +7,7 @@ import React from "react";
 import { TabsContent } from "@/components/ui/tabs";
 import { OfficialInvitationForm } from "@/components/admin/OfficialInvitationForm";
 import { OfficialInvitationsList } from "@/components/admin/OfficialInvitationsList";
+import { AdminTabHeader } from "./AdminTabShell";
 
 export interface OfficialInvitationsTabProps {
   language: "en" | "fr";
@@ -16,11 +17,9 @@ export interface OfficialInvitationsTabProps {
 export function OfficialInvitationsTab({ language, selectedEventId }: OfficialInvitationsTabProps) {
   return (
     <TabsContent value="official-invitations" className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-primary">
-          {language === "en" ? "Official Invitations" : "Invitations Officielles"}
-        </h2>
-      </div>
+      <AdminTabHeader
+        title={language === "en" ? "Official Invitations" : "Invitations Officielles"}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">

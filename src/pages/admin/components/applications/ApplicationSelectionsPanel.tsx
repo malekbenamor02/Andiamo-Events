@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { Archive, Download, FolderOpen, Plus, User } from "lucide-react";
+import { Archive, CheckCircle, Download, FolderOpen, Plus, User, XCircle } from "lucide-react";
 import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,9 +20,15 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 import { filterAmbassadorApplications } from "../../lib/filterApplications";
 import { exportDraftSelectionToExcel } from "../../lib/exportAmbassadorApplicationsExcel";
 import { ApplicationsListCore } from "./ApplicationsListCore";
+import {
+  AdminApplicationBulkActionConfirm,
+  ADMIN_APPLICATION_BULK_CONFIRM_CLOSE_MS,
+  type AdminApplicationBulkAction,
+} from "../AdminApplicationBulkActionConfirm";
 import type { useApplicationSelections } from "../../hooks/useApplicationSelections";
 import type { AmbassadorApplication, AmbassadorApplicationSelection } from "../../types";
 import type { ApplicationsTabProps } from "../ApplicationsTab";
@@ -84,6 +90,7 @@ export function ApplicationSelectionsPanel({
     createSelection,
     archiveSelection,
     removeApplicationFromSelection,
+    removeApplicationsFromSelection,
     fetchSelectionItemsSnapshot,
     clearSelectionItems,
   } = selectionsApi;
@@ -103,6 +110,13 @@ export function ApplicationSelectionsPanel({
   const [selectionDateFrom, setSelectionDateFrom] = useState<Date | undefined>(undefined);
   const [selectionDateTo, setSelectionDateTo] = useState<Date | undefined>(undefined);
 
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<AdminApplicationBulkAction | null>(null);
+  const [isBulkConfirmOpen, setIsBulkConfirmOpen] = useState(false);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<AmbassadorApplication | null>(null);
+  const [removing, setRemoving] = useState(false);
+
   useEffect(() => {
     fetchSelections({ silent: selections.length > 0 }).catch((err) => {
       console.error("Failed to fetch selections:", err);
@@ -118,6 +132,10 @@ export function ApplicationSelectionsPanel({
   }, [fetchSelections, language, toast]);
 
   const selectedSelectionMeta = selections.find((s) => s.id === selectedSelectionId);
+
+  useEffect(() => {
+    setBulkSelectedIds(new Set());
+  }, [selectedSelectionId]);
 
   useEffect(() => {
     if (!selectedSelectionId) {
@@ -182,6 +200,235 @@ export function ApplicationSelectionsPanel({
     }
     return meta;
   }, [selectionItems]);
+
+  const bulkSelectableIds = useMemo(
+    () => selectionFilteredApps.map((a) => a.id),
+    [selectionFilteredApps],
+  );
+
+  const bulkSelectedApps = useMemo(
+    () => selectionFilteredApps.filter((a) => bulkSelectedIds.has(a.id)),
+    [selectionFilteredApps, bulkSelectedIds],
+  );
+
+  const bulkPendingApps = useMemo(
+    () => bulkSelectedApps.filter((a) => a.status === "pending"),
+    [bulkSelectedApps],
+  );
+
+  const handleToggleBulkSelect = useCallback((applicationId: string, checked: boolean) => {
+    setBulkSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(applicationId);
+      else next.delete(applicationId);
+      return next;
+    });
+  }, []);
+
+  const handleToggleAllBulkSelect = useCallback((applicationIds: string[], checked: boolean) => {
+    setBulkSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) applicationIds.forEach((id) => next.add(id));
+      else applicationIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, []);
+
+  const openBulkConfirm = useCallback(
+    (action: AdminApplicationBulkAction) => {
+      if (bulkSelectedIds.size === 0) return;
+      if ((action === "approve" || action === "reject") && bulkPendingApps.length === 0) {
+        toast({
+          title: language === "en" ? "No pending applications" : "Aucune candidature en attente",
+          description:
+            language === "en"
+              ? "Approve and reject only apply to pending applications in your selection."
+              : "L'approbation et le rejet ne s'appliquent qu'aux candidatures en attente.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setBulkAction(action);
+      setIsBulkConfirmOpen(true);
+    },
+    [bulkSelectedIds.size, bulkPendingApps.length, language, toast],
+  );
+
+  const bulkConfirmApps = useMemo(() => {
+    if (bulkAction === "remove") return bulkSelectedApps;
+    return bulkPendingApps;
+  }, [bulkAction, bulkSelectedApps, bulkPendingApps]);
+
+  const handleBulkConfirm = useCallback(async () => {
+    if (!bulkAction || !selectedSelectionId) return;
+
+    setBulkProcessing(true);
+    try {
+      if (bulkAction === "remove") {
+        const ids = bulkSelectedApps.map((a) => a.id);
+        await removeApplicationsFromSelection(selectedSelectionId, ids);
+        setBulkSelectedIds(new Set());
+        toast({
+          title: language === "en" ? "Removed from draft" : "Retiré du brouillon",
+          description:
+            language === "en"
+              ? `${ids.length} application${ids.length === 1 ? "" : "s"} removed.`
+              : `${ids.length} candidature${ids.length === 1 ? "" : "s"} retirée(s).`,
+        });
+      } else {
+        const targets = bulkPendingApps;
+        let succeeded = 0;
+        const expectedStatus = bulkAction === "approve" ? "approved" : "rejected";
+        for (const app of targets) {
+          if (bulkAction === "approve") await onApprove(app);
+          else await onReject(app);
+
+          const { data: statusRow } = await supabase
+            .from("ambassador_applications")
+            .select("status")
+            .eq("id", app.id)
+            .maybeSingle();
+
+          if (statusRow?.status === expectedStatus) {
+            succeeded += 1;
+            setBulkSelectedIds((prev) => {
+              const next = new Set(prev);
+              next.delete(app.id);
+              return next;
+            });
+          }
+        }
+        if (succeeded === targets.length) {
+          toast({
+            title:
+              bulkAction === "approve"
+                ? language === "en"
+                  ? "Applications approved"
+                  : "Candidatures approuvées"
+                : language === "en"
+                  ? "Applications rejected"
+                  : "Candidatures rejetées",
+            description:
+              language === "en"
+                ? `${succeeded} processed successfully.`
+                : `${succeeded} traitée(s) avec succès.`,
+          });
+        } else if (succeeded > 0) {
+          toast({
+            title: language === "en" ? "Partially completed" : "Partiellement terminé",
+            description:
+              language === "en"
+                ? `${succeeded} of ${targets.length} processed. Check remaining items.`
+                : `${succeeded} sur ${targets.length} traitée(s). Vérifiez les éléments restants.`,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: language === "en" ? "Error" : "Erreur",
+            description:
+              language === "en"
+                ? "Could not process the selected applications."
+                : "Impossible de traiter les candidatures sélectionnées.",
+            variant: "destructive",
+          });
+        }
+      }
+      setIsBulkConfirmOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: language === "en" ? "Error" : "Erreur",
+        variant: "destructive",
+      });
+    } finally {
+      setBulkProcessing(false);
+    }
+  }, [
+    bulkAction,
+    selectedSelectionId,
+    bulkSelectedApps,
+    bulkPendingApps,
+    removeApplicationsFromSelection,
+    onApprove,
+    onReject,
+    language,
+    toast,
+  ]);
+
+  const allBulkSelected =
+    bulkSelectableIds.length > 0 &&
+    bulkSelectableIds.every((id) => bulkSelectedIds.has(id));
+
+  const bulkActionsBar =
+    bulkSelectedIds.size > 0 ? (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-sm font-medium text-foreground tabular-nums">
+          {bulkSelectedIds.size}{" "}
+          {language === "en" ? "selected" : "sélectionné(s)"}
+          {bulkPendingApps.length > 0 && bulkPendingApps.length < bulkSelectedIds.size ? (
+            <span className="ml-1.5 font-normal text-muted-foreground">
+              · {bulkPendingApps.length} {language === "en" ? "pending" : "en attente"}
+            </span>
+          ) : null}
+        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => handleToggleAllBulkSelect(bulkSelectableIds, !allBulkSelected)}
+          >
+            {allBulkSelected
+              ? language === "en"
+                ? "Deselect all"
+                : "Tout désélectionner"
+              : language === "en"
+                ? "Select all"
+                : "Tout sélectionner"}
+          </Button>
+          <span className="hidden sm:inline text-border">|</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={bulkProcessing || bulkPendingApps.length === 0}
+            onClick={() => openBulkConfirm("approve")}
+            className="h-8 border-emerald-500/40 text-xs text-emerald-600 hover:bg-emerald-500/10"
+          >
+            <CheckCircle className="mr-1 h-3.5 w-3.5" />
+            {language === "en" ? "Approve" : "Approuver"}
+            {bulkPendingApps.length > 0 && bulkPendingApps.length < bulkSelectedIds.size
+              ? ` (${bulkPendingApps.length})`
+              : null}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={bulkProcessing || bulkPendingApps.length === 0}
+            onClick={() => openBulkConfirm("reject")}
+            className="h-8 border-destructive/40 text-xs text-destructive hover:bg-destructive/10"
+          >
+            <XCircle className="mr-1 h-3.5 w-3.5" />
+            {language === "en" ? "Reject" : "Rejeter"}
+            {bulkPendingApps.length > 0 && bulkPendingApps.length < bulkSelectedIds.size
+              ? ` (${bulkPendingApps.length})`
+              : null}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={bulkProcessing}
+            onClick={() => openBulkConfirm("remove")}
+            className="h-8 border-amber-500/40 text-xs text-amber-700 hover:bg-amber-500/10 dark:text-amber-500"
+          >
+            {language === "en" ? "Remove from draft" : "Retirer du brouillon"}
+          </Button>
+        </div>
+      </div>
+    ) : null;
 
   const adminDisplayName =
     (currentAdminName && currentAdminName.trim()) ||
@@ -311,7 +558,7 @@ export function ApplicationSelectionsPanel({
       {/* Top: draft selection picker */}
       <section className="shrink-0 rounded-lg border border-border bg-card/30 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold text-primary">
+          <h3 className="text-lg font-semibold text-foreground">
             {language === "en" ? "Draft Selections" : "Sélections brouillon"}
           </h3>
           <Button size="sm" onClick={() => setIsCreateOpen(true)}>
@@ -480,7 +727,14 @@ export function ApplicationSelectionsPanel({
             showOrphanCleanup={false}
             showAddedByColumn
             selectionItemMeta={selectionItemMeta}
-            onRemoveFromSelection={handleRemoveFromSelection}
+            onRemoveFromSelection={(app) => setRemoveTarget(app)}
+            enableBulkSelect
+            bulkSelectScope="all"
+            bulkSelectAlwaysVisible
+            bulkSelectedIds={bulkSelectedIds}
+            onToggleBulkSelect={handleToggleBulkSelect}
+            onToggleAllBulkSelect={handleToggleAllBulkSelect}
+            bulkActionsBar={bulkActionsBar}
             extraToolbar={
               <>
                 <Button
@@ -561,6 +815,50 @@ export function ApplicationSelectionsPanel({
         onConfirm={handleArchive}
         confirmLoading={archiving}
         closeOnConfirm={false}
+      />
+
+      <ConfirmDialog
+        open={!!removeTarget}
+        onOpenChange={(open) => !open && !removing && setRemoveTarget(null)}
+        title={language === "en" ? "Remove from draft?" : "Retirer du brouillon ?"}
+        description={
+          removeTarget
+            ? language === "en"
+              ? `${removeTarget.full_name} will be removed from this draft only. Their application status stays unchanged.`
+              : `${removeTarget.full_name} sera retiré(e) de ce brouillon uniquement. Le statut de la candidature reste inchangé.`
+            : undefined
+        }
+        confirmLabel={language === "en" ? "Remove" : "Retirer"}
+        cancelLabel={language === "en" ? "Cancel" : "Annuler"}
+        variant="danger"
+        confirmLoading={removing}
+        closeOnConfirm={false}
+        onConfirm={async () => {
+          if (!removeTarget) return;
+          setRemoving(true);
+          try {
+            await handleRemoveFromSelection(removeTarget);
+            setRemoveTarget(null);
+          } finally {
+            setRemoving(false);
+          }
+        }}
+      />
+
+      <AdminApplicationBulkActionConfirm
+        open={isBulkConfirmOpen}
+        onOpenChange={(nextOpen) => {
+          setIsBulkConfirmOpen(nextOpen);
+          if (!nextOpen && !bulkProcessing) {
+            window.setTimeout(() => setBulkAction(null), ADMIN_APPLICATION_BULK_CONFIRM_CLOSE_MS);
+          }
+        }}
+        action={isBulkConfirmOpen ? bulkAction : null}
+        applications={isBulkConfirmOpen ? bulkConfirmApps : []}
+        language={language}
+        draftName={selectedSelection?.name}
+        onConfirm={handleBulkConfirm}
+        isSubmitting={bulkProcessing}
       />
 
     </div>

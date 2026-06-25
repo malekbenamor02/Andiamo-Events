@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 export type AdminSessionCountdownState = {
   expiresAt: number;
@@ -17,6 +18,13 @@ type AdminSessionCountdownProps = {
   suppress401Until: number | null;
   variant: "mobile" | "desktop";
 };
+
+function formatRemaining(secondsLeft: number) {
+  const h = Math.floor(secondsLeft / 3600);
+  const m = Math.floor((secondsLeft % 3600) / 60);
+  const s = secondsLeft % 60;
+  return { h, m, s };
+}
 
 export function AdminSessionCountdown({
   session,
@@ -50,10 +58,10 @@ export function AdminSessionCountdown({
           clearInterval(timer);
 
           toast({
-            title: language === "en" ? "Session Expired" : "Session expirée",
+            title: language === "en" ? "Session expired" : "Session expirée",
             description:
               language === "en"
-                ? "Your session has expired. Please login again."
+                ? "Your session has expired. Please sign in again."
                 : "Votre session a expiré. Veuillez vous reconnecter.",
             variant: "destructive",
           });
@@ -66,28 +74,30 @@ export function AdminSessionCountdown({
     return () => clearInterval(timer);
   }, [session?.expiresAt, language, suppress401Until, toast]);
 
-  const h = Math.floor(secondsLeft / 3600);
-  const m = Math.floor((secondsLeft % 3600) / 60);
-  const s = secondsLeft % 60;
+  if (!session) return null;
+
+  const { h, m, s } = formatRemaining(secondsLeft);
+  const label = language === "en" ? "Session" : "Session";
 
   if (variant === "mobile") {
     return (
-      <>
-        <Clock className="w-3.5 h-3.5 text-primary" />
-        <span className="text-foreground">
-          {h}h {m}m
-        </span>
-      </>
+      <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
+        <Clock className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
+        {h}h {m}m
+      </span>
     );
   }
 
   return (
     <div
-      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg shrink-0 bg-card/95 border border-border text-foreground shadow-sm"
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1.5",
+        "text-xs tabular-nums text-muted-foreground",
+      )}
     >
-      <Clock className="w-4 h-4 animate-pulse text-primary" />
-      <span className="text-sm font-medium">
-        {language === "en" ? "Session:" : "Session:"} {h}h {m}m {s}s
+      <Clock className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
+      <span>
+        {label} · {h}h {m}m {s}s
       </span>
     </div>
   );

@@ -28,7 +28,9 @@ import {
   LogOut,
   PanelLeft,
   GraduationCap,
+  type LucideIcon,
 } from "lucide-react";
+import { AdminSidebarNavItem } from "./AdminSidebarNavItem";
 
 export type AdminDesktopSidebarRailProps = {
   activeTab: string;
@@ -50,6 +52,14 @@ export type AdminDesktopSidebarRailProps = {
   logsCount: number;
   fetchLogs: (reset?: boolean) => void | Promise<void>;
   handleLogout: () => void | Promise<void>;
+};
+
+type NavEntry = {
+  key: string;
+  icon: LucideIcon;
+  label: React.ReactNode;
+  visible: boolean;
+  onClick: () => void;
 };
 
 export function AdminDesktopSidebarRail({
@@ -110,415 +120,228 @@ export function AdminDesktopSidebarRail({
     setSidebarNavVisible(false);
   }, [activeTab]);
 
+  const navItems: NavEntry[] = [
+    {
+      key: "overview",
+      icon: BarChart3,
+      label: t.overview,
+      visible: canAccessTab("overview"),
+      onClick: () => {
+        if (!canAccessTab("overview")) return;
+        setActiveTab("overview");
+      },
+    },
+    {
+      key: "events",
+      icon: CalendarIcon,
+      label: t.events,
+      visible: canAccessTab("events"),
+      onClick: () => setActiveTab("events"),
+    },
+    {
+      key: "ambassadors",
+      icon: Users,
+      label: t.ambassadors,
+      visible: true,
+      onClick: () => setActiveTab("ambassadors"),
+    },
+    {
+      key: "applications",
+      icon: FileText,
+      label: t.applications,
+      visible: true,
+      onClick: () => setActiveTab("applications"),
+    },
+    {
+      key: "careers",
+      icon: Briefcase,
+      label: language === "en" ? "Careers" : "Carrières",
+      visible: canAccessTab("careers"),
+      onClick: () => setActiveTab("careers"),
+    },
+    {
+      key: "academy",
+      icon: GraduationCap,
+      label: "Academy",
+      visible: canAccessTab("academy"),
+      onClick: () => setActiveTab("academy"),
+    },
+    {
+      key: "online-orders",
+      icon: CreditCard,
+      label: language === "en" ? "Online Orders" : "Commandes en Ligne",
+      visible: true,
+      onClick: () => {
+        setActiveTab("online-orders");
+        if (onlineOrdersCount === 0) void fetchOnlineOrders();
+      },
+    },
+    {
+      key: "ambassador-sales",
+      icon: Package,
+      label: language === "en" ? "Ambassador Sales" : "Ventes Ambassadeurs",
+      visible: true,
+      onClick: () => {
+        setActiveTab("ambassador-sales");
+        if (codAmbassadorOrdersCount === 0) void fetchAmbassadorSalesData();
+      },
+    },
+    {
+      key: "pos",
+      icon: Store,
+      label: language === "en" ? "Point de Vente" : "Point de Vente",
+      visible: true,
+      onClick: () => setActiveTab("pos"),
+    },
+    {
+      key: "official-invitations",
+      icon: Mail,
+      label: language === "en" ? "Official Invitations" : "Invitations Officielles",
+      visible: canAccessTab("official-invitations"),
+      onClick: () => setActiveTab("official-invitations"),
+    },
+    {
+      key: "tickets",
+      icon: DollarSign,
+      label: language === "en" ? "Reports" : "Rapports",
+      visible: canAccessTab("tickets"),
+      onClick: () => setActiveTab("tickets"),
+    },
+    {
+      key: "scanners",
+      icon: QrCode,
+      label: language === "en" ? "Scanners" : "Scanners",
+      visible: canAccessTab("scanners"),
+      onClick: () => setActiveTab("scanners"),
+    },
+    {
+      key: "admins",
+      icon: User,
+      label: language === "en" ? "Admins" : "Administrateurs",
+      visible: canAccessTab("admins"),
+      onClick: () => setActiveTab("admins"),
+    },
+    {
+      key: "sponsors",
+      icon: Building2,
+      label: "Sponsors",
+      visible: canAccessTab("sponsors"),
+      onClick: () => setActiveTab("sponsors"),
+    },
+    {
+      key: "team",
+      icon: Users2,
+      label: "Team",
+      visible: canAccessTab("team"),
+      onClick: () => setActiveTab("team"),
+    },
+    {
+      key: "marketing",
+      icon: Megaphone,
+      label: "SMS - E-mail",
+      visible: canAccessTab("marketing"),
+      onClick: () => {
+        setActiveTab("marketing");
+        if (phoneSubscribersCount === 0) void fetchPhoneSubscribers();
+        if (smsLogsCount === 0) void fetchSmsLogs();
+      },
+    },
+    {
+      key: "contact",
+      icon: MessageCircle,
+      label: "Contact Messages",
+      visible: canAccessTab("contact"),
+      onClick: () => setActiveTab("contact"),
+    },
+    {
+      key: "consultation-inquiries",
+      icon: Database,
+      label: "B2B Leads",
+      visible: canAccessTab("consultation-inquiries"),
+      onClick: () => {
+        setActiveTab("consultation-inquiries");
+        if (consultationInquiriesCount === 0) void fetchConsultationInquiries();
+      },
+    },
+    {
+      key: "suggestions",
+      icon: Lightbulb,
+      label: "Suggestions",
+      visible: canAccessTab("suggestions"),
+      onClick: () => setActiveTab("suggestions"),
+    },
+    {
+      key: "logs",
+      icon: Activity,
+      label: language === "en" ? "Logs & Analytics" : "Journaux et Analytiques",
+      visible: canAccessTab("logs"),
+      onClick: () => {
+        setActiveTab("logs");
+        if (logsCount === 0) void fetchLogs(true);
+      },
+    },
+    {
+      key: "settings",
+      icon: Settings,
+      label: t.settings,
+      visible: canAccessTab("settings"),
+      onClick: () => setActiveTab("settings"),
+    },
+  ];
+
   return (
     <div
-      className="hidden lg:block shrink-0 sticky top-16 self-start h-[calc(100vh-4rem)] min-h-0 w-3 overflow-visible relative z-30"
-      style={{
-        /* Fixed layout width: flyout overlays main content so tabs don’t shift when opening/closing. */
-        borderRight: "1px solid hsl(var(--border))",
-      }}
+      className="hidden lg:block shrink-0 sticky top-16 self-start h-[calc(100vh-4rem)] min-h-0 w-3 overflow-visible relative z-30 border-r border-border"
       onMouseEnter={handleDesktopSidebarEnter}
       onMouseLeave={handleDesktopSidebarLeave}
     >
       <div
-        className="absolute left-0 top-0 bottom-0 w-3 flex items-center justify-center pointer-events-none z-10"
+        className="absolute left-0 top-0 bottom-0 w-3 flex items-center justify-center pointer-events-none z-10 bg-background/85 motion-reduce:transition-none"
         style={{
-          background: "hsl(var(--background) / 0.85)",
           opacity: sidebarNavVisible ? 0 : 1,
-          transition: "opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
+          transition: "opacity 0.18s ease",
         }}
         aria-hidden
       >
-        <PanelLeft className="w-3.5 h-3.5 shrink-0" style={{ color: "#E21836" }} />
+        <PanelLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
       </div>
       <div
-        className="absolute left-0 top-0 z-20 h-full w-64 min-h-0 flex flex-col overflow-hidden motion-reduce:transition-none"
+        className="absolute left-0 top-0 z-20 h-full w-60 min-h-0 flex flex-col overflow-hidden bg-background border-r border-border motion-reduce:transition-none"
         style={{
-          background: "hsl(var(--background))",
-          borderRight: "1px solid hsl(var(--border))",
           transform: sidebarNavVisible ? "translate3d(0,0,0)" : "translate3d(-100%,0,0)",
-          transition:
-            "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.32s cubic-bezier(0.22, 1, 0.36, 1)",
-          boxShadow: sidebarNavVisible ? "8px 0 28px rgba(0,0,0,0.4)" : "none",
+          transition: "transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)",
+          boxShadow: sidebarNavVisible ? "4px 0 16px rgba(0,0,0,0.12)" : "none",
           pointerEvents: sidebarNavVisible ? "auto" : "none",
         }}
       >
-        <div className="p-4 border-b shrink-0" style={{ borderColor: "hsl(var(--border))" }}>
-          <h2 className="text-lg font-semibold text-foreground">
-            Navigation
-          </h2>
-        </div>
-        <div className="admin-nav-scrollbar p-2 flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y">
-          <div className="space-y-1">
-            <button
-              onClick={() => {
-                if (!canAccessTab("overview")) return;
-                setActiveTab("overview");
-              }}
-              type="button"
-              data-active={activeTab === "overview"}
-              className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                activeTab === "overview" ? "shadow-lg" : ""
-              }`}
-              style={{
-                background: activeTab === "overview" ? "rgba(226, 24, 54, 0.15)" : "transparent",
-              }}
-            >
-              <BarChart3 className={`w-4 h-4 shrink-0 ${activeTab === "overview" ? "animate-pulse" : ""}`} />
-              <span>{t.overview}</span>
-            </button>
-            {canAccessTab("events") && (
-              <button
-                type="button"
-                data-active={activeTab === "events"}
-                onClick={() => setActiveTab("events")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "events" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "events" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <CalendarIcon className={`w-4 h-4 shrink-0 ${activeTab === "events" ? "animate-pulse" : ""}`} />
-                <span>{t.events}</span>
-              </button>
-            )}
-            <button
-              type="button"
-              data-active={activeTab === "ambassadors"}
-              onClick={() => setActiveTab("ambassadors")}
-              className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                activeTab === "ambassadors" ? "shadow-lg" : ""
-              }`}
-              style={{
-                background: activeTab === "ambassadors" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-              }}
-            >
-              <Users className={`w-4 h-4 shrink-0 ${activeTab === "ambassadors" ? "animate-pulse" : ""}`} />
-              <span>{t.ambassadors}</span>
-            </button>
-            <button
-              type="button"
-              data-active={activeTab === "applications"}
-              onClick={() => setActiveTab("applications")}
-              className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                activeTab === "applications" ? "shadow-lg" : ""
-              }`}
-              style={{
-                background: activeTab === "applications" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-              }}
-            >
-              <FileText className={`w-4 h-4 shrink-0 ${activeTab === "applications" ? "animate-pulse" : ""}`} />
-              <span>{t.applications}</span>
-            </button>
-            {canAccessTab("careers") && (
-              <button
-                type="button"
-                data-active={activeTab === "careers"}
-                onClick={() => setActiveTab("careers")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "careers" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "careers" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <Briefcase className={`w-4 h-4 shrink-0 ${activeTab === "careers" ? "animate-pulse" : ""}`} />
-                <span>{language === "en" ? "Careers" : "Carrières"}</span>
-              </button>
-            )}
-            {canAccessTab("academy") && (
-              <button
-                type="button"
-                data-active={activeTab === "academy"}
-                onClick={() => setActiveTab("academy")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "academy" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "academy" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <GraduationCap className={`w-4 h-4 shrink-0 ${activeTab === "academy" ? "animate-pulse" : ""}`} />
-                <span>Academy</span>
-              </button>
-            )}
-            <button
-              type="button"
-              data-active={activeTab === "online-orders"}
-              onClick={() => {
-                setActiveTab("online-orders");
-                if (onlineOrdersCount === 0) {
-                  void fetchOnlineOrders();
-                }
-              }}
-              className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                activeTab === "online-orders" ? "shadow-lg" : ""
-              }`}
-              style={{
-                background: activeTab === "online-orders" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-              }}
-            >
-              <CreditCard className={`w-4 h-4 shrink-0 ${activeTab === "online-orders" ? "animate-pulse" : ""}`} />
-              <span>{language === "en" ? "Online Orders" : "Commandes en Ligne"}</span>
-            </button>
-            <button
-              type="button"
-              data-active={activeTab === "ambassador-sales"}
-              onClick={() => {
-                setActiveTab("ambassador-sales");
-                if (codAmbassadorOrdersCount === 0) {
-                  void fetchAmbassadorSalesData();
-                }
-              }}
-              className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                activeTab === "ambassador-sales" ? "shadow-lg" : ""
-              }`}
-              style={{
-                background: activeTab === "ambassador-sales" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-              }}
-            >
-              <Package className={`w-4 h-4 shrink-0 ${activeTab === "ambassador-sales" ? "animate-pulse" : ""}`} />
-              <span>{language === "en" ? "Ambassador Sales" : "Ventes Ambassadeurs"}</span>
-            </button>
-            <button
-              type="button"
-              data-active={activeTab === "pos"}
-              onClick={() => setActiveTab("pos")}
-              className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                activeTab === "pos" ? "shadow-lg" : ""
-              }`}
-              style={{
-                background: activeTab === "pos" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-              }}
-            >
-              <Store className={`w-4 h-4 shrink-0 ${activeTab === "pos" ? "animate-pulse" : ""}`} />
-              <span>{language === "en" ? "Point de Vente" : "Point de Vente"}</span>
-            </button>
-            {canAccessTab("official-invitations") && (
-              <button
-                type="button"
-                data-active={activeTab === "official-invitations"}
-                onClick={() => setActiveTab("official-invitations")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "official-invitations" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "official-invitations" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <Mail className={`w-4 h-4 shrink-0 ${activeTab === "official-invitations" ? "animate-pulse" : ""}`} />
-                <span>{language === "en" ? "Official Invitations" : "Invitations Officielles"}</span>
-              </button>
-            )}
-            {canAccessTab("tickets") && (
-              <button
-                type="button"
-                data-active={activeTab === "tickets"}
-                onClick={() => setActiveTab("tickets")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "tickets" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "tickets" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <DollarSign className={`w-4 h-4 shrink-0 ${activeTab === "tickets" ? "animate-pulse" : ""}`} />
-                <span>{language === "en" ? "Reports" : "Rapports"}</span>
-              </button>
-            )}
-            {canAccessTab("scanners") && (
-              <button
-                type="button"
-                data-active={activeTab === "scanners"}
-                onClick={() => setActiveTab("scanners")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "scanners" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "scanners" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <QrCode className={`w-4 h-4 shrink-0 ${activeTab === "scanners" ? "animate-pulse" : ""}`} />
-                <span>{language === "en" ? "Scanners" : "Scanners"}</span>
-              </button>
-            )}
-            {canAccessTab("admins") && (
-              <button
-                type="button"
-                data-active={activeTab === "admins"}
-                onClick={() => setActiveTab("admins")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "admins" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "admins" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <User className={`w-4 h-4 shrink-0 ${activeTab === "admins" ? "animate-pulse" : ""}`} />
-                <span>{language === "en" ? "Admins" : "Administrateurs"}</span>
-              </button>
-            )}
-            {canAccessTab("sponsors") && (
-              <button
-                type="button"
-                data-active={activeTab === "sponsors"}
-                onClick={() => setActiveTab("sponsors")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "sponsors" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "sponsors" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <Building2 className={`w-4 h-4 shrink-0 ${activeTab === "sponsors" ? "animate-pulse" : ""}`} />
-                <span>Sponsors</span>
-              </button>
-            )}
-            {canAccessTab("team") && (
-              <button
-                type="button"
-                data-active={activeTab === "team"}
-                onClick={() => setActiveTab("team")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "team" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "team" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <Users2 className={`w-4 h-4 shrink-0 ${activeTab === "team" ? "animate-pulse" : ""}`} />
-                <span>Team</span>
-              </button>
-            )}
+        <div className="admin-nav-scrollbar flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-3 touch-pan-y">
+          <div className="space-y-0.5">
+            {navItems
+              .filter((item) => item.visible)
+              .map((item) => (
+                <AdminSidebarNavItem
+                  key={item.key}
+                  active={activeTab === item.key}
+                  onClick={item.onClick}
+                  icon={item.icon}
+                  label={item.label}
+                />
+              ))}
             {process.env.NODE_ENV === "development" && (
-              <div className="px-3 py-2 text-xs text-muted-foreground">
+              <p className="px-2.5 py-2 text-[11px] text-muted-foreground/70">
                 Role: {currentAdminRole || "loading..."}
-              </div>
-            )}
-            {canAccessTab("marketing") && (
-              <button
-                type="button"
-                data-active={activeTab === "marketing"}
-                onClick={() => {
-                  setActiveTab("marketing");
-                  if (phoneSubscribersCount === 0) {
-                    void fetchPhoneSubscribers();
-                  }
-                  if (smsLogsCount === 0) {
-                    void fetchSmsLogs();
-                  }
-                }}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "marketing" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "marketing" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <Megaphone className={`w-4 h-4 shrink-0 ${activeTab === "marketing" ? "animate-pulse" : ""}`} />
-                <span>{language === "en" ? "SMS - E-mail" : "SMS - E-mail"}</span>
-              </button>
-            )}
-            {canAccessTab("contact") && (
-              <button
-                type="button"
-                data-active={activeTab === "contact"}
-                onClick={() => setActiveTab("contact")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "contact" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "contact" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <MessageCircle className={`w-4 h-4 shrink-0 ${activeTab === "contact" ? "animate-pulse" : ""}`} />
-                <span>Contact Messages</span>
-              </button>
-            )}
-            {canAccessTab("consultation-inquiries") && (
-              <button
-                type="button"
-                data-active={activeTab === "consultation-inquiries"}
-                onClick={() => {
-                  setActiveTab("consultation-inquiries");
-                  if (consultationInquiriesCount === 0) {
-                    void fetchConsultationInquiries();
-                  }
-                }}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "consultation-inquiries" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "consultation-inquiries" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <Database className={`w-4 h-4 shrink-0 ${activeTab === "consultation-inquiries" ? "animate-pulse" : ""}`} />
-                <span>B2B Leads</span>
-              </button>
-            )}
-            {canAccessTab("suggestions") && (
-              <button
-                type="button"
-                data-active={activeTab === "suggestions"}
-                onClick={() => setActiveTab("suggestions")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "suggestions" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "suggestions" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <Lightbulb className={`w-4 h-4 shrink-0 ${activeTab === "suggestions" ? "animate-pulse" : ""}`} />
-                <span>Suggestions</span>
-              </button>
-            )}
-            {canAccessTab("logs") && (
-              <button
-                type="button"
-                data-active={activeTab === "logs"}
-                onClick={() => {
-                  setActiveTab("logs");
-                  if (logsCount === 0) {
-                    void fetchLogs(true);
-                  }
-                }}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "logs" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "logs" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <Activity className={`w-4 h-4 shrink-0 ${activeTab === "logs" ? "animate-pulse" : ""}`} />
-                <span>{language === "en" ? "Logs & Analytics" : "Journaux et Analytiques"}</span>
-              </button>
-            )}
-            {canAccessTab("settings") && (
-              <button
-                type="button"
-                data-active={activeTab === "settings"}
-                onClick={() => setActiveTab("settings")}
-                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
-                  activeTab === "settings" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  background: activeTab === "settings" ? "rgba(226, 24, 54, 0.08)" : "transparent",
-                }}
-              >
-                <Settings className={`w-4 h-4 shrink-0 ${activeTab === "settings" ? "animate-pulse" : ""}`} />
-                <span>{t.settings}</span>
-              </button>
+              </p>
             )}
           </div>
         </div>
-        <div className="p-4 border-t border-border/20 shrink-0" style={{ background: "hsl(var(--background))" }}>
+        <div className="shrink-0 border-t border-border/60 px-2 py-2">
           <Button
-            variant="outline"
+            variant="ghost"
+            size="sm"
             onClick={() => void handleLogout()}
-            className="w-full flex items-center space-x-2 transition-colors duration-100 hover:shadow-md hover:bg-destructive hover:text-destructive-foreground"
+            className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
           >
-            <LogOut className="w-4 h-4 shrink-0 hover:animate-pulse" />
+            <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.75} />
             <span>{t.logout}</span>
           </Button>
         </div>

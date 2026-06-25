@@ -36,6 +36,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import { AdminTabHeader } from "./AdminTabShell";
 import {
   Briefcase,
   Plus,
@@ -110,6 +112,14 @@ const ALL_DOMAINS_VALUE = "__all__";
 const ALL_STATUS_VALUE = "__all__";
 /** Default status when opening Applications tab: show all applications. */
 const DEFAULT_APPLICATIONS_STATUS = ALL_STATUS_VALUE;
+
+const CAREER_SUB_TAB_LIST =
+  "h-auto w-full justify-start gap-0 rounded-none border-b border-border/60 bg-transparent p-0";
+const CAREER_SUB_TAB_TRIGGER = cn(
+  "rounded-none border-b-2 border-transparent px-3 py-2 text-sm shadow-none",
+  "text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent",
+  "data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"
+);
 
 interface CareerTabProps {
   language: "en" | "fr";
@@ -967,31 +977,30 @@ export function CareerTab({ language }: CareerTabProps) {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">{t.careers}</h2>
-      </div>
+      <AdminTabHeader title={t.careers} />
 
       <Tabs defaultValue="applications" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="applications">
+        <TabsList className={CAREER_SUB_TAB_LIST}>
+          <TabsTrigger value="applications" className={CAREER_SUB_TAB_TRIGGER}>
             {t.applications}
           </TabsTrigger>
-          <TabsTrigger value="domains">
+          <TabsTrigger value="domains" className={CAREER_SUB_TAB_TRIGGER}>
             {t.domains}
           </TabsTrigger>
-          <TabsTrigger value="settings">
+          <TabsTrigger value="settings" className={CAREER_SUB_TAB_TRIGGER}>
             {t.enabled}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="applications">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-4">
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                {t.applications}
-              </CardTitle>
-              <div className="flex items-center gap-2 flex-wrap">
+            <CardHeader className="space-y-0 border-b border-border/60 px-4 py-4 sm:px-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  {t.applications}
+                </h3>
+                <div className="flex items-center gap-2 flex-wrap">
                 <Select value={domainFilter} onValueChange={setDomainFilter}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="All domains" />
@@ -1173,6 +1182,7 @@ export function CareerTab({ language }: CareerTabProps) {
                   <Download className="h-4 w-4 mr-2" />
                   {t.export} Excel
                 </Button>
+              </div>
               </div>
             </CardHeader>
             <CardContent>

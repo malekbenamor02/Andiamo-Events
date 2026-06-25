@@ -35,8 +35,21 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { cn } from '@/lib/utils';
 import { normalizeAcademyPromoCodeInput } from '@/lib/academy/promoCode';
 import Loader from '@/components/ui/Loader';
-import { ExternalLink, GraduationCap, Mail, RefreshCw } from 'lucide-react';
+import { ExternalLink, Mail, RefreshCw } from 'lucide-react';
 import { AcademyInfluencersSection } from './AcademyInfluencersSection';
+import {
+  AdminTabHeader,
+  ADMIN_FILTERS_PANEL,
+  ADMIN_TABLE_WRAP,
+} from './AdminTabShell';
+
+const ACADEMY_SUB_TAB_LIST =
+  'h-auto w-full justify-start gap-0 rounded-none border-b border-border/60 bg-transparent p-0';
+const ACADEMY_SUB_TAB_TRIGGER = cn(
+  'rounded-none border-b-2 border-transparent px-3 py-2 text-sm shadow-none',
+  'text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent',
+  'data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none'
+);
 
 type AcademyLanguage = 'en' | 'fr';
 
@@ -364,16 +377,15 @@ export function AcademyTab({ language }: AcademyTabProps) {
   return (
     <TooltipProvider delayDuration={200}>
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-primary flex items-center gap-2">
-          <GraduationCap className="h-7 w-7" />
-          Academy
-        </h2>
-        <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          {isEn ? 'Refresh' : 'Actualiser'}
-        </Button>
-      </div>
+      <AdminTabHeader
+        title="Academy"
+        actions={
+          <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            {isEn ? 'Refresh' : 'Actualiser'}
+          </Button>
+        }
+      />
 
       {loadError && (
         <Alert variant="destructive">
@@ -383,40 +395,52 @@ export function AcademyTab({ language }: AcademyTabProps) {
       )}
 
       <Tabs value={subTab} onValueChange={setSubTab}>
-        <TabsList>
-          <TabsTrigger value="registrations">{isEn ? 'Registrations' : 'Inscriptions'}</TabsTrigger>
-          <TabsTrigger value="promo">{isEn ? 'Promo codes' : 'Codes promo'}</TabsTrigger>
-          <TabsTrigger value="influencers">{isEn ? 'Influencers' : 'Influenceurs'}</TabsTrigger>
-          <TabsTrigger value="reports">{isEn ? 'Reports' : 'Rapports'}</TabsTrigger>
-          <TabsTrigger value="settings">{isEn ? 'Settings' : 'Paramètres'}</TabsTrigger>
+        <TabsList className={ACADEMY_SUB_TAB_LIST}>
+          <TabsTrigger value="registrations" className={ACADEMY_SUB_TAB_TRIGGER}>
+            {isEn ? 'Registrations' : 'Inscriptions'}
+          </TabsTrigger>
+          <TabsTrigger value="promo" className={ACADEMY_SUB_TAB_TRIGGER}>
+            {isEn ? 'Promo codes' : 'Codes promo'}
+          </TabsTrigger>
+          <TabsTrigger value="influencers" className={ACADEMY_SUB_TAB_TRIGGER}>
+            {isEn ? 'Influencers' : 'Influenceurs'}
+          </TabsTrigger>
+          <TabsTrigger value="reports" className={ACADEMY_SUB_TAB_TRIGGER}>
+            {isEn ? 'Reports' : 'Rapports'}
+          </TabsTrigger>
+          <TabsTrigger value="settings" className={ACADEMY_SUB_TAB_TRIGGER}>
+            {isEn ? 'Settings' : 'Paramètres'}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="registrations" className="space-y-4">
-          <div className="flex flex-wrap gap-3">
-            <Input
-              placeholder={isEn ? 'Search name, email, ref…' : 'Rechercher…'}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-xs"
-              disabled={loading}
-            />
-            <Select value={statusFilter} onValueChange={setStatusFilter} disabled={loading}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{isEn ? 'All statuses' : 'Tous les statuts'}</SelectItem>
-                <SelectItem value="proof_received">proof_received</SelectItem>
-                <SelectItem value="pending_payment">pending_payment</SelectItem>
-                <SelectItem value="pending_online">pending_online</SelectItem>
-                <SelectItem value="cancelled">cancelled</SelectItem>
-                <SelectItem value="paid_online">paid_online</SelectItem>
-                <SelectItem value="approved">approved</SelectItem>
-                <SelectItem value="rejected">rejected</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className={ADMIN_FILTERS_PANEL}>
+            <div className="flex flex-wrap gap-3">
+              <Input
+                placeholder={isEn ? 'Search name, email, ref…' : 'Rechercher…'}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="max-w-xs"
+                disabled={loading}
+              />
+              <Select value={statusFilter} onValueChange={setStatusFilter} disabled={loading}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{isEn ? 'All statuses' : 'Tous les statuts'}</SelectItem>
+                  <SelectItem value="proof_received">proof_received</SelectItem>
+                  <SelectItem value="pending_payment">pending_payment</SelectItem>
+                  <SelectItem value="pending_online">pending_online</SelectItem>
+                  <SelectItem value="cancelled">cancelled</SelectItem>
+                  <SelectItem value="paid_online">paid_online</SelectItem>
+                  <SelectItem value="approved">approved</SelectItem>
+                  <SelectItem value="rejected">rejected</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="rounded-lg border">
+          <div className={ADMIN_TABLE_WRAP}>
             {loading ? (
               <AcademyTabLoadingPanel
                 message={isEn ? 'Loading registrations…' : 'Chargement des inscriptions…'}
@@ -548,51 +572,53 @@ export function AcademyTab({ language }: AcademyTabProps) {
               message={isEn ? 'Loading promo codes…' : 'Chargement des codes promo…'}
             />
           ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead>{isEn ? 'Discount' : 'Remise'}</TableHead>
-                <TableHead>{isEn ? 'Used' : 'Utilisé'}</TableHead>
-                <TableHead>{isEn ? 'Remaining' : 'Restant'}</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {promoCodes.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-mono">{p.code}</TableCell>
-                  <TableCell>
-                    {p.discount_type === 'percent' ? `${p.discount_value}%` : `${p.discount_value} DT`}
-                  </TableCell>
-                  <TableCell>
-                    {p.used_count} / {p.max_uses}
-                  </TableCell>
-                  <TableCell>{p.remaining ?? p.max_uses - p.used_count}</TableCell>
-                  <TableCell>
-                    {p.used_count === 0 ? (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={async () => {
-                          await adminFetch(API_ROUTES.ADMIN_ACADEMY_PROMO_CODE(p.id), {
-                            method: 'DELETE',
-                          });
-                          loadAll();
-                        }}
-                      >
-                        {isEn ? 'Delete' : 'Supprimer'}
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        {isEn ? 'Revoke only' : 'Révoquer seulement'}
-                      </span>
-                    )}
-                  </TableCell>
+          <div className={ADMIN_TABLE_WRAP}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>{isEn ? 'Discount' : 'Remise'}</TableHead>
+                  <TableHead>{isEn ? 'Used' : 'Utilisé'}</TableHead>
+                  <TableHead>{isEn ? 'Remaining' : 'Restant'}</TableHead>
+                  <TableHead />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {promoCodes.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="font-mono">{p.code}</TableCell>
+                    <TableCell>
+                      {p.discount_type === 'percent' ? `${p.discount_value}%` : `${p.discount_value} DT`}
+                    </TableCell>
+                    <TableCell>
+                      {p.used_count} / {p.max_uses}
+                    </TableCell>
+                    <TableCell>{p.remaining ?? p.max_uses - p.used_count}</TableCell>
+                    <TableCell>
+                      {p.used_count === 0 ? (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={async () => {
+                            await adminFetch(API_ROUTES.ADMIN_ACADEMY_PROMO_CODE(p.id), {
+                              method: 'DELETE',
+                            });
+                            loadAll();
+                          }}
+                        >
+                          {isEn ? 'Delete' : 'Supprimer'}
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {isEn ? 'Revoke only' : 'Révoquer seulement'}
+                        </span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
           )}
         </TabsContent>
 

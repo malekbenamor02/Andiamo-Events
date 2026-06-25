@@ -20,6 +20,14 @@ import { Badge } from "@/components/ui/badge";
 import FileUpload from "@/components/ui/file-upload";
 import { Plus, Edit, Trash2, Save } from "lucide-react";
 import type { Sponsor } from "../types";
+import {
+  AdminTabHeader,
+  AdminTabEmpty,
+  AdminTabCard,
+  AdminTabCardGrid,
+  ADMIN_BTN_EDIT,
+  ADMIN_BTN_DELETE,
+} from "./AdminTabShell";
 
 export interface SponsorsTabProps {
   sponsors: Sponsor[];
@@ -56,78 +64,79 @@ export function SponsorsTab({
 }: SponsorsTabProps) {
   return (
     <TabsContent value="sponsors" className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-primary">
-          Sponsors
-        </h2>
-        <Button
-          variant="default"
-          onClick={onOpenAdd}
-          className="transform hover:scale-105 transition-all duration-300"
-        >
-          <Plus className="w-4 h-4 mr-2 animate-pulse" />
-          Add Sponsor
-        </Button>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {sponsors.map((sponsor) => (
-          <div
-            key={sponsor.id}
-            className="rounded-xl bg-card p-6 shadow-lg flex flex-col items-center justify-center transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
-          >
-            {sponsor.logo_url && (
-              <div className="animate-in zoom-in-95 duration-500 delay-200">
+      <AdminTabHeader
+        title="Sponsors"
+        subtitle={
+          sponsors.length > 0
+            ? `${sponsors.length} sponsor${sponsors.length === 1 ? "" : "s"}`
+            : undefined
+        }
+        actions={
+          <Button size="sm" onClick={onOpenAdd} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Add Sponsor
+          </Button>
+        }
+      />
+
+      {sponsors.length > 0 ? (
+        <AdminTabCardGrid>
+          {sponsors.map((sponsor) => (
+            <AdminTabCard
+              key={sponsor.id}
+              className="items-center text-center"
+            >
+              {sponsor.logo_url && (
                 <img
                   src={sponsor.logo_url}
                   alt={sponsor.name}
-                  className="w-32 h-20 object-contain mb-3 rounded-lg transform transition-transform duration-300 hover:scale-110"
+                  className="mb-3 h-20 w-32 rounded-lg object-contain"
                 />
+              )}
+              <h3 className="font-semibold">{sponsor.name}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {sponsor.description || sponsor.category}
+              </p>
+              <div className="mt-2">
+                <Badge
+                  variant="outline"
+                  className="border-primary/30 bg-primary/5 text-primary"
+                >
+                  Global
+                </Badge>
               </div>
-            )}
-            <h3 className="font-semibold mb-1">
-              {sponsor.name}
-            </h3>
-            <p className="text-xs text-muted-foreground mb-2">
-              {sponsor.description || sponsor.category}
-            </p>
-            <div className="flex gap-2 mb-2">
-              <Badge className="bg-primary text-white animate-pulse">
-                Global
-              </Badge>
-            </div>
-            <div className="flex gap-2 mt-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onOpenEdit(sponsor)}
-                className="transform hover:scale-105 transition-all duration-300"
-              >
-                <Edit className="w-4 h-4 mr-2" />
-                Edit
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => onOpenDelete(sponsor)}
-                className="transform hover:scale-105 transition-all duration-300"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-      {sponsors.length === 0 && (
-        <div className="text-center py-8">
-          <p className="text-muted-foreground animate-pulse">
-            No sponsors found
-          </p>
-        </div>
+              <div className="mt-3 flex justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onOpenEdit(sponsor)}
+                  className={ADMIN_BTN_EDIT}
+                >
+                  <Edit className="mr-1.5 h-3.5 w-3.5" />
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onOpenDelete(sponsor)}
+                  className={ADMIN_BTN_DELETE}
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  Delete
+                </Button>
+              </div>
+            </AdminTabCard>
+          ))}
+        </AdminTabCardGrid>
+      ) : (
+        <AdminTabEmpty
+          message="No sponsors found"
+          hint="Add your first sponsor to get started."
+        />
       )}
 
       <Dialog open={isSponsorDialogOpen} onOpenChange={setIsSponsorDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingSponsor?.id ? "Edit Sponsor" : "Add Sponsor"}
@@ -146,7 +155,6 @@ export function SponsorsTab({
                     )
                   }
                   required
-                  className="transition-all duration-300 focus:scale-105"
                 />
               </div>
               <div>
@@ -159,7 +167,6 @@ export function SponsorsTab({
                       prev ? { ...prev, description: e.target.value } : null
                     )
                   }
-                  className="transition-all duration-300 focus:scale-105"
                 />
               </div>
               <div>
@@ -173,7 +180,6 @@ export function SponsorsTab({
                       prev ? { ...prev, website_url: e.target.value } : null
                     )
                   }
-                  className="transition-all duration-300 focus:scale-105"
                 />
               </div>
               <div>
@@ -186,7 +192,6 @@ export function SponsorsTab({
                       prev ? { ...prev, category: e.target.value } : null
                     )
                   }
-                  className="transition-all duration-300 focus:scale-105"
                 />
               </div>
               <div>
@@ -207,20 +212,12 @@ export function SponsorsTab({
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-6">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onCloseAddEdit}
-                className="transform hover:scale-105 transition-all duration-300"
-              >
+            <div className="mt-6 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onCloseAddEdit}>
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                className="transform hover:scale-105 transition-all duration-300"
-              >
-                <Save className="w-4 h-4 mr-2 animate-pulse" />
+              <Button type="submit" className="gap-2">
+                <Save className="h-4 w-4" />
                 Save
               </Button>
             </div>
@@ -229,33 +226,19 @@ export function SponsorsTab({
       </Dialog>
 
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent className="animate-in zoom-in-95 duration-300">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              Delete Sponsor
-            </DialogTitle>
+            <DialogTitle>Delete Sponsor</DialogTitle>
           </DialogHeader>
-          <p>
-            Are you sure you want to delete this sponsor?
-          </p>
-          <div className="flex justify-end gap-2 mt-4">
+          <p>Are you sure you want to delete this sponsor?</p>
+          <div className="mt-4 flex justify-end gap-2">
             <DialogClose asChild>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onCloseDelete}
-                className="transform hover:scale-105 transition-all duration-300"
-              >
+              <Button type="button" variant="outline" onClick={onCloseDelete}>
                 Cancel
               </Button>
             </DialogClose>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={onConfirmDelete}
-              className="transform hover:scale-105 transition-all duration-300"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
+            <Button type="button" variant="destructive" onClick={onConfirmDelete}>
+              <Trash2 className="mr-2 h-4 w-4" />
               Delete
             </Button>
           </div>

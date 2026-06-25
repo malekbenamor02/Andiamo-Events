@@ -7,12 +7,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Switch } from "@/components/ui/switch";
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
 import { captureVideoPosterFromFile } from "@/lib/video-poster-capture";
@@ -117,7 +115,6 @@ import {
   Store,
   History,
   Menu,
-  Bell,
   Lightbulb,
   GraduationCap,
 } from "lucide-react";
@@ -126,7 +123,6 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerTrigger } from "@/components/ui/drawer";
 import { format } from "date-fns";
@@ -259,23 +255,14 @@ import { OnlineOrderDetailsDialog } from "./components/OnlineOrderDetailsDialog"
 import { OrderDetailsDialog } from "./components/OrderDetailsDialog";
 import { AdminSessionCountdown } from "./components/AdminSessionCountdown";
 import type { AdminSessionCountdownState } from "./components/AdminSessionCountdown";
+import { AdminDashboardHeader } from "./components/AdminDashboardHeader";
 import { AdminDesktopSidebarRail } from "./components/AdminDesktopSidebarRail";
-
-type AdminNotificationKind =
-  | "ambassador_application"
-  | "ambassador_order"
-  | "online_order"
-  | "pos_order"
-  | "career_application"
-  | "push";
-
-interface AdminNotification {
-  id: string;
-  kind: AdminNotificationKind;
-  title: string;
-  message: string;
-  createdAt: string;
-}
+import { AdminSidebarNavItem } from "./components/AdminSidebarNavItem";
+import {
+  AdminNotificationPanel,
+  type AdminNotification,
+  type AdminNotificationKind,
+} from "./components/AdminNotificationPanel";
 
 const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // All hooks must be called before any conditional returns (Rules of Hooks)
@@ -1279,8 +1266,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const content = {
     en: {
-      title: "Admin Dashboard",
-      subtitle: "Manage everything - events, ambassadors, applications",
+      title: "Admin dashboard",
+      subtitle: "Events, ambassadors, and applications",
       overview: "Overview",
       events: "Events",
       ambassadors: "Ambassadors",
@@ -1385,8 +1372,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       reorderImages: "Reorder by dragging"
     },
     fr: {
-      title: "Tableau de Bord Admin",
-      subtitle: "Gérer tout - événements, ambassadeurs, candidatures",
+      title: "Tableau de bord",
+      subtitle: "Événements, ambassadeurs et candidatures",
       overview: "Aperçu",
       events: "Événements",
       ambassadors: "Ambassadeurs",
@@ -9062,13 +9049,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {language === 'en' ? 'Logout' : 'Déconnexion'}
             </span>
           </Button>
-          <div
-            className="flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-2"
-          >
-            <span className="text-xs font-medium truncate w-full text-center text-muted-foreground">
-              {language === 'en' ? 'Current:' : 'Actuel :'}
-            </span>
-            <span className="text-base font-semibold truncate w-full text-center" style={{ color: '#E21836' }}>
+          <div className="flex min-w-0 flex-1 flex-col items-center justify-center px-2 py-1">
+            <span className="w-full truncate text-center text-sm font-medium text-foreground">
               {activeTab === "overview" && t.overview}
               {activeTab === "events" && t.events}
               {activeTab === "ambassadors" && t.ambassadors}
@@ -9096,14 +9078,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       {isMobile && (
         <nav
-          className="fixed bottom-0 left-0 right-0 z-40 border-t backdrop-blur-md"
-          style={{
-            background: 'rgba(26, 26, 26, 0.55)',
-            borderColor: 'rgba(255, 255, 255, 0.08)',
-          }}
+          className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur-sm"
           aria-label={language === 'en' ? 'Dashboard navigation' : 'Navigation du tableau de bord'}
         >
-          <div className="px-2 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-hide">
+          <div className="flex items-center gap-0.5 overflow-x-auto px-2 py-1.5 scrollbar-hide">
             {mobileBottomTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.key;
@@ -9112,32 +9090,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   key={tab.key}
                   type="button"
                   onClick={() => handleBottomNavSelect(tab.key)}
-                  className="shrink-0 relative flex flex-col items-center justify-center gap-1 px-2.5 py-2 rounded-xl transition-all duration-200 overflow-hidden"
-                  style={{
-                    color: isActive ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))',
-                    background: isActive ? 'rgba(226, 24, 54, 0.12)' : 'rgba(255, 255, 255, 0.03)',
-                    border: isActive ? '1px solid rgba(226, 24, 54, 0.45)' : '1px solid rgba(255, 255, 255, 0.07)',
-                    boxShadow: isActive
-                      ? '0 10px 24px rgba(226, 24, 54, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.10)'
-                      : 'inset 0 1px 0 rgba(255, 255, 255, 0.06)',
-                  }}
+                  className={cn(
+                    "flex shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-2.5 py-2 transition-colors",
+                    isActive
+                      ? "bg-muted/60 text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
                   aria-current={isActive ? 'page' : undefined}
                 >
-                  {/* Liquid glass highlight blob */}
-                  <span
-                    aria-hidden
-                    className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200"
-                    style={{
-                      opacity: isActive ? 1 : 0,
-                      background:
-                        'radial-gradient(60% 90% at 30% 20%, rgba(255,255,255,0.22), rgba(255,255,255,0) 55%), radial-gradient(80% 120% at 80% 0%, rgba(226,24,54,0.35), rgba(226,24,54,0) 60%)',
-                      filter: 'blur(10px)',
-                    }}
-                  />
-                  <Icon className="w-5 h-5" />
-                  <span className="text-[10px] font-medium text-center leading-none">
-                    {tab.label}
-                  </span>
+                  <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
+                  <span className="text-[10px] font-medium leading-none">{tab.label}</span>
                 </button>
               );
             })}
@@ -9147,217 +9109,147 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       {/* Mobile nav Sheet */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent
-          side="left"
-          className="w-[280px] p-0 border-r flex flex-col"
-          style={{ background: 'hsl(var(--background))', borderColor: 'hsl(var(--border))' }}
-        >
-          <SheetHeader className="p-4 border-b text-left" style={{ borderColor: 'hsl(var(--border))' }}>
-            <SheetTitle className="text-foreground">
-              {language === 'en' ? 'Switch tab' : 'Changer d\'onglet'}
+        <SheetContent side="left" className="flex w-[260px] flex-col border-r p-0">
+          <SheetHeader className="border-b border-border/60 px-4 py-3 text-left">
+            <SheetTitle className="text-base font-semibold">
+              {language === 'en' ? 'Menu' : 'Menu'}
             </SheetTitle>
-            <p className="text-sm mt-1 text-muted-foreground">
-              {language === 'en' ? 'Tap a tab below to view it' : 'Appuyez sur un onglet ci-dessous'}
-            </p>
           </SheetHeader>
-          <nav className="p-2 flex-1 overflow-y-auto">
+          <nav className="admin-nav-scrollbar flex-1 overflow-y-auto px-2 py-2">
             <div className="space-y-1">
               {isTabAllowedOnMobile("overview") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "overview"}
+                <AdminSidebarNavItem
+                  active={activeTab === "overview"}
                   onClick={() => handleMobileNavSelect("overview")}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "overview" && "shadow-lg")}
-                  style={{ background: activeTab === "overview" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <BarChart3 className="w-4 h-4 shrink-0" />
-                  <span>{t.overview}</span>
-                </button>
+                  icon={BarChart3}
+                  label={t.overview}
+                />
               )}
               {isTabAllowedOnMobile("events") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "events"}
+                <AdminSidebarNavItem
+                  active={activeTab === "events"}
                   onClick={() => handleMobileNavSelect("events")}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "events" && "shadow-lg")}
-                  style={{ background: activeTab === "events" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <CalendarIcon className="w-4 h-4 shrink-0" />
-                  <span>{t.events}</span>
-                </button>
+                  icon={CalendarIcon}
+                  label={t.events}
+                />
               )}
               {isTabAllowedOnMobile("ambassadors") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "ambassadors"}
+                <AdminSidebarNavItem
+                  active={activeTab === "ambassadors"}
                   onClick={() => handleMobileNavSelect("ambassadors")}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "ambassadors" && "shadow-lg")}
-                  style={{ background: activeTab === "ambassadors" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <Users className="w-4 h-4 shrink-0" />
-                  <span>{t.ambassadors}</span>
-                </button>
+                  icon={Users}
+                  label={t.ambassadors}
+                />
               )}
               {isTabAllowedOnMobile("applications") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "applications"}
+                <AdminSidebarNavItem
+                  active={activeTab === "applications"}
                   onClick={() => handleMobileNavSelect("applications")}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "applications" && "shadow-lg")}
-                  style={{ background: activeTab === "applications" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <FileText className="w-4 h-4 shrink-0" />
-                  <span>{t.applications}</span>
-                </button>
+                  icon={FileText}
+                  label={t.applications}
+                />
               )}
               {isTabAllowedOnMobile("careers") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "careers"}
+                <AdminSidebarNavItem
+                  active={activeTab === "careers"}
                   onClick={() => handleMobileNavSelect("careers")}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "careers" && "shadow-lg")}
-                  style={{ background: activeTab === "careers" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <Briefcase className="w-4 h-4 shrink-0" />
-                  <span>{language === 'en' ? 'Careers' : 'Carrières'}</span>
-                </button>
+                  icon={Briefcase}
+                  label={language === 'en' ? 'Careers' : 'Carrières'}
+                />
               )}
               {isTabAllowedOnMobile("academy") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "academy"}
+                <AdminSidebarNavItem
+                  active={activeTab === "academy"}
                   onClick={() => handleMobileNavSelect("academy")}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "academy" && "shadow-lg")}
-                  style={{ background: activeTab === "academy" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <GraduationCap className="w-4 h-4 shrink-0" />
-                  <span>Academy</span>
-                </button>
+                  icon={GraduationCap}
+                  label="Academy"
+                />
               )}
               {isTabAllowedOnMobile("online-orders") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "online-orders"}
+                <AdminSidebarNavItem
+                  active={activeTab === "online-orders"}
                   onClick={() => {
                     handleMobileNavSelect("online-orders");
                     if (onlineOrders.length === 0) fetchOnlineOrders();
                   }}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "online-orders" && "shadow-lg")}
-                  style={{ background: activeTab === "online-orders" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <CreditCard className="w-4 h-4 shrink-0" />
-                  <span>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</span>
-                </button>
+                  icon={CreditCard}
+                  label={language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}
+                />
               )}
               {isTabAllowedOnMobile("ambassador-sales") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "ambassador-sales"}
+                <AdminSidebarNavItem
+                  active={activeTab === "ambassador-sales"}
                   onClick={() => {
                     handleMobileNavSelect("ambassador-sales");
                     if (codAmbassadorOrders.length === 0) fetchAmbassadorSalesData();
                   }}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "ambassador-sales" && "shadow-lg")}
-                  style={{ background: activeTab === "ambassador-sales" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <Package className="w-4 h-4 shrink-0" />
-                  <span>{language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs'}</span>
-                </button>
+                  icon={Package}
+                  label={language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs'}
+                />
               )}
               {isTabAllowedOnMobile("pos") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "pos"}
+                <AdminSidebarNavItem
+                  active={activeTab === "pos"}
                   onClick={() => handleMobileNavSelect("pos")}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "pos" && "shadow-lg")}
-                  style={{ background: activeTab === "pos" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <Store className="w-4 h-4 shrink-0" />
-                  <span>{language === 'en' ? 'Point de Vente' : 'Point de Vente'}</span>
-                </button>
+                  icon={Store}
+                  label={language === 'en' ? 'Point de Vente' : 'Point de Vente'}
+                />
               )}
               {isTabAllowedOnMobile("scanners") && canAccessTab("scanners") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "scanners"}
+                <AdminSidebarNavItem
+                  active={activeTab === "scanners"}
                   onClick={() => handleMobileNavSelect("scanners")}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "scanners" && "shadow-lg")}
-                  style={{ background: activeTab === "scanners" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <QrCode className="w-4 h-4 shrink-0" />
-                  <span>{language === 'en' ? 'Scanners' : 'Scanners'}</span>
-                </button>
+                  icon={QrCode}
+                  label={language === 'en' ? 'Scanners' : 'Scanners'}
+                />
               )}
               {isTabAllowedOnMobile("settings") && canAccessTab("settings") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "settings"}
+                <AdminSidebarNavItem
+                  active={activeTab === "settings"}
                   onClick={() => handleMobileNavSelect("settings")}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "settings" && "shadow-lg")}
-                  style={{ background: activeTab === "settings" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <Settings className="w-4 h-4 shrink-0" />
-                  <span>{t.settings}</span>
-                </button>
-              )}
-              {canAccessTab("settings") && isTabAllowedOnMobile("settings") && (
-                <div className="px-2 pt-2">
-                  <Button
-                    variant="outline"
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-2"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span>{t.logout}</span>
-                  </Button>
-                </div>
+                  icon={Settings}
+                  label={t.settings}
+                />
               )}
               {isTabAllowedOnMobile("official-invitations") && canAccessTab("official-invitations") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "official-invitations"}
+                <AdminSidebarNavItem
+                  active={activeTab === "official-invitations"}
                   onClick={() => handleMobileNavSelect("official-invitations")}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "official-invitations" && "shadow-lg")}
-                  style={{ background: activeTab === "official-invitations" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <Mail className="w-4 h-4 shrink-0" />
-                  <span>{language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}</span>
-                </button>
+                  icon={Mail}
+                  label={language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}
+                />
               )}
               {isTabAllowedOnMobile("tickets") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "tickets"}
+                <AdminSidebarNavItem
+                  active={activeTab === "tickets"}
                   onClick={() => handleMobileNavSelect("tickets")}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "tickets" && "shadow-lg")}
-                  style={{ background: activeTab === "tickets" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <DollarSign className="w-4 h-4 shrink-0" />
-                  <span>{language === 'en' ? 'Reports' : 'Rapports'}</span>
-                </button>
+                  icon={DollarSign}
+                  label={language === 'en' ? 'Reports' : 'Rapports'}
+                />
               )}
               {isTabAllowedOnMobile("marketing") && canAccessTab("marketing") && (
-                <button
-                  type="button"
-                  data-active={activeTab === "marketing"}
+                <AdminSidebarNavItem
+                  active={activeTab === "marketing"}
                   onClick={() => {
                     handleMobileNavSelect("marketing");
                     if (phoneSubscribers.length === 0) void fetchPhoneSubscribers();
                     if (smsLogs.length === 0) void fetchSmsLogs();
                   }}
-                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "marketing" && "shadow-lg")}
-                  style={{ background: activeTab === "marketing" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <Megaphone className="w-4 h-4 shrink-0" />
-                  <span>SMS - E-mail</span>
-                </button>
+                  icon={Megaphone}
+                  label="SMS - E-mail"
+                />
               )}
             </div>
           </nav>
           {currentAdminRole !== 'super_admin' && (
-            <div className="p-4 border-t" style={{ borderColor: 'hsl(var(--border))' }}>
-              <Button variant="outline" onClick={handleLogout} className="w-full flex items-center gap-2">
-                <LogOut className="w-4 h-4" />
+            <div className="border-t border-border/60 px-2 py-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+              >
+                <LogOut className="h-4 w-4" strokeWidth={1.75} />
                 <span>{t.logout}</span>
               </Button>
             </div>
@@ -9391,32 +9283,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 {/* Main Content - overflow hidden to prevent horizontal scroll on mobile */}
         <div className="flex-1 min-w-0 overflow-x-hidden">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 min-w-0">
-            {/* Header - responsive: stack on mobile, hide main title on mobile (shown in top bar) */}
-            <div className="mb-6 sm:mb-8 flex flex-col gap-4 min-w-0">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-4">
-                <div className={cn("min-w-0", isMobile && "hidden")}>
-                  <h1 
-                    className="text-2xl sm:text-4xl font-heading font-bold mb-2 uppercase"
-                    style={{
-                      color: '#E21836',
-                      textShadow: '0 0 12px rgba(226, 24, 54, 0.45)'
-                    }}
-                  >
-                    {t.title}
-                  </h1>
-                  <p className="text-muted-foreground">
-                    {t.subtitle}
-                  </p>
-                </div>
-                {!isMobile && (
-                  <AdminSessionCountdown
-                    session={sessionCountdown}
-                    language={language}
-                    suppress401Until={suppress401Until > 0 ? suppress401Until : null}
-                    variant="desktop"
-                  />
-                )}
-              </div>
+            {/* Header - hidden on mobile (shown in top bar) */}
+            <div className="mb-6 min-w-0 sm:mb-8">
+              {!isMobile && (
+                <AdminDashboardHeader
+                  language={language}
+                  title={t.title}
+                  subtitle={t.subtitle}
+                  session={sessionCountdown}
+                  suppress401Until={suppress401Until > 0 ? suppress401Until : null}
+                />
+              )}
               
               {/* Event filter + toolbar utilities */}
               <div className="admin-dashboard-toolbar w-full min-w-0 rounded-lg border border-border/60 bg-muted/20 p-3 sm:p-4">
@@ -9462,13 +9339,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   key={event.id}
                                   value={event.id}
                                   textValue={`${eventName} — ${eventDate}`}
-                                  className="admin-event-select-item items-start py-2.5 pl-9 pr-3 [&>span:first-child]:top-2.5 data-[highlighted]:bg-muted data-[state=checked]:bg-muted focus:bg-muted"
+                                  className="admin-event-select-item py-2 pl-9 pr-3 data-[highlighted]:bg-muted data-[state=checked]:bg-muted focus:bg-muted"
                                 >
-                                  <span className="flex min-w-0 flex-col gap-0.5 text-left">
-                                    <span className="line-clamp-2 leading-snug">
+                                  <span className="flex min-w-0 items-baseline gap-2 text-left">
+                                    <span className="min-w-0 truncate leading-snug">
                                       {eventName}
                                     </span>
-                                    <span className="text-xs text-muted-foreground">
+                                    <span className="shrink-0 text-xs text-muted-foreground">
                                       {eventDate}
                                     </span>
                                   </span>
@@ -9498,116 +9375,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 border-t border-border/50 pt-3 sm:justify-end lg:border-t-0 lg:pt-0">
-                    <div className="flex items-center gap-2">
-                      <Label
-                        htmlFor="sound-toggle"
-                        className="text-xs text-muted-foreground"
-                      >
-                        {language === "en" ? "Sound" : "Son"}
-                      </Label>
-                      <Switch
-                        id="sound-toggle"
-                        checked={soundEnabled}
-                        onCheckedChange={(checked) => {
-                          const next = Boolean(checked);
-                          setSoundEnabled(next);
-                          if (typeof window !== "undefined") {
-                            try {
-                              window.localStorage.setItem(
-                                "adminNotificationSoundEnabled",
-                                String(next),
-                              );
-                            } catch {
-                              // ignore storage errors
-                            }
+                  <div className="flex items-center justify-end border-t border-border/50 pt-3 lg:border-t-0 lg:pt-0">
+                    <AdminNotificationPanel
+                      language={language}
+                      notifications={notifications}
+                      unreadCount={unreadNotifications}
+                      soundEnabled={soundEnabled}
+                      onSoundChange={(next) => {
+                        setSoundEnabled(next);
+                        if (typeof window !== "undefined") {
+                          try {
+                            window.localStorage.setItem(
+                              "adminNotificationSoundEnabled",
+                              String(next),
+                            );
+                          } catch {
+                            // ignore storage errors
                           }
-                        }}
-                      />
-                    </div>
-
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="relative h-9 w-9 shrink-0"
-                          aria-label={
-                            language === "en"
-                              ? "Notifications"
-                              : "Notifications"
-                          }
-                        >
-                          <Bell className="h-4 w-4" />
-                          {unreadNotifications > 0 && (
-                            <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
-                              {unreadNotifications > 9
-                                ? "9+"
-                                : unreadNotifications}
-                            </span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        align="end"
-                        className="w-80 max-h-96 overflow-y-auto"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-semibold">
-                            {language === "en"
-                              ? "Notifications"
-                              : "Notifications"}
-                          </span>
-                          {notifications.length > 0 && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => setUnreadNotifications(0)}
-                            >
-                              {language === "en"
-                                ? "Mark all read"
-                                : "Tout marquer comme lu"}
-                            </Button>
-                          )}
-                        </div>
-                        {notifications.length === 0 ? (
-                          <p className="text-xs text-muted-foreground">
-                            {language === "en"
-                              ? "No notifications yet"
-                              : "Aucune notification pour le moment"}
-                          </p>
-                        ) : (
-                          <div className="space-y-3">
-                            {notifications.map((n) => (
-                              <div
-                                key={n.id}
-                                className="rounded-lg border border-border bg-muted/60 px-3 py-2.5 text-xs flex flex-col gap-1"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="font-semibold truncate">
-                                    {n.title}
-                                  </span>
-                                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                    {new Date(n.createdAt).toLocaleTimeString(
-                                      language === "en" ? "en-US" : "fr-FR",
-                                      {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      },
-                                    )}
-                                  </span>
-                                </div>
-                                <p className="text-muted-foreground text-[11px] leading-snug">
-                                  {n.message}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </PopoverContent>
-                    </Popover>
+                        }
+                      }}
+                      onMarkAllRead={() => setUnreadNotifications(0)}
+                    />
                   </div>
                 </div>
               </div>

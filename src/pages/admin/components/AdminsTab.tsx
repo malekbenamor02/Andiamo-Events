@@ -32,9 +32,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit, Trash2, Save, RefreshCw, History } from "lucide-react";
+import { Plus, Edit, Trash2, Save, History } from "lucide-react";
 import { format } from "date-fns";
 import type { AdminUser, EditingAdminShape } from "../types";
+import {
+  AdminTabHeader,
+  ADMIN_TABLE_HEAD,
+  ADMIN_TABLE_ROW,
+  ADMIN_TABLE_WRAP,
+  ADMIN_BTN_EDIT,
+  ADMIN_BTN_DELETE,
+} from "./AdminTabShell";
 
 export interface AdminsTabProps {
   language: "en" | "fr";
@@ -77,23 +85,21 @@ export function AdminsTab({
 }: AdminsTabProps) {
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-primary">
-          {language === "en" ? "Admin Management" : "Gestion des Administrateurs"}
-        </h2>
-        <Dialog open={isAddAdminDialogOpen} onOpenChange={setIsAddAdminDialogOpen}>
-          <DialogTrigger asChild>
-            <Button
-              onClick={() => {
-                setNewAdminData({ name: "", email: "", phone: "" });
-                setIsAddAdminDialogOpen(true);
-              }}
-              className="transform hover:scale-105 transition-all duration-300"
-            >
-              <Plus className="w-4 h-4 mr-2 animate-pulse" />
-              {language === "en" ? "Add Admin" : "Ajouter un Admin"}
-            </Button>
-          </DialogTrigger>
+      <AdminTabHeader
+        title={language === "en" ? "Admin Management" : "Gestion des Administrateurs"}
+        actions={
+          <Dialog open={isAddAdminDialogOpen} onOpenChange={setIsAddAdminDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                onClick={() => {
+                  setNewAdminData({ name: "", email: "", phone: "" });
+                  setIsAddAdminDialogOpen(true);
+                }}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {language === "en" ? "Add Admin" : "Ajouter un Admin"}
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-2xl animate-in zoom-in-95 duration-300">
             <DialogHeader>
               <DialogTitle>
@@ -158,8 +164,9 @@ export function AdminsTab({
               </div>
             </div>
           </DialogContent>
-        </Dialog>
-      </div>
+          </Dialog>
+        }
+      />
 
       {/* Edit Admin Dialog */}
       <Dialog open={isEditAdminDialogOpen} onOpenChange={setIsEditAdminDialogOpen}>
@@ -276,28 +283,40 @@ export function AdminsTab({
         </DialogContent>
       </Dialog>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {language === "en" ? "All Admins" : "Tous les Admins"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-foreground">
+          {language === "en" ? "All Admins" : "Tous les Admins"}
+        </h3>
+        <div className={ADMIN_TABLE_WRAP}>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>{language === "en" ? "Name" : "Nom"}</TableHead>
-                <TableHead>{language === "en" ? "Email" : "Email"}</TableHead>
-                <TableHead>{language === "en" ? "Phone" : "Téléphone"}</TableHead>
-                <TableHead>{language === "en" ? "Role" : "Rôle"}</TableHead>
-                <TableHead>{language === "en" ? "Status" : "Statut"}</TableHead>
-                <TableHead>{language === "en" ? "Created" : "Créé"}</TableHead>
-                <TableHead>{language === "en" ? "Actions" : "Actions"}</TableHead>
+              <TableRow className="border-border/60 hover:bg-transparent">
+                <TableHead className={ADMIN_TABLE_HEAD}>
+                  {language === "en" ? "Name" : "Nom"}
+                </TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>
+                  {language === "en" ? "Email" : "Email"}
+                </TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>
+                  {language === "en" ? "Phone" : "Téléphone"}
+                </TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>
+                  {language === "en" ? "Role" : "Rôle"}
+                </TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>
+                  {language === "en" ? "Status" : "Statut"}
+                </TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>
+                  {language === "en" ? "Created" : "Créé"}
+                </TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>
+                  {language === "en" ? "Actions" : "Actions"}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {admins.map((admin) => (
-                <TableRow key={admin.id}>
+                <TableRow key={admin.id} className={ADMIN_TABLE_ROW}>
                   <TableCell className="font-medium">{admin.name}</TableCell>
                   <TableCell>{admin.email}</TableCell>
                   <TableCell>{admin.phone || "-"}</TableCell>
@@ -341,7 +360,7 @@ export function AdminsTab({
                           setIsEditAdminDialogOpen(true);
                         }}
                         disabled={processingId === `edit-admin-${admin.id}`}
-                        className="transform hover:scale-105 transition-all duration-300"
+                        className={ADMIN_BTN_EDIT}
                       >
                         <Edit className="w-4 h-4 mr-1" />
                         {processingId === `edit-admin-${admin.id}`
@@ -354,12 +373,12 @@ export function AdminsTab({
                       </Button>
                       <Button
                         size="sm"
-                        variant="destructive"
+                        variant="outline"
                         onClick={() => onDeleteAdmin(admin.id)}
                         disabled={
                           processingId === `delete-admin-${admin.id}` || admin.id === currentAdminId
                         }
-                        className="transform hover:scale-105 transition-all duration-300"
+                        className={ADMIN_BTN_DELETE}
                       >
                         <Trash2 className="w-4 h-4 mr-1" />
                         {processingId === `delete-admin-${admin.id}`
@@ -383,8 +402,8 @@ export function AdminsTab({
               )}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Activity Logs */}
       <Card>

@@ -20,6 +20,7 @@ import { EmailCampaignLauncher } from "@/components/admin/marketing/EmailCampaig
 import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
 import type { MarketingCampaign } from "@/types/bulk-sms";
 import { useToast } from "@/hooks/use-toast";
+import { AdminMetricTile, ADMIN_TABLE_HEAD } from "@/pages/admin/components/AdminTabShell";
 
 function isRenderableSmsBalanceValue(balance: unknown): boolean {
   if (balance == null || balance === "") return false;
@@ -317,14 +318,11 @@ export function MarketingTab(p: MarketingTabProps) {
   return (
     <TabsContent value="marketing" className="space-y-6">
                 {/* Campaign results: always visible */}
-                <Card>
-                  <CardHeader className="pb-2 flex flex-row flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <CardTitle className="text-base">
-                        {p.language === "en" ? "Campaign results" : "Résultats des campagnes"}
-                      </CardTitle>
-                      <CardDescription />
-                    </div>
+                <Card className="border-border/60">
+                  <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
+                    <CardTitle className="text-lg font-semibold text-foreground">
+                      {p.language === "en" ? "Campaign results" : "Résultats des campagnes"}
+                    </CardTitle>
                     <Button variant="outline" size="sm" onClick={() => fetchCampaigns()}>
                       <RefreshCw className="w-4 h-4 mr-2" />
                       {p.language === "en" ? "Refresh" : "Actualiser"}
@@ -338,16 +336,16 @@ export function MarketingTab(p: MarketingTabProps) {
                     ) : (
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b text-left text-muted-foreground">
-                            <th className="py-2 pr-2">{p.language === "en" ? "Date" : "Date"}</th>
-                            <th className="py-2 pr-2">{p.language === "en" ? "Type" : "Type"}</th>
-                            <th className="py-2 pr-2 min-w-[140px]">{p.language === "en" ? "Subject / name" : "Sujet / nom"}</th>
-                            <th className="py-2 pr-2">{p.language === "en" ? "Status" : "Statut"}</th>
-                            <th className="py-2 pr-1 text-green-600">OK</th>
-                            <th className="py-2 pr-1 text-destructive">Fail</th>
-                            <th className="py-2 pr-1">{p.language === "en" ? "Pending" : "En attente"}</th>
-                            <th className="py-2 pr-2">{p.language === "en" ? "Total" : "Total"}</th>
-                            <th className="py-2">{p.language === "en" ? "Actions" : "Actions"}</th>
+                          <tr className="border-b border-border/60">
+                            <th className={ADMIN_TABLE_HEAD}>{p.language === "en" ? "Date" : "Date"}</th>
+                            <th className={ADMIN_TABLE_HEAD}>{p.language === "en" ? "Type" : "Type"}</th>
+                            <th className={`${ADMIN_TABLE_HEAD} min-w-[140px]`}>{p.language === "en" ? "Subject / name" : "Sujet / nom"}</th>
+                            <th className={ADMIN_TABLE_HEAD}>{p.language === "en" ? "Status" : "Statut"}</th>
+                            <th className={`${ADMIN_TABLE_HEAD} pr-1 text-emerald-600 dark:text-emerald-400`}>OK</th>
+                            <th className={`${ADMIN_TABLE_HEAD} pr-1 text-destructive`}>Fail</th>
+                            <th className={`${ADMIN_TABLE_HEAD} pr-1`}>{p.language === "en" ? "Pending" : "En attente"}</th>
+                            <th className={`${ADMIN_TABLE_HEAD} pr-2`}>{p.language === "en" ? "Total" : "Total"}</th>
+                            <th className={ADMIN_TABLE_HEAD}>{p.language === "en" ? "Actions" : "Actions"}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -511,10 +509,9 @@ export function MarketingTab(p: MarketingTabProps) {
                           <>
                             <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border">
                               <div className="flex-1">
-                                <p className="text-sm text-muted-foreground font-heading">{p.language === 'en' ? 'Current Balance' : 'Solde actuel'}</p>
                                 {typeof p.smsBalance!.balance === 'object' ? (
-                                    <div className="mt-1">
-                                    <p className="text-2xl font-heading font-bold text-primary">
+                                    <div>
+                                    <p className="text-xl font-semibold text-primary tabular-nums">
                                         {(p.smsBalance!.balance as { balance?: unknown; solde?: unknown; credit?: unknown }).balance
                                           ?? (p.smsBalance!.balance as { balance?: unknown; solde?: unknown; credit?: unknown }).solde
                                           ?? (p.smsBalance!.balance as { balance?: unknown; solde?: unknown; credit?: unknown }).credit
@@ -523,21 +520,22 @@ export function MarketingTab(p: MarketingTabProps) {
                                       {(p.smsBalance!.balance as { balance?: number; solde?: number; credit?: number }).balance === 0
                                         || (p.smsBalance!.balance as { balance?: number; solde?: number; credit?: number }).solde === 0
                                         || (p.smsBalance!.balance as { balance?: number; solde?: number; credit?: number }).credit === 0 ? (
-                                      <p className="text-xs text-red-500 mt-1 font-heading">
+                                      <p className="text-xs text-destructive mt-1 font-heading">
                                           ⚠️ {p.language === 'en' ? 'Insufficient balance!' : 'Solde insuffisant !'}
                                         </p>
                                       ) : null}
                                     </div>
                                   ) : (
-                                  <p className="text-2xl font-heading font-bold text-primary mt-1">
+                                  <p className="text-xl font-semibold text-primary tabular-nums">
                                       {p.smsBalance!.balance as React.ReactNode}
                                       {p.smsBalance!.balance === '0' || p.smsBalance!.balance === 0 ? (
-                                        <span className="text-xs text-red-500 ml-2">
+                                        <span className="text-xs text-destructive ml-2">
                                           ⚠️ {p.language === 'en' ? 'Insufficient!' : 'Insuffisant !'}
                                         </span>
                                       ) : null}
                                   </p>
                                 )}
+                                <p className="text-[11px] uppercase tracking-wide text-muted-foreground mt-2">{p.language === 'en' ? 'Current Balance' : 'Solde actuel'}</p>
                               </div>
                             </div>
                             <Button
@@ -680,14 +678,11 @@ export function MarketingTab(p: MarketingTabProps) {
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {/* Subscriber Count */}
-                        <div className="p-3 bg-muted/30 rounded-lg border border-border">
-                          <div className="text-sm font-semibold text-foreground mb-1">
-                            {p.language === 'en' ? 'Subscribers Count' : "Nombre d'Abonnés"}
-                          </div>
-                          <div className="text-2xl font-bold text-primary">
-                            {p.phoneSubscribers.length}
-                          </div>
-                        </div>
+                        <AdminMetricTile
+                          label={p.language === 'en' ? 'Subscribers Count' : "Nombre d'Abonnés"}
+                          value={p.phoneSubscribers.length}
+                          accent="primary"
+                        />
 
                         {/* Export/Import Buttons */}
                         <div className="flex gap-2">
@@ -1114,23 +1109,22 @@ export function MarketingTab(p: MarketingTabProps) {
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {/* Subscriber Count */}
-                        <div className="p-3 bg-muted/30 rounded-lg border border-border">
-                          <div className="text-sm font-semibold text-foreground mb-1">
-                            {p.language === 'en' ? 'Subscribers Count' : "Nombre d'Abonnés"}
-                          </div>
-                          <div className="text-2xl font-bold text-primary">
-                            {p.loadingEmailSubscribers ? (
+                        <AdminMetricTile
+                          label={p.language === 'en' ? 'Subscribers Count' : "Nombre d'Abonnés"}
+                          value={
+                            p.loadingEmailSubscribers ? (
                               <Loader size="md" />
                             ) : (
                               p.emailSubscribers.length
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1">
+                            )
+                          }
+                          accent="primary"
+                        />
+                        <p className="text-xs text-muted-foreground">
                             {p.language === 'en' 
                               ? 'This email will be sent to all newsletter subscribers'
                               : 'Cet email sera envoyé à tous les abonnés newsletter'}
-                          </div>
-                        </div>
+                        </p>
 
                         {/* Export/Import Buttons */}
                         <div className="flex gap-2">

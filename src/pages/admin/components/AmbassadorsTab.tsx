@@ -33,7 +33,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { TabsContent } from "@/components/ui/tabs";
 import {
@@ -42,11 +41,7 @@ import {
   Trash2,
   Save,
   Download,
-  Phone,
-  Mail,
-  MapPin,
   Search,
-  RefreshCw,
 } from "lucide-react";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { formatAmbassadorLocationLabel } from "@/lib/ambassadors/extraVilles";
@@ -226,32 +221,23 @@ export function AmbassadorsTab({
 
   return (
     <TabsContent value="ambassadors" className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-primary">
-          Ambassadors Management
-        </h2>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onExportExcel}
-            className="transform hover:scale-105 transition-all duration-300"
-            style={{
-              background: "#1F1F1F",
-              borderColor: "#2A2A2A",
-              color: "#FFFFFF",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#E21836";
-              e.currentTarget.style.borderColor = "#E21836";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#1F1F1F";
-              e.currentTarget.style.borderColor = "#2A2A2A";
-            }}
-          >
-            <Download className="w-4 h-4 mr-2" />
-            {language === "en" ? "Export to Excel" : "Exporter vers Excel"}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">
+            {language === "en" ? "Ambassadors" : "Ambassadeurs"}
+          </h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {filteredList.length.toLocaleString()}{" "}
+            {language === "en" ? "shown" : "affichés"}
+            {displayList.length !== filteredList.length
+              ? ` · ${displayList.length.toLocaleString()} ${language === "en" ? "total" : "au total"}`
+              : ""}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onExportExcel} className="gap-2">
+            <Download className="h-4 w-4" />
+            {language === "en" ? "Export Excel" : "Exporter Excel"}
           </Button>
           <Dialog
             open={isAmbassadorDialogOpen}
@@ -259,14 +245,15 @@ export function AmbassadorsTab({
           >
             <DialogTrigger asChild>
               <Button
+                size="sm"
                 onClick={() => {
                   setEditingAmbassador({} as Ambassador);
                   setAmbassadorErrors({});
                   setIsAmbassadorDialogOpen(true);
                 }}
-                className="transform hover:scale-105 transition-all duration-300"
+                className="gap-2"
               >
-                <Plus className="w-4 h-4 mr-2 animate-pulse" />
+                <Plus className="h-4 w-4" />
                 {t.add}
               </Button>
             </DialogTrigger>
@@ -616,11 +603,11 @@ export function AmbassadorsTab({
                         : "Champ optionnel"}
                     </p>
                   </div>
-                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                    <p className="text-sm text-blue-900 dark:text-blue-100">
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+                    <p className="text-sm text-muted-foreground">
                       {language === "en"
-                        ? "📧 An approval email with login credentials will be automatically sent to the ambassador after creation."
-                        : "📧 Un email d'approbation avec les identifiants de connexion sera automatiquement envoyé à l'ambassadeur après la création."}
+                        ? "An approval email with login credentials is sent automatically after creation."
+                        : "Un e-mail d'approbation avec les identifiants est envoyé automatiquement après la création."}
                     </p>
                   </div>
                 </div>
@@ -669,28 +656,44 @@ export function AmbassadorsTab({
           </Dialog>
         </div>
       </div>
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/50 bg-muted/20 p-3">
-          <Search className="w-4 h-4 text-muted-foreground shrink-0" />
-          <Input
-            placeholder={language === "en" ? "Filter by phone..." : "Filtrer par téléphone..."}
-            value={filterPhone}
-            onChange={(e) => setFilterPhone(e.target.value)}
-            className="max-w-[180px] h-9"
-          />
-          <Input
-            placeholder={language === "en" ? "Filter by email..." : "Filtrer par email..."}
-            value={filterEmail}
-            onChange={(e) => setFilterEmail(e.target.value)}
-            className="max-w-[220px] h-9"
-          />
-          <Select
-            value={filterStatus}
-            onValueChange={(v) => setFilterStatus(v as "active" | "paused")}
-          >
-            <SelectTrigger className="max-w-[140px] h-9">
-              <SelectValue />
-            </SelectTrigger>
+      <div className="rounded-lg border border-border/60 bg-muted/20 p-3 sm:p-4 space-y-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="relative min-w-[160px] flex-1 sm:max-w-[200px]">
+            <Label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">
+              {language === "en" ? "Phone" : "Téléphone"}
+            </Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder={language === "en" ? "Filter…" : "Filtrer…"}
+                value={filterPhone}
+                onChange={(e) => setFilterPhone(e.target.value)}
+                className="h-9 border-border/60 bg-background pl-9"
+              />
+            </div>
+          </div>
+          <div className="min-w-[160px] flex-1 sm:max-w-[220px]">
+            <Label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">
+              {language === "en" ? "Email" : "E-mail"}
+            </Label>
+            <Input
+              placeholder={language === "en" ? "Filter…" : "Filtrer…"}
+              value={filterEmail}
+              onChange={(e) => setFilterEmail(e.target.value)}
+              className="h-9 border-border/60 bg-background"
+            />
+          </div>
+          <div className="min-w-[120px]">
+            <Label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">
+              {language === "en" ? "Status" : "Statut"}
+            </Label>
+            <Select
+              value={filterStatus}
+              onValueChange={(v) => setFilterStatus(v as "active" | "paused")}
+            >
+              <SelectTrigger className="h-9 w-[140px] bg-background">
+                <SelectValue />
+              </SelectTrigger>
             <SelectContent>
               <SelectItem value="active">
                 {language === "en" ? "Active" : "Actif"}
@@ -700,15 +703,18 @@ export function AmbassadorsTab({
               </SelectItem>
             </SelectContent>
           </Select>
-          <Select
-            value={filterCity || "_all"}
-            onValueChange={(v) => setFilterCity(v === "_all" ? "" : v)}
-          >
-            <SelectTrigger className="max-w-[160px] h-9">
-              <SelectValue
-                placeholder={language === "en" ? "City" : "Ville"}
-              />
-            </SelectTrigger>
+          </div>
+          <div className="min-w-[120px]">
+            <Label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">
+              {language === "en" ? "City" : "Ville"}
+            </Label>
+            <Select
+              value={filterCity || "_all"}
+              onValueChange={(v) => setFilterCity(v === "_all" ? "" : v)}
+            >
+              <SelectTrigger className="h-9 w-[160px] bg-background">
+                <SelectValue placeholder={language === "en" ? "City" : "Ville"} />
+              </SelectTrigger>
             <SelectContent>
               <SelectItem value="_all">
                 {language === "en" ? "All cities" : "Toutes les villes"}
@@ -720,15 +726,18 @@ export function AmbassadorsTab({
               ))}
             </SelectContent>
           </Select>
-          <Select
-            value={filterVille || "_all"}
-            onValueChange={(v) => setFilterVille(v === "_all" ? "" : v)}
-          >
-            <SelectTrigger className="max-w-[180px] h-9">
-              <SelectValue
-                placeholder={language === "en" ? "Neighborhood" : "Quartier"}
-              />
-            </SelectTrigger>
+          </div>
+          <div className="min-w-[140px]">
+            <Label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">
+              {language === "en" ? "Neighborhood" : "Quartier"}
+            </Label>
+            <Select
+              value={filterVille || "_all"}
+              onValueChange={(v) => setFilterVille(v === "_all" ? "" : v)}
+            >
+              <SelectTrigger className="h-9 w-[180px] bg-background">
+                <SelectValue placeholder={language === "en" ? "Neighborhood" : "Quartier"} />
+              </SelectTrigger>
             <SelectContent side="bottom" avoidCollisions={false}>
               <SelectItem value="_all">
                 {language === "en" ? "All neighborhoods" : "Tous les quartiers"}
@@ -756,8 +765,9 @@ export function AmbassadorsTab({
                 ))}
             </SelectContent>
           </Select>
+          </div>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={() => {
               setFilterStatus("active");
@@ -766,63 +776,79 @@ export function AmbassadorsTab({
               setFilterCity("");
               setFilterVille("");
             }}
-            className="h-9 shrink-0"
+            className="h-9 shrink-0 text-xs text-muted-foreground"
           >
             {language === "en" ? "Clear filters" : "Effacer les filtres"}
           </Button>
-          {selectedIds.size > 0 && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setBulkAction("pause")}
-                disabled={bulkProcessing}
-              >
-                {language === "en" ? "Pause selected" : "Mettre en pause"}
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setBulkAction("delete")}
-                disabled={bulkProcessing}
-              >
-                {language === "en" ? "Delete selected" : "Supprimer la sélection"}
-              </Button>
-            </div>
-          )}
         </div>
-      <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
+        {selectedIds.size > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
+            <span className="text-xs text-muted-foreground">
+              {selectedIds.size} {language === "en" ? "selected" : "sélectionné(s)"}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkAction("pause")}
+              disabled={bulkProcessing}
+              className="h-8 border-amber-500/40 text-xs text-amber-600 hover:bg-amber-500/10"
+            >
+              {language === "en" ? "Pause selected" : "Mettre en pause"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkAction("delete")}
+              disabled={bulkProcessing}
+              className="h-8 border-destructive/40 text-xs text-destructive hover:bg-destructive/10"
+            >
+              {language === "en" ? "Delete selected" : "Supprimer la sélection"}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-border/60">
         <Table>
           <TableHeader>
-            <TableRow className="border-border/50 hover:bg-transparent">
-              <TableHead className="w-10">
+            <TableRow className="border-border/60 bg-muted/30 hover:bg-muted/30">
+              <TableHead className="w-10 px-2 py-2.5">
                 <Checkbox
                   checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
                   onCheckedChange={handleToggleSelectAllVisible}
                   aria-label={language === "en" ? "Select all ambassadors" : "Tout sélectionner"}
                 />
               </TableHead>
-              <TableHead className="font-semibold">{t.ambassadorName}</TableHead>
-              <TableHead className="font-semibold">
+              <TableHead className="px-3 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {t.ambassadorName}
+              </TableHead>
+              <TableHead className="px-3 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 {language === "en" ? "Status" : "Statut"}
               </TableHead>
-              <TableHead className="font-semibold">
+              <TableHead className="px-3 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 {language === "en" ? "Active" : "Actif"}
               </TableHead>
-              <TableHead className="font-semibold">{t.ambassadorPhone}</TableHead>
-              <TableHead className="font-semibold">{t.ambassadorEmail}</TableHead>
-              <TableHead className="font-semibold">
-                {language === "en" ? "City / Neighborhood" : "Ville / Quartier"}
+              <TableHead className="px-3 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {t.ambassadorPhone}
               </TableHead>
-              <TableHead className="text-right font-semibold">
+              <TableHead className="px-3 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {t.ambassadorEmail}
+              </TableHead>
+              <TableHead className="px-3 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {language === "en" ? "Location" : "Localisation"}
+              </TableHead>
+              <TableHead className="px-3 py-2.5 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 {language === "en" ? "Actions" : "Actions"}
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredList.map((ambassador) => (
-              <TableRow key={ambassador.id} className="border-border/50">
-                <TableCell>
+              <TableRow
+                key={ambassador.id}
+                className="border-border/60 hover:bg-muted/20"
+              >
+                <TableCell className="px-2 py-2.5">
                   <Checkbox
                     checked={selectedIds.has(ambassador.id)}
                     onCheckedChange={(checked) =>
@@ -839,12 +865,17 @@ export function AmbassadorsTab({
                     aria-label={language === "en" ? "Select ambassador" : "Sélectionner l'ambassadeur"}
                   />
                 </TableCell>
-                <TableCell>
-                  <span className="font-medium">{ambassador.full_name}</span>
+                <TableCell className="px-3 py-2.5">
+                  <span className="font-medium text-foreground">{ambassador.full_name}</span>
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-3 py-2.5">
                   <span
-                    className={`text-sm font-medium ${ambassador.status === "approved" ? "text-green-500" : "text-red-500"}`}
+                    className={cn(
+                      "text-xs font-medium",
+                      ambassador.status === "approved"
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-amber-600 dark:text-amber-400"
+                    )}
                   >
                     {ambassador.status === "approved"
                       ? language === "en"
@@ -852,18 +883,17 @@ export function AmbassadorsTab({
                         : "Actif"
                       : language === "en"
                         ? "Paused"
-                        : "En Pause"}
+                        : "En pause"}
                   </span>
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-3 py-2.5">
                   <Switch
                     checked={ambassador.status === "approved"}
                     onCheckedChange={() => onToggleStatus(ambassador)}
                     disabled={processingId === ambassador.id}
-                    className="data-[state=checked]:bg-[#E21836]"
                   />
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell className="px-3 py-2.5">
                   <button
                     type="button"
                     onClick={async () => {
@@ -873,20 +903,19 @@ export function AmbassadorsTab({
                           title: language === "en" ? "Copied" : "Copié",
                           description: language === "en" ? "Phone number copied" : "Numéro copié",
                         });
-                        } catch {
+                      } catch {
                         toast({
                           title: t.error ?? (language === "en" ? "Error" : "Erreur"),
                           variant: "destructive",
                         });
                       }
                     }}
-                    className="flex items-center gap-2 cursor-pointer hover:text-foreground hover:underline focus:outline-none focus:ring-2 focus:ring-primary rounded px-1 -mx-1"
+                    className="text-sm text-muted-foreground hover:text-primary hover:underline"
                   >
-                    <Phone className="w-4 h-4 shrink-0" />
                     {ambassador.phone}
                   </button>
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell className="px-3 py-2.5">
                   {ambassador.email ? (
                     <button
                       type="button"
@@ -904,31 +933,24 @@ export function AmbassadorsTab({
                           });
                         }
                       }}
-                      className="flex items-center gap-2 cursor-pointer hover:text-foreground hover:underline focus:outline-none focus:ring-2 focus:ring-primary rounded px-1 -mx-1 text-left w-full"
+                      className="text-sm text-muted-foreground hover:text-primary hover:underline"
                     >
-                      <Mail className="w-4 h-4 shrink-0" />
                       {maskEmail(ambassador.email)}
                     </button>
                   ) : (
-                    "—"
+                    <span className="text-muted-foreground/50">—</span>
                   )}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell className="px-3 py-2.5 text-sm text-muted-foreground">
                   {(() => {
                     const { label, title } = formatAmbassadorLocationLabel(ambassador);
                     return (
-                      <span
-                        className="flex items-center gap-2"
-                        title={title}
-                      >
-                        <MapPin className="w-4 h-4 shrink-0" />
-                        {label}
-                      </span>
+                      <span title={title}>{label}</span>
                     );
                   })()}
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
+                <TableCell className="px-3 py-2.5 text-right">
+                  <div className="flex items-center justify-end gap-1.5">
                     <Button
                       size="sm"
                       variant="outline"
@@ -962,18 +984,18 @@ export function AmbassadorsTab({
                         setAmbassadorErrors({});
                         setIsAmbassadorDialogOpen(true);
                       }}
-                      className="shrink-0"
+                      className="h-8 border-border/60 px-2.5 text-xs hover:bg-muted/50"
                     >
-                      <Edit className="w-4 h-4 mr-2" />
+                      <Edit className="mr-1.5 h-3.5 w-3.5" />
                       {t.edit}
                     </Button>
                     <Button
                       size="sm"
-                      variant="destructive"
+                      variant="outline"
                       onClick={() => onRequestDelete(ambassador)}
-                      className="shrink-0"
+                      className="h-8 border-destructive/40 px-2.5 text-xs text-destructive hover:bg-destructive/10"
                     >
-                      <Trash2 className="w-4 h-4 mr-2" />
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                       {t.delete}
                     </Button>
                   </div>
@@ -983,12 +1005,10 @@ export function AmbassadorsTab({
           </TableBody>
         </Table>
       </div>
-      </div>
+
       {filteredList.length === 0 && (
-        <div className="text-center py-8">
-          <p className="text-muted-foreground animate-pulse">
-            {t.noAmbassadors}
-          </p>
+        <div className="rounded-lg border border-dashed border-border/60 py-10 text-center">
+          <p className="text-sm text-muted-foreground">{t.noAmbassadors}</p>
         </div>
       )}
 

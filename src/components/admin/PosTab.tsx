@@ -17,13 +17,62 @@ import { API_ROUTES } from "@/lib/api-routes";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import Loader from "@/components/ui/Loader";
-import { Store, Building2, Users, Package, ShoppingCart, Activity, Plus, RefreshCw, Edit, Trash2, Copy, Check, X, Eye, Mail, Send, BarChart3, TrendingUp, Calendar as CalendarIcon } from "lucide-react";
+import { Plus, RefreshCw, Edit, Trash2, Copy, Check, X, Mail, Send, BarChart3, TrendingUp, Calendar as CalendarIcon, Building2, Users, Package, ShoppingCart, Activity } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 import { AdminOrderQrTicketsSection } from "@/pages/admin/components/AdminOrderQrTicketsSection";
+import { PosOrderApproveConfirm } from "@/components/admin/PosOrderApproveConfirm";
+import { PosOrderActionBar, type PosOrderActionBarOrder } from "@/components/admin/PosOrderActionBar";
+import {
+  AdminTabHeader,
+  AdminMetricTile,
+  AdminTabEmpty,
+  AdminTabCard,
+  AdminTabCardGrid,
+  ADMIN_FILTERS_PANEL,
+  ADMIN_FILTER_LABEL,
+} from "@/pages/admin/components/AdminTabShell";
 
 function fetcher(url: string, options?: RequestInit) {
   return fetch(`${getApiBaseUrl()}${url}`, { ...options, credentials: "include" });
+}
+
+const POS_TAB_TRIGGER =
+  "shrink-0 gap-1.5 rounded-none border-0 border-b-2 border-transparent bg-transparent px-3 py-2.5 text-xs shadow-none transition-colors sm:px-4 sm:text-sm data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
+
+function getPosOrderStatusDisplay(status: string, language: "en" | "fr") {
+  switch (status) {
+    case "PAID":
+      return {
+        dot: "bg-emerald-500",
+        label: language === "en" ? "Paid" : "Payé",
+        text: "text-emerald-600 dark:text-emerald-400",
+      };
+    case "PENDING_ADMIN_APPROVAL":
+      return {
+        dot: "bg-amber-500",
+        label: language === "en" ? "Pending" : "En attente",
+        text: "text-amber-600 dark:text-amber-400",
+      };
+    case "REJECTED":
+      return {
+        dot: "bg-destructive",
+        label: language === "en" ? "Rejected" : "Rejeté",
+        text: "text-destructive",
+      };
+    case "REMOVED_BY_ADMIN":
+      return {
+        dot: "bg-destructive",
+        label: language === "en" ? "Removed" : "Supprimé",
+        text: "text-destructive",
+      };
+    default:
+      return {
+        dot: "bg-muted-foreground",
+        label: status,
+        text: "text-muted-foreground",
+      };
+  }
 }
 
 interface PosTabProps {
@@ -154,6 +203,7 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [rejectOrder, setRejectOrder] = useState<PosOrder | null>(null);
   const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
+  const [approveConfirmOrder, setApproveConfirmOrder] = useState<PosOrder | null>(null);
   const [orderActionLoading, setOrderActionLoading] = useState<{ orderId: string; action: "approve" | "reject" | "remove" } | null>(null);
 
   const loadOutlets = async () => {
@@ -346,18 +396,40 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
     setOrderActionLoading({ orderId: o.id, action: "approve" });
     try {
       const r = await fetcher(API_ROUTES.ADMIN_POS_ORDER_APPROVE(o.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      if (r.ok) { loadOrders(); toast({ title: "Approved", description: "Tickets & email sent" }); } else { const e = await r.json(); toast({ title: "Error", description: e.error, variant: "destructive" }); }
+      if (r.ok) {
+        loadOrders();
+        setSelectedOrder((prev) => (prev?.id === o.id ? null : prev));
+        toast({ title: "Approved", description: "Tickets & email sent" });
+      } else {
+        const e = await r.json();
+        toast({ title: "Error", description: e.error, variant: "destructive" });
+      }
     } finally {
       setOrderActionLoading(null);
     }
   };
-  const onReject = (o: PosOrder) => {
-    setRejectOrder(o);
-    setReasonDialogOpen(true);
+  const resolveOrder = (o: PosOrderActionBarOrder): PosOrder | null => {
+    if (selectedOrder?.id === o.id) return selectedOrder;
+    return orders.find((x) => x.id === o.id) ?? null;
   };
-  const onRemove = (o: PosOrder) => {
-    setConfirmTarget({ kind: "remove-order", o });
-    setConfirmOpen(true);
+
+  const requestApprove = (o: PosOrderActionBarOrder) => {
+    const full = resolveOrder(o);
+    if (full) setApproveConfirmOrder(full);
+  };
+  const onReject = (o: PosOrderActionBarOrder) => {
+    const full = resolveOrder(o);
+    if (full) {
+      setRejectOrder(full);
+      setReasonDialogOpen(true);
+    }
+  };
+  const onRemove = (o: PosOrderActionBarOrder) => {
+    const full = resolveOrder(o);
+    if (full) {
+      setConfirmTarget({ kind: "remove-order", o: full });
+      setConfirmOpen(true);
+    }
   };
 
   const handleConfirmAction = async () => {
@@ -387,7 +459,13 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
     setOrderActionLoading({ orderId: order.id, action: "reject" });
     try {
       const r = await fetcher(API_ROUTES.ADMIN_POS_ORDER_REJECT(order.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
-      if (r.ok) { loadOrders(); toast({ title: "Rejected" }); setReasonDialogOpen(false); setRejectOrder(null); } else { const e = await r.json().catch(() => ({})); toast({ title: "Error", description: (e as { error?: string }).error, variant: "destructive" }); }
+      if (r.ok) {
+        loadOrders();
+        setSelectedOrder((prev) => (prev?.id === order.id ? null : prev));
+        toast({ title: "Rejected" });
+        setReasonDialogOpen(false);
+        setRejectOrder(null);
+      } else { const e = await r.json().catch(() => ({})); toast({ title: "Error", description: (e as { error?: string }).error, variant: "destructive" }); }
     } finally {
       setOrderActionLoading(null);
     }
@@ -423,31 +501,64 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
     ? { title: "Point de Vente (POS)", outlets: "Outlets", users: "Users", orders: "Orders", stock: "Stock", audit: "Audit", statistics: "Statistics", add: "Add", edit: "Edit", delete: "Delete", view: "View", name: "Name", email: "Email", password: "Password", slug: "Slug", active: "Active", paused: "Paused", link: "Link", copy: "Copy", outlet: "Outlet", event: "Event", pass: "Pass", maxQ: "Max", sold: "Sold", remaining: "Remaining", customer: "Customer", total: "Total", status: "Status", actions: "Actions", approve: "Approve", reject: "Reject", remove: "Remove", createOutlet: "Create outlet", createUser: "Create user", addStock: "Add stock", noOutlets: "No outlets", noUsers: "No users", noStock: "Select outlet and optionally event", noOrders: "No orders", noAudit: "No audit", clientInfo: "Client information", phone: "Phone", city: "City", ville: "Ville", saveEmail: "Save email", resendOrderReceived: "Resend order-received email", resendTickets: "Resend tickets email", totalOrders: "Total orders", totalRevenue: "Total revenue", byOutlet: "By outlet", byPassType: "By pass type", byStatus: "By status", daily: "Daily", confirm: "Confirm", cancel: "Cancel", rejectReason: "Reason (optional):", rejectTitle: "Reject order", paidOrders: "Paid orders", paidRevenue: "Paid revenue", paidTickets: "Paid tickets", pendingOrders: "Pending orders", pendingRevenue: "Pending revenue", pendingTickets: "Pending tickets", rejectedOrders: "Rejected orders", rejectedTickets: "Rejected tickets", removedOrders: "Removed orders", removedTickets: "Removed tickets" }
     : { title: "Point de Vente (POS)", outlets: "Points de vente", users: "Utilisateurs", orders: "Commandes", stock: "Stock", audit: "Audit", statistics: "Statistiques", add: "Ajouter", edit: "Modifier", delete: "Supprimer", view: "Voir", name: "Nom", email: "Email", password: "Mot de passe", slug: "Slug", active: "Actif", paused: "En pause", link: "Lien", copy: "Copier", outlet: "Point de vente", event: "Événement", pass: "Pass", maxQ: "Max", sold: "Vendu", remaining: "Reste", customer: "Client", total: "Total", status: "Statut", actions: "Actions", approve: "Approuver", reject: "Rejeter", remove: "Supprimer", createOutlet: "Créer un point de vente", createUser: "Créer un utilisateur", addStock: "Ajouter du stock", noOutlets: "Aucun point de vente", noUsers: "Aucun utilisateur", noStock: "Choisir un point de vente et optionnellement un événement", noOrders: "Aucune commande", noAudit: "Aucun audit", clientInfo: "Informations client", phone: "Téléphone", city: "Ville", ville: "Ville", saveEmail: "Enregistrer l'email", resendOrderReceived: "Renvoyer email « reçu »", resendTickets: "Renvoyer email billets", totalOrders: "Total commandes", totalRevenue: "Chiffre d'affaires", byOutlet: "Par point de vente", byPassType: "Par type de pass", byStatus: "Par statut", daily: "Journalier", confirm: "Confirmer", cancel: "Annuler", rejectReason: "Raison (optionnel) :", rejectTitle: "Rejeter la commande", paidOrders: "Commandes payées", paidRevenue: "Chiffre payé", pendingOrders: "Commandes en attente", pendingRevenue: "Chiffre en attente", rejectedOrders: "Commandes rejetées", rejectedTickets: "Billets rejetés", removedOrders: "Commandes supprimées", removedTickets: "Billets supprimés", paidTickets: "Billets payés", pendingTickets: "Billets en attente" };
 
+  const orderActionLabels = {
+    view: t.view,
+    approve: t.approve,
+    reject: t.reject,
+    remove: t.remove,
+  };
+
+  const openOrderDetail = (o: PosOrder) => {
+    setSelectedOrder(o);
+    setOrderDetailEmail(o.user_email || "");
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold flex items-center gap-2" style={{ color: "#E21836" }}><Store className="w-7 h-7" />{t.title}</h2>
-      </div>
+      <AdminTabHeader title={t.title} />
       <Tabs value={subTab} onValueChange={setSubTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 gap-1 h-auto flex-wrap bg-card border border-border">
-          <TabsTrigger value="orders" className="text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><ShoppingCart className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.orders}</span></TabsTrigger>
-          <TabsTrigger value="statistics" className="text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><BarChart3 className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.statistics}</span></TabsTrigger>
-          <TabsTrigger value="outlets" className="text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><Building2 className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.outlets}</span></TabsTrigger>
-          <TabsTrigger value="users" className="text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><Users className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.users}</span></TabsTrigger>
-          <TabsTrigger value="audit" className="text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><Activity className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.audit}</span></TabsTrigger>
+        <TabsList className="flex h-auto w-full justify-start gap-0 overflow-x-auto rounded-none border-b border-border/60 bg-transparent p-0 scrollbar-hidden">
+          <TabsTrigger value="orders" className={POS_TAB_TRIGGER}>
+            <ShoppingCart className="h-4 w-4 shrink-0" />
+            {t.orders}
+          </TabsTrigger>
+          <TabsTrigger value="statistics" className={POS_TAB_TRIGGER}>
+            <BarChart3 className="h-4 w-4 shrink-0" />
+            {t.statistics}
+          </TabsTrigger>
+          <TabsTrigger value="outlets" className={POS_TAB_TRIGGER}>
+            <Building2 className="h-4 w-4 shrink-0" />
+            {t.outlets}
+          </TabsTrigger>
+          <TabsTrigger value="users" className={POS_TAB_TRIGGER}>
+            <Users className="h-4 w-4 shrink-0" />
+            {t.users}
+          </TabsTrigger>
+          <TabsTrigger value="audit" className={POS_TAB_TRIGGER}>
+            <Activity className="h-4 w-4 shrink-0" />
+            {t.audit}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="outlets" className="mt-4">
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row justify-between">
-              <CardTitle style={{ color: "#E21836" }}>{t.outlets}</CardTitle>
-              <div className="flex gap-2">
-                <Button size="sm" variant="ghost" onClick={loadOutlets}><RefreshCw className="w-4 h-4" /></Button>
-                <Button size="sm" className="bg-[#E21836] hover:bg-[#c4142e]" onClick={() => { setCreateOutlet(true); setForm({ name: "" }); }}><Plus className="w-4 h-4 mr-1" />{t.add}</Button>
+          <Card className="border-border/60 bg-card">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
+              <CardTitle className="text-base font-semibold text-foreground">{t.outlets}</CardTitle>
+              <div className="flex shrink-0 gap-2">
+                <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={loadOutlets}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+                <Button size="sm" className="h-8 gap-1" onClick={() => { setCreateOutlet(true); setForm({ name: "" }); }}>
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">{t.add}</span>
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
-              {outlets.length === 0 ? <p className="text-muted-foreground">{t.noOutlets}</p> : (
+              {outlets.length === 0 ? (
+                <AdminTabEmpty message={t.noOutlets} />
+              ) : (
+                <div className="-mx-1 overflow-x-auto px-1">
                 <Table>
                   <TableHeader><TableRow className="border-border">
                     <TableHead className="text-muted-foreground">{t.name}</TableHead>
@@ -463,35 +574,51 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                         <TableCell><Button variant="ghost" size="sm" onClick={() => copyLink(o.slug)}><Copy className="w-4 h-4" /></Button></TableCell>
                         <TableCell>
                           <Button variant="ghost" size="sm" className="mr-1" onClick={() => { setEditOutlet(o); setForm({ name: o.name, slug: o.slug, is_active: o.is_active }); }}>{t.edit}</Button>
-                          <Button variant="ghost" size="sm" className="text-[#EF4444]" onClick={() => onDeleteOutlet(o)}>{t.delete}</Button>
+                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => onDeleteOutlet(o)}>{t.delete}</Button>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="users" className="mt-4">
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row justify-between flex-wrap gap-2">
-              <CardTitle style={{ color: "#E21836" }}>{t.users}</CardTitle>
-              <div className="flex gap-2 flex-wrap">
+          <Card className="border-border/60 bg-card">
+            <CardHeader className="space-y-4 pb-4">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base font-semibold text-foreground">{t.users}</CardTitle>
+                <div className="flex shrink-0 gap-2">
+                  <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={loadUsers}>
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" className="h-8 gap-1" onClick={() => { setCreateUser(true); setForm({ pos_outlet_id: outletId || outlets[0]?.id || "", name: "", email: "", password: "" }); }}>
+                    <Plus className="h-4 w-4" />
+                    <span className="hidden sm:inline">{t.add}</span>
+                  </Button>
+                </div>
+              </div>
+              <div className={ADMIN_FILTERS_PANEL}>
+                <Label className={ADMIN_FILTER_LABEL}>{t.outlet}</Label>
                 <Select value={outletFilter === "__none__" ? "__all__" : outletFilter} onValueChange={setOutletFilter}>
-                  <SelectTrigger className="w-[200px]"><SelectValue placeholder={t.outlet} /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-full bg-background sm:max-w-xs">
+                    <SelectValue placeholder={t.outlet} />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">{language === "en" ? "All" : "Tous"}</SelectItem>
                     {outlets.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Button size="sm" variant="ghost" onClick={loadUsers}><RefreshCw className="w-4 h-4" /></Button>
-                <Button size="sm" className="bg-[#E21836] hover:bg-[#c4142e]" onClick={() => { setCreateUser(true); setForm({ pos_outlet_id: outletId || outlets[0]?.id || "", name: "", email: "", password: "" }); }}><Plus className="w-4 h-4 mr-1" />{t.add}</Button>
               </div>
             </CardHeader>
             <CardContent>
-              {users.length === 0 ? <p className="text-muted-foreground">{t.noUsers}</p> : (
+              {users.length === 0 ? (
+                <AdminTabEmpty message={t.noUsers} />
+              ) : (
+                <div className="-mx-1 overflow-x-auto px-1">
                 <Table>
                   <TableHeader><TableRow className="border-border">
                     <TableHead className="text-muted-foreground">{t.name}</TableHead>
@@ -504,138 +631,212 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                       <TableRow key={u.id} className="border-border">
                         <TableCell className="text-foreground">{u.name}</TableCell>
                         <TableCell className="text-muted-foreground">{u.email}</TableCell>
-                        <TableCell><span className={u.is_active && !u.is_paused ? "text-[#10B981]" : "text-[#EF4444]"}>{u.is_active && !u.is_paused ? "✓" : "✗"}</span></TableCell>
+                        <TableCell><span className={u.is_active && !u.is_paused ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}>{u.is_active && !u.is_paused ? "✓" : "✗"}</span></TableCell>
                         <TableCell>
                           <Button variant="ghost" size="sm" className="mr-1" onClick={() => { setEditUser(u); setForm({ name: u.name, email: u.email, is_active: (u.is_active && !u.is_paused) ? "1" : "0", password: "" }); }}>{t.edit}</Button>
-                          <Button variant="ghost" size="sm" className="text-[#EF4444]" onClick={() => onDeleteUser(u)}>{t.delete}</Button>
+                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => onDeleteUser(u)}>{t.delete}</Button>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="orders" className="mt-4">
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row justify-between flex-wrap gap-2">
-              <CardTitle style={{ color: "#E21836" }}>{t.orders}</CardTitle>
-              <div className="flex gap-2 flex-wrap">
-                <Select value={outletFilter === "__none__" ? "__all__" : outletFilter} onValueChange={setOutletFilter}>
-                  <SelectTrigger className="w-[160px]"><SelectValue placeholder={t.name} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">{t.name}</SelectItem>
-                    {outlets.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Select value={orderStatusFilter} onValueChange={setOrderStatusFilter}>
-                  <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.status} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">{t.status}</SelectItem>
-                    <SelectItem value="PENDING_ADMIN_APPROVAL">PENDING_ADMIN_APPROVAL</SelectItem>
-                    <SelectItem value="PAID">PAID</SelectItem>
-                    <SelectItem value="REJECTED">REJECTED</SelectItem>
-                    <SelectItem value="REMOVED_BY_ADMIN">REMOVED_BY_ADMIN</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={orderEventFilter} onValueChange={setOrderEventFilter}>
-                  <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.event} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">{language === "en" ? "All events" : "Tous"}</SelectItem>
-                    {selectedEventId && !eventsReady ? (
-                      <SelectItem value={selectedEventId} disabled>
-                        {language === "en" ? "Loading events…" : "Chargement des événements…"}
-                      </SelectItem>
-                    ) : null}
-                    {events.map(ev => <SelectItem key={ev.id} value={ev.id}>{ev.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-[160px] justify-start text-left font-normal",
-                        !orderFrom && "text-muted-foreground"
-                      )}
+          <Card className="border-border/60 bg-card">
+            <CardHeader className="space-y-4 pb-4">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base font-semibold text-foreground">{t.orders}</CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0 gap-1.5"
+                  onClick={loadOrders}
+                  disabled={ordersLoading}
+                >
+                  <RefreshCw className={cn("h-4 w-4", ordersLoading && "animate-spin")} />
+                  <span className="hidden sm:inline">
+                    {language === "en" ? "Refresh" : "Actualiser"}
+                  </span>
+                </Button>
+              </div>
+              <div className={ADMIN_FILTERS_PANEL}>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div>
+                    <Label className={ADMIN_FILTER_LABEL}>{t.outlet}</Label>
+                    <Select
+                      value={outletFilter === "__none__" ? "__all__" : outletFilter}
+                      onValueChange={setOutletFilter}
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {orderFrom
-                        ? format(new Date(`${orderFrom}T00:00:00`), "dd/MM/yyyy")
-                        : (language === "en" ? "From" : "De")}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={orderFrom ? new Date(`${orderFrom}T00:00:00`) : undefined}
-                      onSelect={(date) => setOrderFrom(date ? format(date, "yyyy-MM-dd") : "")}
-                      initialFocus
-                    />
-                    {orderFrom && (
-                      <div className="p-2 border-t border-border flex justify-end">
+                      <SelectTrigger className="h-9 w-full bg-background">
+                        <SelectValue placeholder={t.name} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">{t.name}</SelectItem>
+                        {outlets.map((o) => (
+                          <SelectItem key={o.id} value={o.id}>
+                            {o.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className={ADMIN_FILTER_LABEL}>{t.status}</Label>
+                    <Select value={orderStatusFilter} onValueChange={setOrderStatusFilter}>
+                      <SelectTrigger className="h-9 w-full bg-background">
+                        <SelectValue placeholder={t.status} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">{t.status}</SelectItem>
+                        <SelectItem value="PENDING_ADMIN_APPROVAL">PENDING_ADMIN_APPROVAL</SelectItem>
+                        <SelectItem value="PAID">PAID</SelectItem>
+                        <SelectItem value="REJECTED">REJECTED</SelectItem>
+                        <SelectItem value="REMOVED_BY_ADMIN">REMOVED_BY_ADMIN</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="sm:col-span-2 lg:col-span-1">
+                    <Label className={ADMIN_FILTER_LABEL}>{t.event}</Label>
+                    <Select value={orderEventFilter} onValueChange={setOrderEventFilter}>
+                      <SelectTrigger className="h-9 w-full bg-background">
+                        <SelectValue placeholder={t.event} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">
+                          {language === "en" ? "All events" : "Tous"}
+                        </SelectItem>
+                        {selectedEventId && !eventsReady ? (
+                          <SelectItem value={selectedEventId} disabled>
+                            {language === "en" ? "Loading events…" : "Chargement des événements…"}
+                          </SelectItem>
+                        ) : null}
+                        {events.map((ev) => (
+                          <SelectItem key={ev.id} value={ev.id}>
+                            {ev.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className={ADMIN_FILTER_LABEL}>
+                      {language === "en" ? "From" : "De"}
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setOrderFrom("")}
+                          variant="outline"
+                          className={cn(
+                            "h-9 w-full justify-start text-left font-normal bg-background",
+                            !orderFrom && "text-muted-foreground"
+                          )}
                         >
-                          <X className="w-3 h-3 mr-1" />
-                          {language === "en" ? "Clear" : "Effacer"}
+                          <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                          <span className="truncate">
+                            {orderFrom
+                              ? format(new Date(`${orderFrom}T00:00:00`), "dd/MM/yyyy")
+                              : language === "en"
+                                ? "Pick date"
+                                : "Choisir"}
+                          </span>
                         </Button>
-                      </div>
-                    )}
-                  </PopoverContent>
-                </Popover>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-[160px] justify-start text-left font-normal",
-                        !orderTo && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {orderTo
-                        ? format(new Date(`${orderTo}T00:00:00`), "dd/MM/yyyy")
-                        : (language === "en" ? "To" : "À")}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={orderTo ? new Date(`${orderTo}T00:00:00`) : undefined}
-                      onSelect={(date) => setOrderTo(date ? format(date, "yyyy-MM-dd") : "")}
-                      disabled={orderFrom ? { before: new Date(`${orderFrom}T00:00:00`) } : undefined}
-                      initialFocus
-                    />
-                    {orderTo && (
-                      <div className="p-2 border-t border-border flex justify-end">
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={orderFrom ? new Date(`${orderFrom}T00:00:00`) : undefined}
+                          onSelect={(date) => setOrderFrom(date ? format(date, "yyyy-MM-dd") : "")}
+                          initialFocus
+                        />
+                        {orderFrom && (
+                          <div className="flex justify-end border-t border-border p-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => setOrderFrom("")}
+                            >
+                              <X className="mr-1 h-3 w-3" />
+                              {language === "en" ? "Clear" : "Effacer"}
+                            </Button>
+                          </div>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div>
+                    <Label className={ADMIN_FILTER_LABEL}>
+                      {language === "en" ? "To" : "À"}
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setOrderTo("")}
+                          variant="outline"
+                          className={cn(
+                            "h-9 w-full justify-start text-left font-normal bg-background",
+                            !orderTo && "text-muted-foreground"
+                          )}
                         >
-                          <X className="w-3 h-3 mr-1" />
-                          {language === "en" ? "Clear" : "Effacer"}
+                          <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                          <span className="truncate">
+                            {orderTo
+                              ? format(new Date(`${orderTo}T00:00:00`), "dd/MM/yyyy")
+                              : language === "en"
+                                ? "Pick date"
+                                : "Choisir"}
+                          </span>
                         </Button>
-                      </div>
-                    )}
-                  </PopoverContent>
-                </Popover>
-                <Button size="sm" variant="ghost" onClick={loadOrders}><RefreshCw className="w-4 h-4" /></Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={orderTo ? new Date(`${orderTo}T00:00:00`) : undefined}
+                          onSelect={(date) => setOrderTo(date ? format(date, "yyyy-MM-dd") : "")}
+                          disabled={
+                            orderFrom ? { before: new Date(`${orderFrom}T00:00:00`) } : undefined
+                          }
+                          initialFocus
+                        />
+                        {orderTo && (
+                          <div className="flex justify-end border-t border-border p-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => setOrderTo("")}
+                            >
+                              <X className="mr-1 h-3 w-3" />
+                              {language === "en" ? "Clear" : "Effacer"}
+                            </Button>
+                          </div>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
-              {loading && <p className="text-muted-foreground flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />...</p>}
+              {loading && (
+                <p className="flex items-center gap-2 text-muted-foreground">
+                  <Loader size="sm" />
+                  ...
+                </p>
+              )}
               {ordersLoading ? (
-                <p className="text-muted-foreground flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />{language === "en" ? "Loading orders…" : "Chargement des commandes…"}</p>
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader size="sm" />
+                  {language === "en" ? "Loading orders…" : "Chargement des commandes…"}
+                </p>
               ) : orders.length === 0 ? (
-                <p className="text-muted-foreground">{t.noOrders}</p>
+                <AdminTabEmpty message={t.noOrders} />
               ) : (
                 <>
                   {/* Desktop: keep original table view */}
@@ -661,88 +862,27 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                             <TableCell className="text-muted-foreground">{o.total_price} DT</TableCell>
                             <TableCell>
                               {(() => {
-                                const s = o.status;
-                                const conf =
-                                  s === "PAID"
-                                    ? { dot: "bg-[#10B981]", label: language === "en" ? "Paid" : "Payé" }
-                                    : s === "PENDING_ADMIN_APPROVAL"
-                                      ? { dot: "bg-[#F59E0B]", label: language === "en" ? "Pending" : "En attente" }
-                                      : s === "REJECTED"
-                                        ? { dot: "bg-[#EF4444]", label: language === "en" ? "Rejected" : "Rejeté" }
-                                        : s === "REMOVED_BY_ADMIN"
-                                          ? { dot: "bg-[#EF4444]", label: language === "en" ? "Removed" : "Supprimé" }
-                                          : { dot: "bg-[#888]", label: s };
-
+                                const conf = getPosOrderStatusDisplay(o.status, language);
                                 return (
-                                  <span className="inline-flex items-center gap-1.5" title={s}>
-                                    <span className={`w-2 h-2 rounded-full shrink-0 ${conf.dot}`} />
-                                    <span className="text-muted-foreground">{conf.label}</span>
+                                  <span className="inline-flex items-center gap-1.5" title={o.status}>
+                                    <span className={`h-2 w-2 shrink-0 rounded-full ${conf.dot}`} />
+                                    <span className={cn("text-sm", conf.text)}>{conf.label}</span>
                                   </span>
                                 );
                               })()}
                             </TableCell>
                             <TableCell className="text-muted-foreground">{(o.pos_outlets as { name?: string })?.name || "—"}</TableCell>
                             <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="mr-1"
-                                onClick={() => {
-                                  setSelectedOrder(o);
-                                  setOrderDetailEmail(o.user_email || "");
-                                }}
-                              >
-                                <Eye className="w-4 h-4" />
-                              </Button>
-
-                              {o.status === "PENDING_ADMIN_APPROVAL" && (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-[#10B981] mr-1"
-                                    onClick={() => onApprove(o)}
-                                    disabled={
-                                      orderActionLoading?.orderId === o.id && orderActionLoading?.action === "approve"
-                                    }
-                                  >
-                                    {orderActionLoading?.orderId === o.id &&
-                                    orderActionLoading?.action === "approve" ? (
-                                      <Loader size="sm" className="mr-1 shrink-0" />
-                                    ) : null}
-                                    {t.approve}
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-[#F59E0B] mr-1"
-                                    onClick={() => onReject(o)}
-                                    disabled={
-                                      orderActionLoading?.orderId === o.id && orderActionLoading?.action === "reject"
-                                    }
-                                  >
-                                    {t.reject}
-                                  </Button>
-                                </>
-                              )}
-
-                              {(o.status === "PENDING_ADMIN_APPROVAL" || o.status === "PAID") && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-[#EF4444]"
-                                  onClick={() => onRemove(o)}
-                                  disabled={
-                                    orderActionLoading?.orderId === o.id && orderActionLoading?.action === "remove"
-                                  }
-                                >
-                                  {orderActionLoading?.orderId === o.id &&
-                                  orderActionLoading?.action === "remove" ? (
-                                    <Loader size="sm" className="mr-1 shrink-0" />
-                                  ) : null}
-                                  {t.remove}
-                                </Button>
-                              )}
+                              <PosOrderActionBar
+                                order={o}
+                                labels={orderActionLabels}
+                                layout="inline"
+                                orderActionLoading={orderActionLoading}
+                                onView={() => openOrderDetail(o)}
+                                onRequestApprove={requestApprove}
+                                onRequestReject={onReject}
+                                onRequestRemove={onRemove}
+                              />
                             </TableCell>
                           </TableRow>
                         ))}
@@ -751,130 +891,58 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                   </div>
 
                   {/* Mobile: cards view */}
-                  <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  <AdminTabCardGrid className="md:hidden">
                   {orders.map((o) => {
-                    const s = o.status;
-                    const conf =
-                      s === "PAID"
-                        ? { dot: "bg-[#10B981]", label: language === "en" ? "Paid" : "Payé" }
-                        : s === "PENDING_ADMIN_APPROVAL"
-                          ? { dot: "bg-[#F59E0B]", label: language === "en" ? "Pending" : "En attente" }
-                          : s === "REJECTED"
-                            ? { dot: "bg-[#EF4444]", label: language === "en" ? "Rejected" : "Rejeté" }
-                            : s === "REMOVED_BY_ADMIN"
-                              ? { dot: "bg-[#EF4444]", label: language === "en" ? "Removed" : "Supprimé" }
-                              : { dot: "bg-[#888]", label: s };
+                    const conf = getPosOrderStatusDisplay(o.status, language);
 
                     return (
-                      <Card key={o.id} className="bg-card border-border">
-                        <CardContent className="p-4">
+                      <AdminTabCard key={o.id} className="gap-3 p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs tabular-nums text-muted-foreground">
                                 #{o.order_number ?? o.id.slice(0, 8)}
                               </p>
-                              <p className="text-sm font-semibold text-foreground">
-                                {o.user_name} <span className="font-normal text-muted-foreground">— {o.user_phone}</span>
+                              <p className="mt-0.5 text-sm font-medium text-foreground">
+                                {o.user_name}
                               </p>
+                              <p className="text-xs text-muted-foreground">{o.user_phone}</p>
                             </div>
 
-                            <span
-                              className="inline-flex items-center gap-1.5"
-                              title={s}
-                            >
-                              <span className={`w-2 h-2 rounded-full shrink-0 ${conf.dot}`} />
-                              <span className="text-muted-foreground">{conf.label}</span>
+                            <span className="inline-flex shrink-0 items-center gap-1.5" title={o.status}>
+                              <span className={`h-2 w-2 shrink-0 rounded-full ${conf.dot}`} />
+                              <span className={cn("text-xs font-medium", conf.text)}>{conf.label}</span>
                             </span>
                           </div>
 
-                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="grid grid-cols-2 gap-3 border-t border-border/50 pt-3">
                             <div>
-                              <p className="text-xs text-muted-foreground">
-                                {t.total}
-                              </p>
-                              <p className="text-sm font-semibold text-muted-foreground">
+                              <p className={ADMIN_FILTER_LABEL}>{t.total}</p>
+                              <p className="text-sm font-semibold tabular-nums text-primary">
                                 {o.total_price} DT
                               </p>
                             </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground">
-                                {t.outlet}
-                              </p>
-                              <p className="text-sm font-semibold text-muted-foreground">
+                            <div className="min-w-0">
+                              <p className={ADMIN_FILTER_LABEL}>{t.outlet}</p>
+                              <p className="truncate text-sm text-muted-foreground">
                                 {(o.pos_outlets as { name?: string })?.name || "—"}
                               </p>
                             </div>
                           </div>
 
-                          <div className="mt-4 flex flex-wrap gap-2 items-center justify-end">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedOrder(o);
-                                setOrderDetailEmail(o.user_email || "");
-                              }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-
-                            {o.status === "PENDING_ADMIN_APPROVAL" && (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-[#10B981]"
-                                  onClick={() => onApprove(o)}
-                                  disabled={
-                                    orderActionLoading?.orderId === o.id &&
-                                    orderActionLoading?.action === "approve"
-                                  }
-                                >
-                                  {orderActionLoading?.orderId === o.id &&
-                                  orderActionLoading?.action === "approve" ? (
-                                    <Loader size="sm" className="mr-1 shrink-0" />
-                                  ) : null}
-                                  {t.approve}
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-[#F59E0B]"
-                                  onClick={() => onReject(o)}
-                                  disabled={
-                                    orderActionLoading?.orderId === o.id &&
-                                    orderActionLoading?.action === "reject"
-                                  }
-                                >
-                                  {t.reject}
-                                </Button>
-                              </>
-                            )}
-
-                            {(o.status === "PENDING_ADMIN_APPROVAL" || o.status === "PAID") && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-[#EF4444]"
-                                onClick={() => onRemove(o)}
-                                disabled={
-                                  orderActionLoading?.orderId === o.id &&
-                                  orderActionLoading?.action === "remove"
-                                }
-                              >
-                                {orderActionLoading?.orderId === o.id &&
-                                orderActionLoading?.action === "remove" ? (
-                                  <Loader size="sm" className="mr-1 shrink-0" />
-                                ) : null}
-                                {t.remove}
-                              </Button>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
+                          <PosOrderActionBar
+                            order={o}
+                            labels={orderActionLabels}
+                            layout="grid"
+                            orderActionLoading={orderActionLoading}
+                            onView={() => openOrderDetail(o)}
+                            onRequestApprove={requestApprove}
+                            onRequestReject={onReject}
+                            onRequestRemove={onRemove}
+                          />
+                      </AdminTabCard>
                     );
                   })}
-                </div>
+                </AdminTabCardGrid>
                 </>
               )}
             </CardContent>
@@ -882,144 +950,204 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
         </TabsContent>
 
         <TabsContent value="statistics" className="mt-4">
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row justify-between flex-wrap gap-2">
-              <CardTitle style={{ color: "#E21836" }} className="flex items-center gap-2"><BarChart3 className="w-5 h-5" />{t.statistics}</CardTitle>
-              <div className="flex flex-wrap gap-2 items-center">
-                <Select value={statsOutletFilter} onValueChange={setStatsOutletFilter}>
-                  <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.outlet} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">{language === "en" ? "All outlets" : "Tous"}</SelectItem>
-                    {outlets.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-[160px] justify-start text-left font-normal",
-                        !statsFrom && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {statsFrom
-                        ? format(new Date(`${statsFrom}T00:00:00`), "dd/MM/yyyy")
-                        : (language === "en" ? "From" : "De")}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={statsFrom ? new Date(`${statsFrom}T00:00:00`) : undefined}
-                      onSelect={(date) => setStatsFrom(date ? format(date, "yyyy-MM-dd") : "")}
-                      initialFocus
-                    />
-                    {statsFrom && (
-                      <div className="p-2 border-t border-border flex justify-end">
+          <Card className="border-border/60 bg-card">
+            <CardHeader className="space-y-4 pb-4">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                  {t.statistics}
+                </CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0"
+                  onClick={loadStats}
+                  disabled={statsLoading}
+                >
+                  {statsLoading ? (
+                    <Loader size="sm" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              <div className={ADMIN_FILTERS_PANEL}>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="sm:col-span-3 lg:col-span-1">
+                    <Label className={ADMIN_FILTER_LABEL}>{t.outlet}</Label>
+                    <Select value={statsOutletFilter} onValueChange={setStatsOutletFilter}>
+                      <SelectTrigger className="h-9 w-full bg-background">
+                        <SelectValue placeholder={t.outlet} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">
+                          {language === "en" ? "All outlets" : "Tous"}
+                        </SelectItem>
+                        {outlets.map((o) => (
+                          <SelectItem key={o.id} value={o.id}>
+                            {o.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className={ADMIN_FILTER_LABEL}>
+                      {language === "en" ? "From" : "De"}
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setStatsFrom("")}
+                          variant="outline"
+                          className={cn(
+                            "h-9 w-full justify-start bg-background text-left font-normal",
+                            !statsFrom && "text-muted-foreground"
+                          )}
                         >
-                          <X className="w-3 h-3 mr-1" />
-                          {language === "en" ? "Clear" : "Effacer"}
+                          <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                          <span className="truncate">
+                            {statsFrom
+                              ? format(new Date(`${statsFrom}T00:00:00`), "dd/MM/yyyy")
+                              : language === "en"
+                                ? "Pick date"
+                                : "Choisir"}
+                          </span>
                         </Button>
-                      </div>
-                    )}
-                  </PopoverContent>
-                </Popover>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-[160px] justify-start text-left font-normal",
-                        !statsTo && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {statsTo
-                        ? format(new Date(`${statsTo}T00:00:00`), "dd/MM/yyyy")
-                        : (language === "en" ? "To" : "À")}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={statsTo ? new Date(`${statsTo}T00:00:00`) : undefined}
-                      onSelect={(date) => setStatsTo(date ? format(date, "yyyy-MM-dd") : "")}
-                      disabled={statsFrom ? { before: new Date(`${statsFrom}T00:00:00`) } : undefined}
-                      initialFocus
-                    />
-                    {statsTo && (
-                      <div className="p-2 border-t border-border flex justify-end">
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={statsFrom ? new Date(`${statsFrom}T00:00:00`) : undefined}
+                          onSelect={(date) => setStatsFrom(date ? format(date, "yyyy-MM-dd") : "")}
+                          initialFocus
+                        />
+                        {statsFrom && (
+                          <div className="flex justify-end border-t border-border p-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => setStatsFrom("")}
+                            >
+                              <X className="mr-1 h-3 w-3" />
+                              {language === "en" ? "Clear" : "Effacer"}
+                            </Button>
+                          </div>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div>
+                    <Label className={ADMIN_FILTER_LABEL}>
+                      {language === "en" ? "To" : "À"}
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setStatsTo("")}
+                          variant="outline"
+                          className={cn(
+                            "h-9 w-full justify-start bg-background text-left font-normal",
+                            !statsTo && "text-muted-foreground"
+                          )}
                         >
-                          <X className="w-3 h-3 mr-1" />
-                          {language === "en" ? "Clear" : "Effacer"}
+                          <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                          <span className="truncate">
+                            {statsTo
+                              ? format(new Date(`${statsTo}T00:00:00`), "dd/MM/yyyy")
+                              : language === "en"
+                                ? "Pick date"
+                                : "Choisir"}
+                          </span>
                         </Button>
-                      </div>
-                    )}
-                  </PopoverContent>
-                </Popover>
-                <Button size="sm" variant="ghost" onClick={loadStats} disabled={statsLoading}>{statsLoading ? <Loader size="sm" className="[background:#E21836]" /> : <RefreshCw className="w-4 h-4" />}</Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={statsTo ? new Date(`${statsTo}T00:00:00`) : undefined}
+                          onSelect={(date) => setStatsTo(date ? format(date, "yyyy-MM-dd") : "")}
+                          disabled={
+                            statsFrom ? { before: new Date(`${statsFrom}T00:00:00`) } : undefined
+                          }
+                          initialFocus
+                        />
+                        {statsTo && (
+                          <div className="flex justify-end border-t border-border p-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => setStatsTo("")}
+                            >
+                              <X className="mr-1 h-3 w-3" />
+                              {language === "en" ? "Clear" : "Effacer"}
+                            </Button>
+                          </div>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              {statsLoading ? <p className="text-muted-foreground flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />Loading…</p> : stats ? (
+              {statsLoading ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader size="sm" />
+                  {language === "en" ? "Loading…" : "Chargement…"}
+                </p>
+              ) : stats ? (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-lg bg-muted/40 border border-border">
-                      <p className="text-muted-foreground text-sm">{t.totalOrders}</p>
-                      <p className="text-2xl font-bold text-foreground">{stats.totalOrders}</p>
-                    </div>
-                    <div className="p-4 rounded-lg bg-muted/40 border border-border">
-                      <p className="text-muted-foreground text-sm">{t.totalRevenue} ({language === "en" ? "paid only" : "payé uniquement"})</p>
-                      <p className="text-2xl font-bold text-[#E21836]">{(stats.totalRevenue ?? 0).toFixed(2)} DT</p>
-                    </div>
+                    <AdminMetricTile label={t.totalOrders} value={stats.totalOrders} />
+                    <AdminMetricTile
+                      label={`${t.totalRevenue} (${language === "en" ? "paid only" : "payé uniquement"})`}
+                      value={`${(stats.totalRevenue ?? 0).toFixed(2)} DT`}
+                      accent="primary"
+                    />
                   </div>
                   <div>
-                    <p className="text-[#E21836] font-semibold mb-2">{language === "en" ? "By status" : "Par statut"}</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      <div className="p-4 rounded-lg bg-muted/40 border border-border">
-                        <p className="text-muted-foreground text-sm">{t.paidOrders}</p>
-                        <p className="text-xl font-bold text-foreground">{stats.paidOrders ?? 0}</p>
-                        <p className="text-muted-foreground text-sm mt-0.5">{t.paidTickets}</p>
-                        <p className="text-lg font-bold text-foreground">{stats.paidTickets ?? 0}</p>
-                        <p className="text-muted-foreground text-sm mt-0.5">{t.paidRevenue}</p>
-                        <p className="text-lg font-bold text-[#10B981]">{(stats.paidRevenue ?? 0).toFixed(2)} DT</p>
-                      </div>
-                      <div className="p-4 rounded-lg bg-muted/40 border border-border">
-                        <p className="text-muted-foreground text-sm">{t.pendingOrders}</p>
-                        <p className="text-xl font-bold text-foreground">{stats.pendingOrders ?? 0}</p>
-                        <p className="text-muted-foreground text-sm mt-0.5">{t.pendingTickets}</p>
-                        <p className="text-lg font-bold text-foreground">{stats.pendingTickets ?? 0}</p>
-                        <p className="text-muted-foreground text-sm mt-0.5">{t.pendingRevenue}</p>
-                        <p className="text-lg font-bold text-[#F59E0B]">{(stats.pendingRevenue ?? 0).toFixed(2)} DT</p>
-                      </div>
-                      <div className="p-4 rounded-lg bg-muted/40 border border-border">
-                        <p className="text-muted-foreground text-sm">{t.rejectedOrders}</p>
-                        <p className="text-xl font-bold text-[#EF4444]">{stats.rejectedOrders ?? 0}</p>
-                        <p className="text-muted-foreground text-sm mt-0.5">{t.rejectedTickets}</p>
-                        <p className="text-lg font-bold text-[#EF4444]">{stats.rejectedTickets ?? 0}</p>
-                      </div>
-                      <div className="p-4 rounded-lg bg-muted/40 border border-border">
-                        <p className="text-muted-foreground text-sm">{t.removedOrders}</p>
-                        <p className="text-xl font-bold text-[#6B7280]">{stats.removedOrders ?? 0}</p>
-                        <p className="text-muted-foreground text-sm mt-0.5">{t.removedTickets}</p>
-                        <p className="text-lg font-bold text-[#6B7280]">{stats.removedTickets ?? 0}</p>
-                      </div>
+                    <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {language === "en" ? "By status" : "Par statut"}
+                    </p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <AdminMetricTile
+                        label={t.paidOrders}
+                        value={
+                          <span>
+                            {stats.paidOrders ?? 0}
+                            <span className="mt-1 block text-sm font-normal text-muted-foreground">
+                              {t.paidRevenue}: {(stats.paidRevenue ?? 0).toFixed(2)} DT
+                            </span>
+                          </span>
+                        }
+                        accent="emerald"
+                      />
+                      <AdminMetricTile
+                        label={t.pendingOrders}
+                        value={
+                          <span>
+                            {stats.pendingOrders ?? 0}
+                            <span className="mt-1 block text-sm font-normal text-muted-foreground">
+                              {t.pendingRevenue}: {(stats.pendingRevenue ?? 0).toFixed(2)} DT
+                            </span>
+                          </span>
+                        }
+                        accent="amber"
+                      />
+                      <AdminMetricTile
+                        label={t.rejectedOrders}
+                        value={stats.rejectedOrders ?? 0}
+                        accent="destructive"
+                      />
+                      <AdminMetricTile
+                        label={t.removedOrders}
+                        value={stats.removedOrders ?? 0}
+                      />
                     </div>
                   </div>
                   {stats.daily && stats.daily.length > 0 && (
                     <div>
-                      <p className="text-[#E21836] font-semibold mb-2">{t.daily} ({language === "en" ? "paid only" : "payés uniquement"})</p>
+                      <p className="text-sm font-semibold text-foreground mb-2">{t.daily} ({language === "en" ? "paid only" : "payés uniquement"})</p>
                       <ResponsiveContainer width="100%" height={240}>
                         <LineChart data={stats.daily}>
                           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -1027,15 +1155,15 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                           <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))" }} />
                           <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} labelStyle={{ color: "hsl(var(--foreground))" }} />
                           <Legend />
-                          <Line type="monotone" dataKey="orders" stroke="#E21836" name={language === "en" ? "Paid orders" : "Commandes payées"} strokeWidth={2} />
-                          <Line type="monotone" dataKey="revenue" stroke="#10B981" name={language === "en" ? "Paid revenue (DT)" : "Chiffre payé (DT)"} strokeWidth={2} />
+                          <Line type="monotone" dataKey="orders" stroke="hsl(var(--primary))" name={language === "en" ? "Paid orders" : "Commandes payées"} strokeWidth={2} />
+                          <Line type="monotone" dataKey="revenue" stroke="hsl(142 76% 36%)" name={language === "en" ? "Paid revenue (DT)" : "Chiffre payé (DT)"} strokeWidth={2} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
                   )}
                   {stats.byOutlet && stats.byOutlet.length > 0 && (
                     <div>
-                      <p className="text-[#E21836] font-semibold mb-2">{t.byOutlet} ({language === "en" ? "paid only" : "payés uniquement"})</p>
+                      <p className="text-sm font-semibold text-foreground mb-2">{t.byOutlet} ({language === "en" ? "paid only" : "payés uniquement"})</p>
                       <Table>
                         <TableHeader><TableRow className="border-border">
                           <TableHead className="text-muted-foreground">{t.outlet}</TableHead>
@@ -1047,7 +1175,7 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                             <TableRow key={x.outlet_id || x.outlet_name} className="border-border">
                               <TableCell className="text-foreground">{x.outlet_name}</TableCell>
                               <TableCell className="text-muted-foreground">{x.total_orders}</TableCell>
-                              <TableCell className="text-[#E21836]">{x.total_revenue.toFixed(2)} DT</TableCell>
+                              <TableCell className="text-primary font-medium tabular-nums">{x.total_revenue.toFixed(2)} DT</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
@@ -1056,21 +1184,21 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                   )}
                   {stats.byPassType && Object.keys(stats.byPassType).length > 0 && (
                     <div>
-                      <p className="text-[#E21836] font-semibold mb-2">{t.byPassType} ({language === "en" ? "paid tickets only" : "billets payés uniquement"})</p>
+                      <p className="text-sm font-semibold text-foreground mb-2">{t.byPassType} ({language === "en" ? "paid tickets only" : "billets payés uniquement"})</p>
                       <ResponsiveContainer width="100%" height={220}>
                         <BarChart data={Object.entries(stats.byPassType).map(([k, v]) => ({ name: k, count: v }))} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                           <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))" }} />
                           <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))" }} />
                           <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
-                          <Bar dataKey="count" fill="#E21836" name={language === "en" ? "Paid tickets" : "Billets payés"} radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="count" fill="hsl(var(--primary))" name={language === "en" ? "Paid tickets" : "Billets payés"} radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
                   )}
                   {stats.byStatus && Object.keys(stats.byStatus).length > 0 && (
                     <div>
-                      <p className="text-[#E21836] font-semibold mb-2">{t.byStatus}</p>
+                      <p className="text-sm font-semibold text-foreground mb-2">{t.byStatus}</p>
                       <div className="flex flex-wrap gap-2">
                         {Object.entries(stats.byStatus).map(([k, v]) => (
                           <span key={k} className="px-3 py-1.5 rounded-lg bg-muted/40 border border-border text-muted-foreground text-sm">{k}: <strong className="text-foreground">{v}</strong></span>
@@ -1088,13 +1216,18 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
         </TabsContent>
 
         <TabsContent value="audit" className="mt-4">
-          <Card className="bg-card border-border">
-            <CardHeader className="flex flex-row justify-between">
-              <CardTitle style={{ color: "#E21836" }}>{t.audit}</CardTitle>
-              <Button size="sm" variant="ghost" onClick={loadAudit}><RefreshCw className="w-4 h-4" /></Button>
+          <Card className="border-border/60 bg-card">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
+              <CardTitle className="text-base font-semibold text-foreground">{t.audit}</CardTitle>
+              <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={loadAudit}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
             </CardHeader>
             <CardContent>
-              {audit.length === 0 ? <p className="text-muted-foreground">{t.noAudit}</p> : (
+              {audit.length === 0 ? (
+                <AdminTabEmpty message={t.noAudit} />
+              ) : (
+                <div className="-mx-1 overflow-x-auto px-1">
                 <Table>
                   <TableHeader><TableRow className="border-border">
                     <TableHead className="text-muted-foreground">Time</TableHead>
@@ -1113,6 +1246,7 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -1129,7 +1263,7 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
             <Label className="text-[#B0B0B0]">{t.slug} {editOutlet ? "" : "(optional)"}</Label>
             <Input className="bg-[#252525] border-[#2A2A2A] text-white" value={String(form.slug || "")} onChange={e => setForm(f => ({ ...f, slug: e.target.value }))} placeholder="paris-store" />
             {editOutlet && <div className="flex items-center gap-2"><Switch checked={form.is_active !== false} onCheckedChange={v => setForm(f => ({ ...f, is_active: v }))} /><Label className="text-[#B0B0B0]">{t.active}</Label></div>}
-            <Button className="w-full bg-[#E21836] hover:bg-[#c4142e]" onClick={onSaveOutlet}>{editOutlet ? "Save" : "Create"}</Button>
+            <Button className="w-full" onClick={onSaveOutlet}>{editOutlet ? "Save" : "Create"}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1147,82 +1281,194 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
             <Label className="text-[#B0B0B0]">{t.password} {editUser ? "(leave blank to keep)" : "(min 6)"}</Label>
             <Input className="bg-[#252525] border-[#2A2A2A] text-white" type="password" value={String(form.password || "")} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
             {editUser && <div className="flex items-center gap-2"><Switch checked={form.is_active === "1"} onCheckedChange={v => setForm(f => ({ ...f, is_active: v ? "1" : "0" }))} /><Label className="text-[#B0B0B0]">{t.active}</Label></div>}
-            <Button className="w-full bg-[#E21836] hover:bg-[#c4142e]" onClick={onSaveUser}>Save</Button>
+            <Button className="w-full" onClick={onSaveUser}>Save</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Order detail: client info, edit email, resend */}
-      <Dialog open={!!selectedOrder} onOpenChange={o => { if (!o) setSelectedOrder(null); }}>
-        <DialogContent className="bg-[#1F1F1F] border-[#2A2A2A] text-white max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-white">#{selectedOrder?.order_number ?? selectedOrder?.id?.slice(0, 8)} — {selectedOrder?.status}</DialogTitle></DialogHeader>
+      <Dialog open={!!selectedOrder} onOpenChange={(o) => { if (!o) setSelectedOrder(null); }}>
+        <DialogContent className="max-h-[90vh] max-w-lg gap-0 overflow-hidden p-0">
           {selectedOrder && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-[#E21836] font-semibold mb-1">{t.clientInfo}</p>
-                <p className="text-[#F5F5F5]">{selectedOrder.user_name}</p>
-                <p className="text-[#B0B0B0]">{t.phone}: {selectedOrder.user_phone}</p>
-                <p className="text-[#B0B0B0]">{t.email}: {selectedOrder.user_email || "—"}</p>
-                <p className="text-[#B0B0B0]">{t.city}: {selectedOrder.city || "—"}</p>
-                <p className="text-[#B0B0B0]">{t.ville}: {selectedOrder.ville || "—"}</p>
-              </div>
-              <div>
-                <p className="text-[#E21836] font-semibold mb-1">{t.outlet}</p>
-                <p className="text-[#B0B0B0]">{(selectedOrder.pos_outlets as { name?: string })?.name || "—"}</p>
-              </div>
-              {(selectedOrder.events as { name?: string })?.name && (
+            <>
+              <DialogHeader className="space-y-2 border-b border-border/50 px-5 py-4 sm:px-6">
+                <div className="flex items-start justify-between gap-3">
+                  <DialogTitle className="text-base font-semibold">
+                    #{selectedOrder.order_number ?? selectedOrder.id.slice(0, 8)}
+                  </DialogTitle>
+                  {(() => {
+                    const conf = getPosOrderStatusDisplay(selectedOrder.status, language);
+                    return (
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border/60 bg-muted/30 px-2 py-1">
+                        <span className={cn("h-2 w-2 rounded-full", conf.dot)} />
+                        <span className={cn("text-xs font-medium", conf.text)}>{conf.label}</span>
+                      </span>
+                    );
+                  })()}
+                </div>
+              </DialogHeader>
+
+              <div className="max-h-[min(60vh,32rem)] space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
+                  <p className={ADMIN_FILTER_LABEL}>{t.clientInfo}</p>
+                  <p className="text-sm font-medium">{selectedOrder.user_name}</p>
+                  <p className="text-sm text-muted-foreground">{t.phone}: {selectedOrder.user_phone}</p>
+                  <p className="text-sm text-muted-foreground">{t.email}: {selectedOrder.user_email || "—"}</p>
+                  <p className="text-sm text-muted-foreground">{t.city}: {selectedOrder.city || "—"} · {t.ville}: {selectedOrder.ville || "—"}</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className={ADMIN_FILTER_LABEL}>{t.outlet}</p>
+                    <p className="text-sm text-foreground">{(selectedOrder.pos_outlets as { name?: string })?.name || "—"}</p>
+                  </div>
+                  {(selectedOrder.events as { name?: string })?.name && (
+                    <div>
+                      <p className={ADMIN_FILTER_LABEL}>{t.event}</p>
+                      <p className="text-sm text-foreground">{(selectedOrder.events as { name?: string })?.name}</p>
+                    </div>
+                  )}
+                </div>
+
                 <div>
-                  <p className="text-[#E21836] font-semibold mb-1">{t.event}</p>
-                  <p className="text-[#B0B0B0]">{(selectedOrder.events as { name?: string })?.name}</p>
+                  <p className={ADMIN_FILTER_LABEL}>{t.pass}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {(selectedOrder.order_passes || [])
+                      .map((p) => `${p.pass_type} ×${p.quantity} — ${(p.price * p.quantity).toFixed(2)} DT`)
+                      .join(" · ") || "—"}
+                  </p>
                 </div>
-              )}
-              <div>
-                <p className="text-[#E21836] font-semibold mb-1">{t.pass}</p>
-                <div className="text-[#B0B0B0]">{(selectedOrder.order_passes || []).map(p => `${p.pass_type} x${p.quantity} — ${(p.price * p.quantity).toFixed(2)} DT`).join(" | ") || "—"}</div>
-              </div>
-              <p className="text-white font-semibold">{t.total}: {selectedOrder.total_price} DT</p>
-              {(selectedOrder.status === "PAID" && selectedOrder.approver) || (selectedOrder.status === "REJECTED" && (selectedOrder.rejector || selectedOrder.cancellation_reason)) || (selectedOrder.status === "REMOVED_BY_ADMIN" && selectedOrder.remover) ? (
+
+                <p className="text-base font-semibold tabular-nums text-primary">
+                  {t.total}: {selectedOrder.total_price} DT
+                </p>
+
+                {(selectedOrder.status === "PAID" && selectedOrder.approver) ||
+                (selectedOrder.status === "REJECTED" &&
+                  (selectedOrder.rejector || selectedOrder.cancellation_reason)) ||
+                (selectedOrder.status === "REMOVED_BY_ADMIN" && selectedOrder.remover) ? (
+                  <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
+                    {selectedOrder.status === "PAID" && selectedOrder.approver && (
+                      <p>
+                        {language === "en" ? "Approved by" : "Approuvé par"}:{" "}
+                        {(selectedOrder.approver?.name && String(selectedOrder.approver.name).trim()) ||
+                          selectedOrder.approver?.email ||
+                          "—"}
+                      </p>
+                    )}
+                    {selectedOrder.status === "REJECTED" && (
+                      <>
+                        {selectedOrder.rejector && (
+                          <p>
+                            {language === "en" ? "Rejected by" : "Rejeté par"}:{" "}
+                            {(selectedOrder.rejector?.name && String(selectedOrder.rejector.name).trim()) ||
+                              selectedOrder.rejector?.email ||
+                              "—"}
+                          </p>
+                        )}
+                        {selectedOrder.cancellation_reason && (
+                          <p className="mt-1">
+                            {language === "en" ? "Reason" : "Raison"}: {selectedOrder.cancellation_reason}
+                          </p>
+                        )}
+                      </>
+                    )}
+                    {selectedOrder.status === "REMOVED_BY_ADMIN" && selectedOrder.remover && (
+                      <p>
+                        {language === "en" ? "Removed by" : "Supprimé par"}:{" "}
+                        {(selectedOrder.remover?.name && String(selectedOrder.remover.name).trim()) ||
+                          selectedOrder.remover?.email ||
+                          "—"}
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+
                 <div>
-                  <p className="text-[#E21836] font-semibold mb-1">{language === "en" ? "Action by" : "Action par"}</p>
-                  {selectedOrder.status === "PAID" && selectedOrder.approver && (
-                    <p className="text-[#B0B0B0]">{(language === "en" ? "Approved by" : "Approuvé par")}: {(selectedOrder.approver?.name && String(selectedOrder.approver.name).trim()) || selectedOrder.approver?.email || "—"}</p>
-                  )}
-                  {selectedOrder.status === "REJECTED" && (
-                    <>
-                      {selectedOrder.rejector && <p className="text-[#B0B0B0]">{(language === "en" ? "Rejected by" : "Rejeté par")}: {(selectedOrder.rejector?.name && String(selectedOrder.rejector.name).trim()) || selectedOrder.rejector?.email || "—"}</p>}
-                      {selectedOrder.cancellation_reason && <p className="text-[#B0B0B0] mt-0.5">{(language === "en" ? "Reason" : "Raison")}: {selectedOrder.cancellation_reason}</p>}
-                    </>
-                  )}
-                  {selectedOrder.status === "REMOVED_BY_ADMIN" && selectedOrder.remover && (
-                    <p className="text-[#B0B0B0]">{(language === "en" ? "Removed by" : "Supprimé par")}: {(selectedOrder.remover?.name && String(selectedOrder.remover.name).trim()) || selectedOrder.remover?.email || "—"}</p>
-                  )}
+                  <Label className={ADMIN_FILTER_LABEL}>{t.email}</Label>
+                  <div className="mt-1 flex gap-2">
+                    <Input
+                      className="h-9 flex-1 bg-background"
+                      type="email"
+                      value={orderDetailEmail}
+                      onChange={(e) => setOrderDetailEmail(e.target.value)}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-9 shrink-0"
+                      onClick={onSaveOrderEmail}
+                      disabled={orderDetailSaving}
+                    >
+                      {orderDetailSaving ? <Loader size="sm" className="shrink-0" /> : t.saveEmail}
+                    </Button>
+                  </div>
                 </div>
-              ) : null}
-              <div>
-                <Label className="text-[#B0B0B0]">{t.email}</Label>
-                <div className="flex gap-2 mt-1">
-                  <Input className="bg-[#252525] border-[#2A2A2A] text-white flex-1" type="email" value={orderDetailEmail} onChange={e => setOrderDetailEmail(e.target.value)} />
-                  <Button size="sm" className="bg-[#E21836] hover:bg-[#c4142e] shrink-0" onClick={onSaveOrderEmail} disabled={orderDetailSaving}>{orderDetailSaving ? <Loader size="sm" className="[background:white] shrink-0" /> : t.saveEmail}</Button>
-                </div>
-              </div>
-              <DialogFooter className="flex flex-wrap gap-2 sm:justify-start">
+
                 {selectedOrder.status === "PAID" && (
-                  <Button size="sm" variant="outline" className="border-[#2A2A2A] text-[#B0B0B0]" onClick={onResendTickets} disabled={orderDetailResendLoading || !selectedOrder.user_email}>
-                    {orderDetailResendLoading ? <Loader size="sm" className="[background:white] shrink-0 mr-1" /> : <Send className="w-4 h-4 mr-1" />}{t.resendTickets}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5"
+                    onClick={onResendTickets}
+                    disabled={orderDetailResendLoading || !selectedOrder.user_email}
+                  >
+                    {orderDetailResendLoading ? (
+                      <Loader size="sm" className="shrink-0" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                    {t.resendTickets}
                   </Button>
                 )}
-              </DialogFooter>
-              <AdminOrderQrTicketsSection
-                orderId={selectedOrder.id}
-                open={!!selectedOrder}
-                language={language}
-                isSuperAdmin={isSuperAdmin}
-                theme="pos"
-              />
-            </div>
+
+                <AdminOrderQrTicketsSection
+                  orderId={selectedOrder.id}
+                  open={!!selectedOrder}
+                  language={language}
+                  isSuperAdmin={isSuperAdmin}
+                  theme="pos"
+                />
+              </div>
+
+              {(selectedOrder.status === "PENDING_ADMIN_APPROVAL" ||
+                selectedOrder.status === "PAID") && (
+                <DialogFooter className="border-t border-border/50 px-5 py-4 sm:px-6">
+                  <PosOrderActionBar
+                    order={selectedOrder}
+                    labels={orderActionLabels}
+                    layout="grid"
+                    showView={false}
+                    orderActionLoading={orderActionLoading}
+                    onRequestApprove={requestApprove}
+                    onRequestReject={onReject}
+                    onRequestRemove={onRemove}
+                  />
+                </DialogFooter>
+              )}
+            </>
           )}
         </DialogContent>
       </Dialog>
+
+      <PosOrderApproveConfirm
+        open={!!approveConfirmOrder}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setApproveConfirmOrder(null);
+        }}
+        order={approveConfirmOrder}
+        language={language}
+        onConfirm={async () => {
+          if (!approveConfirmOrder) return;
+          await onApprove(approveConfirmOrder);
+          setApproveConfirmOrder(null);
+        }}
+        isSubmitting={
+          !!approveConfirmOrder &&
+          orderActionLoading?.orderId === approveConfirmOrder.id &&
+          orderActionLoading?.action === "approve"
+        }
+      />
 
       {confirmTarget && (
         <ConfirmDialog

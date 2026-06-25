@@ -21,8 +21,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Lightbulb, Trash2, Eye, Settings, Mail, FileText, Calendar, Music, MapPin } from "lucide-react";
+import { Lightbulb, Trash2, Eye, Search, Mail, FileText, Calendar, Music, MapPin } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { AudienceSuggestion } from "../types";
+import {
+  AdminTabHeader,
+  AdminTabEmpty,
+  ADMIN_TABLE_HEAD,
+  ADMIN_TABLE_WRAP,
+  ADMIN_TABLE_ROW,
+  ADMIN_FILTERS_PANEL,
+  ADMIN_FILTER_LABEL,
+  ADMIN_BTN_DELETE,
+} from "./AdminTabShell";
 
 export type SuggestionReadFilter = "all" | "read" | "unread";
 export type SuggestionTypeFilter = "all" | "event" | "artist" | "venue";
@@ -99,78 +110,78 @@ export function SuggestionsTab({
   return (
     <>
       <TabsContent value="suggestions" className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-primary">
-            Audience Suggestions
-          </h2>
-          <div className="flex items-center gap-4">
-            <Badge variant="secondary" className="animate-pulse">
-              {filteredSuggestions.length} of {suggestions.length} suggestions
-            </Badge>
+        <AdminTabHeader
+          title="Audience Suggestions"
+          subtitle={`${filteredSuggestions.length} of ${suggestions.length} suggestions`}
+        />
+
+        <div className={ADMIN_FILTERS_PANEL}>
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search by title, details, email, or type..."
+                value={suggestionSearchTerm}
+                onChange={(e) => setSuggestionSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div>
+              <span className={ADMIN_FILTER_LABEL}>Status</span>
+              <div className="flex flex-wrap gap-2">
+                {(["all", "unread", "read"] as const).map((filter) => (
+                  <Button
+                    key={filter}
+                    variant={readFilter === filter ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setReadFilter(filter)}
+                  >
+                    {filter === "all" && "All"}
+                    {filter === "unread" && `Unread (${unreadCount})`}
+                    {filter === "read" && `Read (${readCount})`}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span className={ADMIN_FILTER_LABEL}>Type</span>
+              <div className="flex flex-wrap gap-2">
+                {(["all", "event", "artist", "venue"] as const).map((filter) => (
+                  <Button
+                    key={filter}
+                    variant={typeFilter === filter ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTypeFilter(filter)}
+                  >
+                    {filter === "all" && "All"}
+                    {filter === "event" && `Event (${eventCount})`}
+                    {filter === "artist" && `Artist (${artistCount})`}
+                    {filter === "venue" && `Venue (${venueCount})`}
+                  </Button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-4">
-          <div className="relative group flex-1 min-w-[200px]">
-            <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              placeholder="Search by title, details, email, or type..."
-              value={suggestionSearchTerm}
-              onChange={(e) => setSuggestionSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <span className="text-sm text-muted-foreground self-center mr-1">Status:</span>
-            {(["all", "unread", "read"] as const).map((filter) => (
-              <Button
-                key={filter}
-                variant={readFilter === filter ? "default" : "outline"}
-                size="sm"
-                onClick={() => setReadFilter(filter)}
-              >
-                {filter === "all" && "All"}
-                {filter === "unread" && `Unread (${unreadCount})`}
-                {filter === "read" && `Read (${readCount})`}
-              </Button>
-            ))}
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <span className="text-sm text-muted-foreground self-center mr-1">Type:</span>
-            {(["all", "event", "artist", "venue"] as const).map((filter) => (
-              <Button
-                key={filter}
-                variant={typeFilter === filter ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTypeFilter(filter)}
-              >
-                {filter === "all" && "All"}
-                {filter === "event" && `Event (${eventCount})`}
-                {filter === "artist" && `Artist (${artistCount})`}
-                {filter === "venue" && `Venue (${venueCount})`}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-md border">
+        <div className={ADMIN_TABLE_WRAP}>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-[100px]">Type</TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead className="max-w-[200px] hidden md:table-cell">Details</TableHead>
-                <TableHead className="hidden sm:table-cell">Email</TableHead>
-                <TableHead className="w-[100px]">Date</TableHead>
-                <TableHead className="w-[90px]">Status</TableHead>
-                <TableHead className="w-[120px] text-right">Actions</TableHead>
+              <TableRow className={ADMIN_TABLE_ROW}>
+                <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[100px]")}>Type</TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>Title</TableHead>
+                <TableHead className={cn(ADMIN_TABLE_HEAD, "max-w-[200px] hidden md:table-cell")}>Details</TableHead>
+                <TableHead className={cn(ADMIN_TABLE_HEAD, "hidden sm:table-cell")}>Email</TableHead>
+                <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[100px]")}>Date</TableHead>
+                <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[90px]")}>Status</TableHead>
+                <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[120px] text-right")}>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredSuggestions.map((s) => (
                 <TableRow
                   key={s.id}
-                  className="cursor-pointer hover:bg-muted/50"
+                  className={cn(ADMIN_TABLE_ROW, "cursor-pointer")}
                   onClick={() => onView(s)}
                 >
                   <TableCell>
@@ -211,8 +222,8 @@ export function SuggestionsTab({
                     </Button>
                     <Button
                       size="sm"
-                      variant="ghost"
-                      className="text-destructive hover:text-destructive"
+                      variant="outline"
+                      className={ADMIN_BTN_DELETE}
                       onClick={() => onOpenDelete(s)}
                     >
                       <Trash2 className="w-4 h-4" />
@@ -225,19 +236,17 @@ export function SuggestionsTab({
         </div>
 
         {filteredSuggestions.length === 0 && suggestions.length > 0 && (
-          <div className="text-center py-12">
-            <Lightbulb className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
-            <h3 className="text-lg font-semibold mb-2">No suggestions match the filters</h3>
-            <p className="text-muted-foreground">Try adjusting search or read filter.</p>
-          </div>
+          <AdminTabEmpty
+            message="No suggestions match the filters"
+            hint="Try adjusting search or read filter."
+          />
         )}
 
         {suggestions.length === 0 && (
-          <div className="text-center py-12">
-            <Lightbulb className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
-            <h3 className="text-lg font-semibold mb-2">No suggestions yet</h3>
-            <p className="text-muted-foreground">Suggestions from the website will appear here.</p>
-          </div>
+          <AdminTabEmpty
+            message="No suggestions yet"
+            hint="Suggestions from the website will appear here."
+          />
         )}
       </TabsContent>
 

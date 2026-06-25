@@ -215,6 +215,38 @@ export function useApplicationSelections() {
     [],
   );
 
+  const removeApplicationsFromSelection = useCallback(
+    async (selectionId: string, applicationIds: string[]) => {
+      if (applicationIds.length === 0) return 0;
+
+      const { error } = await supabase
+        .from('ambassador_application_selection_items')
+        .delete()
+        .eq('selection_id', selectionId)
+        .in('application_id', applicationIds);
+
+      if (error) throw error;
+
+      const idSet = new Set(applicationIds);
+      setSelectionItems((prev) =>
+        prev.filter(
+          (item) =>
+            !(item.selection_id === selectionId && idSet.has(item.application_id)),
+        ),
+      );
+      setSelections((prev) =>
+        prev.map((s) =>
+          s.id === selectionId
+            ? { ...s, item_count: Math.max(0, (s.item_count ?? applicationIds.length) - applicationIds.length) }
+            : s,
+        ),
+      );
+
+      return applicationIds.length;
+    },
+    [],
+  );
+
   const fetchSelectionItemsSnapshot = useCallback(async (selectionId: string) => {
     const { data, error } = await supabase
       .from('ambassador_application_selection_items')
@@ -243,6 +275,7 @@ export function useApplicationSelections() {
     archiveSelection,
     addApplicationsToSelection,
     removeApplicationFromSelection,
+    removeApplicationsFromSelection,
     fetchSelectionItemsSnapshot,
     clearSelectionItems,
   };

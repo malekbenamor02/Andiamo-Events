@@ -4,12 +4,12 @@
  */
 
 import React, { useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, Ticket, DollarSign, ShoppingCart, Calendar, Users, Info, Clock, Package } from 'lucide-react';
+import { TrendingUp, TrendingDown, Info } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 interface KPICardsProps {
   data: {
@@ -40,89 +40,78 @@ interface KPICardsProps {
   language?: 'en' | 'fr';
 }
 
-interface KPICardProps {
-  title: string | React.ReactNode;
+interface MetricCardProps {
+  label: string | React.ReactNode;
   value: number;
   suffix?: string;
-  icon: React.ReactNode;
   trend?: number | null;
-  color: string;
+  className?: string;
+  accent?: 'amber' | 'green' | 'primary' | 'violet' | 'neutral';
 }
 
-function KPICard({ title, value, suffix = '', icon, trend, color }: KPICardProps) {
-  const formatValue = (val: number) => {
-    if (val >= 1000000) {
-      return (val / 1000000).toFixed(1) + 'M';
-    }
-    if (val >= 1000) {
-      return (val / 1000).toFixed(1) + 'K';
-    }
-    // For currency values, show up to 2 decimal places
-    if (suffix.includes('TND')) {
-      return val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-    }
-    return val.toLocaleString();
-  };
+const accentClasses = {
+  amber: { border: 'border-l-amber-500', value: 'text-amber-500' },
+  green: { border: 'border-l-emerald-500', value: 'text-emerald-500' },
+  primary: { border: 'border-l-primary', value: 'text-primary' },
+  violet: { border: 'border-l-violet-500', value: 'text-violet-500' },
+  neutral: { border: 'border-l-border', value: 'text-foreground' },
+} as const;
 
-  // Map color string to proper background color classes
-  const getBgColor = (color: string) => {
-    if (color.includes('green')) return 'bg-green-500/10 group-hover:bg-green-500/20';
-    if (color.includes('orange')) return 'bg-orange-500/10 group-hover:bg-orange-500/20';
-    if (color.includes('blue')) return 'bg-blue-500/10 group-hover:bg-blue-500/20';
-    if (color.includes('purple')) return 'bg-purple-500/10 group-hover:bg-purple-500/20';
-    if (color.includes('cyan')) return 'bg-cyan-500/10 group-hover:bg-cyan-500/20';
-    if (color.includes('pink')) return 'bg-pink-500/10 group-hover:bg-pink-500/20';
-    if (color.includes('yellow')) return 'bg-yellow-500/10 group-hover:bg-yellow-500/20';
-    if (color.includes('amber')) return 'bg-amber-500/10 group-hover:bg-amber-500/20';
-    return 'bg-primary/10 group-hover:bg-primary/20';
-  };
+function formatMetricValue(val: number, suffix: string) {
+  if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
+  if (val >= 1000) return (val / 1000).toFixed(1) + 'K';
+  if (suffix.includes('TND')) {
+    return val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  }
+  return val.toLocaleString();
+}
 
+function MetricCard({ label, value, suffix = '', trend, className, accent = 'neutral' }: MetricCardProps) {
+  const styles = accentClasses[accent];
   return (
-    <Card className="bg-card rounded-2xl border-border/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] group">
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className={`w-12 h-12 ${getBgColor(color)} rounded-xl flex items-center justify-center transition-colors`}>
-            {icon}
-          </div>
-          {trend !== undefined && trend !== null && (
-            <div className={`flex items-center gap-1 text-sm font-semibold ${trend >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {trend >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-              <span>{Math.abs(trend).toFixed(1)}%</span>
-            </div>
-          )}
-          {trend === null && (
-            <div className="flex items-center gap-1 text-sm font-semibold text-muted-foreground">
-              <span>N/A</span>
-            </div>
-          )}
-        </div>
-        <div className="space-y-2">
-          <div className="text-sm text-muted-foreground font-heading">
-            {typeof title === 'string' ? title : title}
-          </div>
-          <p className={`text-3xl font-heading font-bold ${color}`}>
-            {formatValue(value)}{suffix}
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+    <div
+      className={cn(
+        'rounded-lg border border-border/60 border-l-[3px] bg-card px-4 py-3.5',
+        styles.border,
+        className,
+      )}
+    >
+      <p className="text-xs text-muted-foreground leading-snug">{label}</p>
+      <div className="mt-1.5 flex items-baseline gap-2">
+        <p className={cn('text-2xl font-semibold tabular-nums tracking-tight', styles.value)}>
+          {formatMetricValue(value, suffix)}
+          {suffix}
+        </p>
+        {trend != null && (
+          <span
+            className={cn(
+              'inline-flex items-center gap-0.5 text-xs font-medium',
+              trend >= 0 ? 'text-emerald-500' : 'text-destructive',
+            )}
+          >
+            {trend >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+            {Math.abs(trend).toFixed(1)}%
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
-function KPICardSkeleton() {
+function MetricCardSkeleton() {
   return (
-    <Card className="bg-card rounded-2xl border-border/50 shadow-lg">
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <Skeleton className="w-12 h-12 rounded-xl" />
-          <Skeleton className="w-16 h-4" />
-        </div>
-        <div className="space-y-2">
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-8 w-32" />
-        </div>
-      </CardContent>
-    </Card>
+    <div className="rounded-lg border border-border/60 bg-card px-4 py-3.5">
+      <Skeleton className="h-3 w-28" />
+      <Skeleton className="mt-2.5 h-7 w-20" />
+    </div>
+  );
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="mb-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+      {children}
+    </h3>
   );
 }
 
@@ -137,7 +126,6 @@ function presaleKpiCopy(language: 'en' | 'fr') {
       ordersLabel: 'commandes',
       ticketsLabel: 'billets',
       tapHint: 'Appuyez pour le détail',
-      hoverHint: 'Survolez pour le détail',
     };
   }
   return {
@@ -149,11 +137,10 @@ function presaleKpiCopy(language: 'en' | 'fr') {
     ordersLabel: 'orders',
     ticketsLabel: 'tickets',
     tapHint: 'Tap for breakdown',
-    hoverHint: 'Hover for breakdown',
   };
 }
 
-function PresaleTicketsKpiCard({
+function PresaleTicketsMetricCard({
   totalTickets,
   breakdown,
   trend,
@@ -172,8 +159,8 @@ function PresaleTicketsKpiCard({
   const t = presaleKpiCopy(language);
 
   const breakdownBody = (
-    <div className="space-y-3 text-xs font-heading">
-      <p className="font-semibold text-foreground border-b border-border/60 pb-2">{t.breakdownTitle}</p>
+    <div className="space-y-3 text-xs">
+      <p className="font-medium text-foreground border-b border-border/60 pb-2">{t.breakdownTitle}</p>
       <div className="space-y-2">
         <div>
           <p className="text-muted-foreground mb-0.5">{t.online}</p>
@@ -193,30 +180,17 @@ function PresaleTicketsKpiCard({
     </div>
   );
 
-  const titleNode = (
-    <div className="space-y-0.5 text-foreground">
-      <span className="flex items-center gap-1">
+  const labelNode = (
+    <span className="inline-flex items-start gap-1">
+      <span>
         {t.cardTitle}
-        <Info className="w-3 h-3 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="block text-[11px] font-normal text-muted-foreground/80">{t.cardSubtitle}</span>
       </span>
-      <span className="block text-[11px] font-normal text-muted-foreground leading-snug">{t.cardSubtitle}</span>
-      {isMobile ? (
-        <span className="block text-[11px] font-normal text-primary/80 pt-0.5">{t.tapHint}</span>
-      ) : (
-        <span className="block text-[11px] font-normal text-muted-foreground/80 pt-0.5">{t.hoverHint}</span>
-      )}
-    </div>
+      <Info className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/60" aria-hidden />
+    </span>
   );
 
-  const card = (
-    <KPICard
-      title={titleNode}
-      value={totalTickets}
-      icon={<Ticket className="w-6 h-6 text-purple-500" />}
-      trend={trend}
-      color="text-purple-500"
-    />
-  );
+  const card = <MetricCard label={labelNode} value={totalTickets} trend={trend} accent="violet" />;
 
   if (isMobile) {
     return (
@@ -224,7 +198,7 @@ function PresaleTicketsKpiCard({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="w-full text-left rounded-2xl touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background"
+            className="w-full text-left touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background rounded-lg"
             aria-expanded={open}
             aria-label={t.breakdownTitle}
           >
@@ -242,7 +216,7 @@ function PresaleTicketsKpiCard({
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="cursor-help rounded-2xl">{card}</div>
+          <div className="cursor-default rounded-lg">{card}</div>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs p-4" side="top">
           {breakdownBody}
@@ -252,12 +226,56 @@ function PresaleTicketsKpiCard({
   );
 }
 
+function kpiCopy(language: 'en' | 'fr') {
+  if (language === 'fr') {
+    return {
+      pending: 'En attente',
+      sales: 'Ventes',
+      activity: 'Activité',
+      pendingOrders: 'Commandes cash en attente',
+      pendingPasses: 'Pass en attente',
+      pendingRevenue: 'Revenus en attente',
+      totalTickets: 'Billets vendus',
+      totalRevenue: 'Revenus totaux',
+      totalOrders: 'Commandes',
+      avgTickets: 'Moy. billets / jour',
+      ambassadors: 'Ambassadeurs actifs',
+      loadError: 'Impossible de charger les données. Actualisez la page.',
+      noData: 'Aucune vente pour le moment. Les chiffres apparaîtront ici.',
+    };
+  }
+  return {
+    pending: 'Pending',
+    sales: 'Sales',
+    activity: 'Activity',
+    pendingOrders: 'Pending cash orders',
+    pendingPasses: 'Pending passes',
+    pendingRevenue: 'Pending revenue',
+    totalTickets: 'Tickets sold',
+    totalRevenue: 'Total revenue',
+    totalOrders: 'Orders',
+    avgTickets: 'Avg tickets / day',
+    ambassadors: 'Active ambassadors',
+    loadError: 'Unable to load analytics data. Please refresh the page.',
+    noData: 'No sales yet. Numbers will appear here once orders are placed.',
+  };
+}
+
 export function KPICards({ data, loading, error, language = 'en' }: KPICardsProps) {
+  const t = kpiCopy(language);
+
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
-          <KPICardSkeleton key={i} />
+      <div className="space-y-6">
+        {[1, 2, 3].map((section) => (
+          <div key={section}>
+            <Skeleton className="mb-2.5 h-3 w-16" />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((i) => (
+                <MetricCardSkeleton key={i} />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     );
@@ -265,90 +283,63 @@ export function KPICards({ data, loading, error, language = 'en' }: KPICardsProp
 
   if (error) {
     return (
-      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-6 text-center">
-        <p className="text-sm font-heading text-destructive">
-          Unable to load analytics data. Please refresh the page.
-        </p>
+      <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+        <p className="text-sm text-destructive">{t.loadError}</p>
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="bg-muted/20 border border-border rounded-lg p-6 text-center">
-        <p className="text-sm font-heading text-muted-foreground">
-          No data available yet. Sales will appear here once orders are placed.
-        </p>
+      <div className="rounded-lg border border-dashed border-border/60 px-4 py-8 text-center">
+        <p className="text-sm text-muted-foreground">{t.noData}</p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <KPICard
-        title="Pending Cash & Approval Orders"
-        value={data.pendingCashAndApprovalOrders}
-        icon={<Clock className="w-6 h-6 text-yellow-500" />}
-        trend={null}
-        color="text-yellow-500"
-      />
-      <KPICard
-        title="Pending Cash & Approval Passes"
-        value={data.pendingCashAndApprovalPasses}
-        icon={<Package className="w-6 h-6 text-amber-500" />}
-        trend={null}
-        color="text-amber-500"
-      />
-      <KPICard
-        title="Pending Cash & Approval Revenue"
-        value={data.pendingCashAndApprovalRevenue}
-        suffix=" TND"
-        icon={<DollarSign className="w-6 h-6 text-orange-600" />}
-        trend={null}
-        color="text-orange-600"
-      />
-      <KPICard
-        title="Total Tickets Sold"
-        value={data.totalTicketsSold}
-        icon={<Ticket className="w-6 h-6 text-green-500" />}
-        trend={data.trends.tickets}
-        color="text-green-500"
-      />
-      <KPICard
-        title="Total Revenue"
-        value={data.totalRevenue}
-        suffix=" TND"
-        icon={<DollarSign className="w-6 h-6 text-orange-500" />}
-        trend={data.trends.revenue}
-        color="text-orange-500"
-      />
-      <KPICard
-        title="Total Orders"
-        value={data.totalOrders}
-        icon={<ShoppingCart className="w-6 h-6 text-blue-500" />}
-        trend={data.trends.orders}
-        color="text-blue-500"
-      />
-      <PresaleTicketsKpiCard
-        totalTickets={data.presalePaidTickets}
-        breakdown={data.presalePaidBreakdown}
-        trend={data.trends.presaleTickets}
-        language={language}
-      />
-      <KPICard
-        title="Avg Tickets Per Day"
-        value={Math.round(data.averageTicketsPerDay)}
-        icon={<Calendar className="w-6 h-6 text-cyan-500" />}
-        trend={data.trends.avgTickets}
-        color="text-cyan-500"
-      />
-      <KPICard
-        title="Ambassadors Involved"
-        value={data.ambassadorsInvolved}
-        icon={<Users className="w-6 h-6 text-pink-500" />}
-        trend={data.trends.ambassadors}
-        color="text-pink-500"
-      />
+    <div className="space-y-6">
+      <section>
+        <SectionHeading>{t.pending}</SectionHeading>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <MetricCard label={t.pendingOrders} value={data.pendingCashAndApprovalOrders} accent="amber" />
+          <MetricCard label={t.pendingPasses} value={data.pendingCashAndApprovalPasses} accent="amber" />
+          <MetricCard label={t.pendingRevenue} value={data.pendingCashAndApprovalRevenue} suffix=" TND" accent="amber" />
+        </div>
+      </section>
+
+      <section>
+        <SectionHeading>{t.sales}</SectionHeading>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricCard label={t.totalTickets} value={data.totalTicketsSold} trend={data.trends.tickets} accent="green" />
+          <MetricCard label={t.totalRevenue} value={data.totalRevenue} suffix=" TND" trend={data.trends.revenue} accent="primary" />
+          <MetricCard label={t.totalOrders} value={data.totalOrders} trend={data.trends.orders} accent="primary" />
+          <PresaleTicketsMetricCard
+            totalTickets={data.presalePaidTickets}
+            breakdown={data.presalePaidBreakdown}
+            trend={data.trends.presaleTickets}
+            language={language}
+          />
+        </div>
+      </section>
+
+      <section>
+        <SectionHeading>{t.activity}</SectionHeading>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <MetricCard
+            label={t.avgTickets}
+            value={Math.round(data.averageTicketsPerDay)}
+            trend={data.trends.avgTickets}
+            accent="green"
+          />
+          <MetricCard
+            label={t.ambassadors}
+            value={data.ambassadorsInvolved}
+            trend={data.trends.ambassadors}
+            accent="violet"
+          />
+        </div>
+      </section>
     </div>
   );
 }

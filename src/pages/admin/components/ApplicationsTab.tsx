@@ -182,8 +182,7 @@ export function ApplicationsTab(props: ApplicationsTabProps) {
         size="sm"
         variant="outline"
         onClick={() => openAddToDraft(bulkAddApps)}
-        style={{ borderColor: "#E21836", color: "#E21836" }}
-        className="hover:bg-[#E21836]/10"
+        className="border-primary/40 text-primary hover:bg-primary/10"
       >
         <FolderPlus className="w-4 h-4 mr-1" />
         {language === "en"
@@ -194,25 +193,31 @@ export function ApplicationsTab(props: ApplicationsTabProps) {
 
   return (
     <TabsContent value="applications" className="space-y-6">
-      <div className="flex flex-wrap gap-2 border-b border-border pb-3">
-        <Button
+      <div className="flex gap-1 border-b border-border/60">
+        <button
           type="button"
-          variant={viewMode === "all" ? "default" : "ghost"}
-          size="sm"
-          className={cn(viewMode === "all" && "shadow-sm")}
+          className={cn(
+            "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
+            viewMode === "all"
+              ? "border-primary font-medium text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
           onClick={() => setViewMode("all")}
         >
-          {language === "en" ? "All Applications" : "Toutes les candidatures"}
-        </Button>
-        <Button
+          {language === "en" ? "All applications" : "Toutes les candidatures"}
+        </button>
+        <button
           type="button"
-          variant={viewMode === "selections" ? "default" : "ghost"}
-          size="sm"
-          className={cn(viewMode === "selections" && "shadow-sm")}
+          className={cn(
+            "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
+            viewMode === "selections"
+              ? "border-primary font-medium text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
           onClick={() => setViewMode("selections")}
         >
-          {language === "en" ? "Draft Selections" : "Sélections brouillon"}
-        </Button>
+          {language === "en" ? "Draft selections" : "Sélections brouillon"}
+        </button>
       </div>
 
       {viewMode === "all" ? (

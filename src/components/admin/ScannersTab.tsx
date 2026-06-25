@@ -11,6 +11,11 @@ import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
 import { format } from "date-fns";
 import { Plus, RefreshCw, Power, User } from "lucide-react";
+import {
+  AdminTabHeader,
+  AdminMetricTile,
+  ADMIN_TABLE_HEAD,
+} from "@/pages/admin/components/AdminTabShell";
 
 interface ScannersTabProps {
   language: "en" | "fr";
@@ -225,9 +230,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">{t.scanners}</h2>
-      </div>
+      <AdminTabHeader title={t.scanners} />
 
       <Card className="bg-card border-border">
         <CardHeader>
@@ -237,7 +240,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
           <Button
             onClick={onToggleScan}
             disabled={configLoading || toggleLoading || !config}
-            className={config?.enabled ? "bg-[#EF4444] hover:bg-[#dc2626] text-white" : "bg-[#10B981] hover:bg-[#0d9668] text-white"}
+            variant={config?.enabled ? "destructive" : "default"}
           >
             <Power className="w-4 h-4 mr-2" />
             {toggleLoading ? t.processing : config?.enabled ? t.stop : t.start}
@@ -249,17 +252,17 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
       <Card className="bg-card border-border">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-foreground">{t.scanners}</CardTitle>
-          <Button onClick={() => { setCreateRole("scanner"); setCreateOpen(true); }} className="bg-[#E21836] hover:bg-[#c4142e]"><Plus className="w-4 h-4 mr-2" />{t.create}</Button>
+          <Button onClick={() => { setCreateRole("scanner"); setCreateOpen(true); }}><Plus className="w-4 h-4 mr-2" />{t.create}</Button>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow className="border-border">
-                <TableHead className="text-muted-foreground">{t.name}</TableHead>
-                <TableHead className="text-muted-foreground">{t.email}</TableHead>
-                <TableHead className="text-muted-foreground">{t.roleLabel}</TableHead>
-                <TableHead className="text-muted-foreground">{t.active}</TableHead>
-                <TableHead className="text-muted-foreground">{t.actions}</TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>{t.name}</TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>{t.email}</TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>{t.roleLabel}</TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>{t.active}</TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>{t.actions}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -268,10 +271,10 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
                   <TableCell className="text-foreground">{s.name}</TableCell>
                   <TableCell className="text-muted-foreground">{s.email}</TableCell>
                   <TableCell className="text-muted-foreground">{s.role === "supervisor" ? t.roleSupervisor : t.roleScanner}</TableCell>
-                  <TableCell><span className={s.is_active ? "text-[#10B981]" : "text-[#EF4444]"}>{s.is_active ? "✓" : "✗"}</span></TableCell>
+                  <TableCell><span className={s.is_active ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}>{s.is_active ? "✓" : "✗"}</span></TableCell>
                   <TableCell>
                     <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground mr-2" onClick={() => { setEditScanner(s); setEditName(s.name); setEditEmail(s.email); setEditActive(s.is_active); setEditRole(s.role === "supervisor" ? "supervisor" : "scanner"); setEditPassword(""); setEditOpen(true); }}>{t.edit}</Button>
-                    {s.is_active && <Button variant="ghost" size="sm" className="text-[#EF4444]" onClick={() => onDeactivate(s)}>{t.deactivate}</Button>}
+                    {s.is_active && <Button variant="ghost" size="sm" className="text-destructive" onClick={() => onDeactivate(s)}>{t.deactivate}</Button>}
                   </TableCell>
                 </TableRow>
               ))}
@@ -300,46 +303,28 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              <div className="rounded-lg bg-muted/40 border border-border p-3">
-                <p className="text-xs text-muted-foreground mb-1">{t.total}</p>
-                <p className="text-lg font-bold" style={{ color: "#E21836" }}>{(stats.total ?? 0).toLocaleString()}</p>
-              </div>
-              <div className="rounded-lg bg-muted/40 border border-border p-3">
-                <p className="text-xs text-muted-foreground mb-1">{t.valid}</p>
-                <p className="text-lg font-bold" style={{ color: "#10B981" }}>{(stats.byStatus.valid ?? 0).toLocaleString()}</p>
-              </div>
-              <div className="rounded-lg bg-muted/40 border border-border p-3">
-                <p className="text-xs text-muted-foreground mb-1">{t.alreadyScanned}</p>
-                <p className="text-lg font-bold" style={{ color: "#F59E0B" }}>{(stats.byStatus.already_scanned ?? 0).toLocaleString()}</p>
-              </div>
-              <div className="rounded-lg bg-muted/40 border border-border p-3">
-                <p className="text-xs text-muted-foreground mb-1">{t.invalid}</p>
-                <p className="text-lg font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.invalid ?? 0).toLocaleString()}</p>
-              </div>
-              <div className="rounded-lg bg-muted/40 border border-border p-3">
-                <p className="text-xs text-muted-foreground mb-1">{t.wrongEvent}</p>
-                <p className="text-lg font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.wrong_event ?? 0).toLocaleString()}</p>
-              </div>
+              <AdminMetricTile label={t.total} value={(stats.total ?? 0).toLocaleString()} accent="primary" />
+              <AdminMetricTile label={t.valid} value={(stats.byStatus.valid ?? 0).toLocaleString()} accent="emerald" />
+              <AdminMetricTile label={t.alreadyScanned} value={(stats.byStatus.already_scanned ?? 0).toLocaleString()} accent="amber" />
+              <AdminMetricTile label={t.invalid} value={(stats.byStatus.invalid ?? 0).toLocaleString()} accent="destructive" />
+              <AdminMetricTile label={t.wrongEvent} value={(stats.byStatus.wrong_event ?? 0).toLocaleString()} accent="destructive" />
             </div>
-            <div className="rounded-lg bg-muted/40 border border-border p-3">
-              <p className="text-xs text-muted-foreground mb-1">{t.remainingValidPasses}</p>
-              <p className="text-lg font-bold" style={{ color: "#22C55E" }}>
-                {validSelectedEventId
-                  ? ((stats.remainingValidPasses ?? 0).toLocaleString())
-                  : "—"}
-              </p>
-              {!validSelectedEventId && (
-                <p className="text-xs text-muted-foreground/80 mt-1">{t.selectEventHint}</p>
-              )}
-            </div>
+            <AdminMetricTile
+              label={t.remainingValidPasses}
+              value={validSelectedEventId ? (stats.remainingValidPasses ?? 0).toLocaleString() : "—"}
+              accent="emerald"
+            />
+            {!validSelectedEventId && (
+              <p className="text-xs text-muted-foreground/80">{t.selectEventHint}</p>
+            )}
             {validSelectedEventId && (
               <div className="rounded-lg bg-muted/40 border border-border p-3">
                 <p className="text-xs text-muted-foreground mb-2">{t.remainingVsStatus}</p>
-                <p className="text-xs text-muted-foreground">{t.remainingValidPasses}: <span className="text-[#22C55E] font-semibold">{(stats.remainingValidPasses ?? 0).toLocaleString()}</span></p>
-                <p className="text-xs text-muted-foreground">{t.valid}: <span className="text-[#10B981] font-semibold">{(stats.byStatus.valid ?? 0).toLocaleString()}</span></p>
-                <p className="text-xs text-muted-foreground">{t.alreadyScanned}: <span className="text-[#F59E0B] font-semibold">{(stats.byStatus.already_scanned ?? 0).toLocaleString()}</span></p>
-                <p className="text-xs text-muted-foreground">{t.invalid}: <span className="text-[#EF4444] font-semibold">{(stats.byStatus.invalid ?? 0).toLocaleString()}</span></p>
-                <p className="text-xs text-muted-foreground">{t.wrongEvent}: <span className="text-[#EF4444] font-semibold">{(stats.byStatus.wrong_event ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-muted-foreground">{t.remainingValidPasses}: <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{(stats.remainingValidPasses ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-muted-foreground">{t.valid}: <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{(stats.byStatus.valid ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-muted-foreground">{t.alreadyScanned}: <span className="text-amber-600 dark:text-amber-400 font-semibold">{(stats.byStatus.already_scanned ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-muted-foreground">{t.invalid}: <span className="text-destructive font-semibold">{(stats.byStatus.invalid ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-muted-foreground">{t.wrongEvent}: <span className="text-destructive font-semibold">{(stats.byStatus.wrong_event ?? 0).toLocaleString()}</span></p>
               </div>
             )}
             {Object.keys(stats.byPass || {}).length > 0 && (
@@ -373,13 +358,13 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
             <Table>
               <TableHeader>
                 <TableRow className="border-border">
-                  <TableHead className="text-muted-foreground">{t.time}</TableHead>
-                  <TableHead className="text-muted-foreground">{t.result}</TableHead>
-                  <TableHead className="text-muted-foreground">{t.buyer}</TableHead>
-                  <TableHead className="text-muted-foreground">{t.pass}</TableHead>
-                  <TableHead className="text-muted-foreground">{t.ambassador}</TableHead>
-                  <TableHead className="text-muted-foreground">{t.event}</TableHead>
-                  {!selectedId && <TableHead className="text-muted-foreground">{t.scanner}</TableHead>}
+                  <TableHead className={ADMIN_TABLE_HEAD}>{t.time}</TableHead>
+                  <TableHead className={ADMIN_TABLE_HEAD}>{t.result}</TableHead>
+                  <TableHead className={ADMIN_TABLE_HEAD}>{t.buyer}</TableHead>
+                  <TableHead className={ADMIN_TABLE_HEAD}>{t.pass}</TableHead>
+                  <TableHead className={ADMIN_TABLE_HEAD}>{t.ambassador}</TableHead>
+                  <TableHead className={ADMIN_TABLE_HEAD}>{t.event}</TableHead>
+                  {!selectedId && <TableHead className={ADMIN_TABLE_HEAD}>{t.scanner}</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -388,7 +373,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
                 ) : scans.map((r) => (
                   <TableRow key={r.id} className="border-border">
                     <TableCell className="text-foreground">{r.scan_time ? format(new Date(r.scan_time), "PPp") : "—"}</TableCell>
-                    <TableCell><span className={r.scan_result === "valid" ? "text-[#10B981]" : r.scan_result === "already_scanned" ? "text-[#F59E0B]" : "text-[#EF4444]"}>{r.scan_result}</span></TableCell>
+                    <TableCell><span className={r.scan_result === "valid" ? "text-emerald-600 dark:text-emerald-400" : r.scan_result === "already_scanned" ? "text-amber-600 dark:text-amber-400" : "text-destructive"}>{r.scan_result}</span></TableCell>
                     <TableCell className="text-muted-foreground">{r.buyer_name || "—"}</TableCell>
                     <TableCell className="text-muted-foreground">{r.pass_type || "—"}</TableCell>
                     <TableCell className="text-muted-foreground">{r.ambassador_name || "—"}</TableCell>
@@ -406,7 +391,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
         <DialogContent className="bg-card border-border">
           <DialogHeader><DialogTitle className="text-foreground">{t.create}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            {createError && <p className="text-sm text-[#EF4444]">{createError}</p>}
+            {createError && <p className="text-sm text-destructive">{createError}</p>}
             <Label className="text-muted-foreground">{t.name}</Label>
             <Input value={createName} onChange={e => setCreateName(e.target.value)} />
             <Label className="text-muted-foreground">{t.email}</Label>
@@ -421,7 +406,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
                 <SelectItem value="supervisor">{t.roleSupervisor}</SelectItem>
               </SelectContent>
             </Select>
-            <Button className="w-full bg-[#E21836] hover:bg-[#c4142e]" onClick={onCreate}>Create</Button>
+            <Button className="w-full" onClick={onCreate}>Create</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -449,7 +434,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
               </Select>
               <Label className="text-muted-foreground">{t.password} (leave blank to keep)</Label>
               <Input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="••••••••" />
-              <Button className="w-full bg-[#E21836] hover:bg-[#c4142e]" onClick={onEdit}>Save</Button>
+              <Button className="w-full" onClick={onEdit}>Save</Button>
             </div>
           )}
         </DialogContent>

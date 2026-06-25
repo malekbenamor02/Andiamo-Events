@@ -23,7 +23,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -40,17 +39,13 @@ import {
 import {
   Download,
   Trash2,
-  Settings,
+  Search,
   X,
-  Phone,
-  Mail,
-  MapPin,
   Calendar as CalendarIcon,
   FileText,
   CheckCircle,
   XCircle,
   Mail as MailIcon,
-  AlertCircle,
   Copy,
   Instagram,
   ExternalLink,
@@ -71,6 +66,11 @@ import { useToast } from "@/hooks/use-toast";
 import type { AmbassadorApplication, Ambassador, SelectedMotivation } from "../../types";
 import type { ApplicationsTabProps } from "../ApplicationsTab";
 import { AdminResendEmailConfirm, ADMIN_RESEND_EMAIL_CONFIRM_CLOSE_MS } from "../AdminResendEmailConfirm";
+import {
+  AdminApplicationReviewConfirm,
+  ADMIN_APPLICATION_REVIEW_CONFIRM_CLOSE_MS,
+  type AdminApplicationReviewAction,
+} from "../AdminApplicationReviewConfirm";
 
 export type ApplicationsListCoreProps = ApplicationsTabProps & {
   title?: string;
@@ -84,9 +84,15 @@ export type ApplicationsListCoreProps = ApplicationsTabProps & {
   showAddToDraft?: boolean;
   onAddToDraft?: (app: AmbassadorApplication) => void;
   enableBulkSelect?: boolean;
+  /** When 'all', every visible row can be selected (draft removals). Default 'pending'. */
+  bulkSelectScope?: "pending" | "all";
+  /** Skip the toggle — checkboxes always visible. Used in draft selections. */
+  bulkSelectAlwaysVisible?: boolean;
   bulkSelectedIds?: Set<string>;
   onToggleBulkSelect?: (applicationId: string, checked: boolean) => void;
   onToggleAllBulkSelect?: (applicationIds: string[], checked: boolean) => void;
+  /** Rendered below filters when at least one row is selected. */
+  bulkActionsBar?: React.ReactNode;
 };
 
 function isInstagramUrl(url: string) {
@@ -166,19 +172,47 @@ export function ApplicationsListCore({
   showAddToDraft = false,
   onAddToDraft,
   enableBulkSelect = false,
+  bulkSelectScope = "pending",
+  bulkSelectAlwaysVisible = false,
   bulkSelectedIds,
   onToggleBulkSelect,
   onToggleAllBulkSelect,
+  bulkActionsBar,
 }: ApplicationsListCoreProps) {
   const { toast } = useToast();
-  const [bulkSelectVisible, setBulkSelectVisible] = useState(false);
+  const [bulkSelectVisible, setBulkSelectVisible] = useState(bulkSelectAlwaysVisible);
   const [resendTarget, setResendTarget] = useState<AmbassadorApplication | null>(null);
   const [isResendConfirmOpen, setIsResendConfirmOpen] = useState(false);
+  const [reviewTarget, setReviewTarget] = useState<AmbassadorApplication | null>(null);
+  const [reviewAction, setReviewAction] = useState<AdminApplicationReviewAction | null>(null);
+  const [isReviewConfirmOpen, setIsReviewConfirmOpen] = useState(false);
+
+  const openReviewConfirm = useCallback(
+    (application: AmbassadorApplication, action: AdminApplicationReviewAction) => {
+      setReviewTarget(application);
+      setReviewAction(action);
+      setIsReviewConfirmOpen(true);
+    },
+    []
+  );
+
+  const handleReviewConfirm = useCallback(async () => {
+    if (!reviewTarget || !reviewAction) return;
+    if (reviewAction === "approve") {
+      await onApprove(reviewTarget);
+    } else {
+      await onReject(reviewTarget);
+    }
+    setIsReviewConfirmOpen(false);
+  }, [reviewTarget, reviewAction, onApprove, onReject]);
 
   const bulkSelectableIds = enableBulkSelect
-    ? filteredApplications.filter((a) => a.status === "pending").map((a) => a.id)
+    ? filteredApplications
+        .filter((a) => bulkSelectScope === "all" || a.status === "pending")
+        .map((a) => a.id)
     : [];
-  const showBulkCheckboxes = enableBulkSelect && bulkSelectVisible;
+  const showBulkCheckboxes =
+    enableBulkSelect && (bulkSelectAlwaysVisible || bulkSelectVisible);
   const allBulkSelected =
     bulkSelectableIds.length > 0 &&
     bulkSelectableIds.every((id) => bulkSelectedIds?.has(id));
@@ -201,85 +235,67 @@ export function ApplicationsListCore({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-        <h2 className="text-2xl font-bold text-primary">{title}</h2>
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {filteredApplications.length.toLocaleString()} {countLabel.toLowerCase()}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           {extraToolbar}
           {showExport && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onExportExcel}
-              className="transform hover:scale-105 transition-all duration-300"
-              style={{
-                background: "#1F1F1F",
-                borderColor: "#2A2A2A",
-                color: "#FFFFFF",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#E21836";
-                e.currentTarget.style.borderColor = "#E21836";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "#1F1F1F";
-                e.currentTarget.style.borderColor = "#2A2A2A";
-              }}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              {language === "en" ? "Export to Excel" : "Exporter vers Excel"}
+            <Button variant="outline" size="sm" onClick={onExportExcel} className="gap-2">
+              <Download className="h-4 w-4" />
+              {language === "en" ? "Export Excel" : "Exporter Excel"}
             </Button>
           )}
-          <Badge
-            className="animate-pulse"
-            style={{
-              background: "rgba(0, 207, 255, 0.15)",
-              color: "#00CFFF",
-            }}
-          >
-            {filteredApplications.length} {countLabel}
-          </Badge>
           {showOrphanCleanup && orphanedCount > 0 && (
             <Button
               variant="outline"
               size="sm"
               onClick={onCleanupOrphaned}
-              className="text-xs"
+              className="text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
               title={
                 language === "en"
                   ? "Delete approved applications that have no matching ambassador account (data cleanup)"
                   : "Supprimer les candidatures approuvées sans compte ambassadeur correspondant"
               }
             >
-              <Trash2 className="w-3 h-3 mr-1" />
+              <Trash2 className="h-3.5 w-3.5" />
               {language === "en"
-                ? `Cleanup ${orphanedCount} Orphaned`
-                : `Nettoyer ${orphanedCount} Orphelines`}
+                ? `Cleanup ${orphanedCount} orphaned`
+                : `Nettoyer ${orphanedCount} orphelines`}
             </Button>
           )}
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="rounded-lg border border-border/60 bg-muted/20 p-3 sm:p-4 space-y-3">
         <div className="relative">
-          <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search by name, email, or phone..."
+            placeholder={
+              language === "en"
+                ? "Search by name, email, or phone…"
+                : "Rechercher par nom, e-mail ou téléphone…"
+            }
             value={applicationSearchTerm}
             onChange={(e) => setApplicationSearchTerm(e.target.value)}
-            className="pl-10"
+            className="h-9 border-border/60 bg-background pl-9"
           />
         </div>
 
-        <div className="flex flex-wrap gap-4 items-center">
-          <div className="flex items-center gap-2">
-            <Label className="text-sm font-medium text-muted-foreground">
-              {language === "en" ? "Status:" : "Statut:"}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex min-w-[140px] flex-col gap-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              {language === "en" ? "Status" : "Statut"}
             </Label>
             <Select
               value={applicationStatusFilter}
               onValueChange={setApplicationStatusFilter}
             >
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="h-9 w-[160px] bg-background">
                 <SelectValue
                   placeholder={
                     language === "en" ? "All Statuses" : "Tous les Statuts"
@@ -309,9 +325,9 @@ export function ApplicationsListCore({
             </Select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Label className="text-sm font-medium text-muted-foreground">
-              {language === "en" ? "City:" : "Ville:"}
+          <div className="flex min-w-[140px] flex-col gap-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              {language === "en" ? "City" : "Ville"}
             </Label>
             <Select
               value={applicationCityFilter}
@@ -320,7 +336,7 @@ export function ApplicationsListCore({
                 if (value !== "all") setApplicationVilleFilter("all");
               }}
             >
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="h-9 w-[160px] bg-background">
                 <SelectValue
                   placeholder={
                     language === "en" ? "All Cities" : "Toutes les Villes"
@@ -343,21 +359,20 @@ export function ApplicationsListCore({
           {(applicationCityFilter === "Sousse" ||
             applicationCityFilter === "Tunis" ||
             applicationCityFilter === "all") && (
-            <div className="flex items-center gap-2">
-              <Label className="text-sm font-medium text-muted-foreground">
-                {language === "en" ? "Ville (Neighborhood):" : "Quartier:"}
+            <div className="flex min-w-[160px] flex-col gap-1">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                {language === "en" ? "Neighborhood" : "Quartier"}
               </Label>
-              <div className="relative">
-                <Select
-                  value={applicationVilleFilter}
-                  onValueChange={setApplicationVilleFilter}
-                  disabled={
-                    applicationCityFilter !== "Sousse" &&
-                    applicationCityFilter !== "Tunis" &&
-                    applicationCityFilter !== "all"
-                  }
-                >
-                  <SelectTrigger className="w-[200px]">
+              <Select
+                value={applicationVilleFilter}
+                onValueChange={setApplicationVilleFilter}
+                disabled={
+                  applicationCityFilter !== "Sousse" &&
+                  applicationCityFilter !== "Tunis" &&
+                  applicationCityFilter !== "all"
+                }
+              >
+                <SelectTrigger className="h-9 w-[180px] bg-background">
                     <SelectValue
                       placeholder={
                         language === "en" ? "All Villes" : "Tous les Quartiers"
@@ -402,7 +417,6 @@ export function ApplicationsListCore({
                     )}
                   </SelectContent>
                 </Select>
-              </div>
             </div>
           )}
 
@@ -410,45 +424,42 @@ export function ApplicationsListCore({
             applicationCityFilter !== "all" ||
             applicationVilleFilter !== "all") && (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => {
                 setApplicationStatusFilter("pending");
                 setApplicationCityFilter("all");
                 setApplicationVilleFilter("all");
               }}
-              className="text-xs"
+              className="h-9 text-xs text-muted-foreground"
             >
-              <X className="w-3 h-3 mr-1" />
-              {language === "en" ? "Clear Filters" : "Effacer les Filtres"}
+              <X className="mr-1 h-3 w-3" />
+              {language === "en" ? "Clear filters" : "Effacer les filtres"}
             </Button>
           )}
         </div>
 
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex items-center gap-2">
-            <Label className="text-sm font-medium text-foreground/70 whitespace-nowrap">
-              {language === "en" ? "From Date:" : "Date de début:"}
+        <div className="flex flex-wrap items-end gap-3 border-t border-border/50 pt-3">
+          <div className="flex min-w-[160px] flex-col gap-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              {language === "en" ? "From" : "Du"}
             </Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   className={cn(
-                    "w-[200px] justify-start text-left font-normal border-border/50 bg-background hover:bg-muted/30 hover:border-primary/30 transition-all duration-300 shadow-sm",
+                    "h-9 w-[180px] justify-start bg-background text-left font-normal",
                     !applicationDateFrom && "text-muted-foreground",
-                    applicationDateFrom && "border-primary/50 bg-primary/5",
                   )}
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+                  <CalendarIcon className="mr-2 h-4 w-4 shrink-0 opacity-60" />
                   <span className="truncate">
-                    {applicationDateFrom ? (
-                      format(applicationDateFrom, "PPP")
-                    ) : (
-                      <span className="text-muted-foreground">
-                        {language === "en" ? "Pick a date" : "Choisir une date"}
-                      </span>
-                    )}
+                    {applicationDateFrom
+                      ? format(applicationDateFrom, "dd/MM/yyyy")
+                      : language === "en"
+                        ? "Pick date"
+                        : "Choisir"}
                   </span>
                 </Button>
               </PopoverTrigger>
@@ -463,31 +474,27 @@ export function ApplicationsListCore({
             </Popover>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Label className="text-sm font-medium text-foreground/70 whitespace-nowrap">
-              {language === "en" ? "To Date:" : "Date de fin:"}
+          <div className="flex min-w-[160px] flex-col gap-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              {language === "en" ? "To" : "Au"}
             </Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className={cn(
-                    "w-[200px] justify-start text-left font-normal border-border/50 bg-background hover:bg-muted/30 hover:border-primary/30 transition-all duration-300 shadow-sm",
-                    !applicationDateTo && "text-muted-foreground",
-                    applicationDateTo && "border-primary/50 bg-primary/5",
-                    !applicationDateFrom && "opacity-50 cursor-not-allowed",
-                  )}
                   disabled={!applicationDateFrom}
+                  className={cn(
+                    "h-9 w-[180px] justify-start bg-background text-left font-normal",
+                    !applicationDateTo && "text-muted-foreground",
+                  )}
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+                  <CalendarIcon className="mr-2 h-4 w-4 shrink-0 opacity-60" />
                   <span className="truncate">
-                    {applicationDateTo ? (
-                      format(applicationDateTo, "PPP")
-                    ) : (
-                      <span className="text-muted-foreground">
-                        {language === "en" ? "Pick a date" : "Choisir une date"}
-                      </span>
-                    )}
+                    {applicationDateTo
+                      ? format(applicationDateTo, "dd/MM/yyyy")
+                      : language === "en"
+                        ? "Pick date"
+                        : "Choisir"}
                   </span>
                 </Button>
               </PopoverTrigger>
@@ -507,40 +514,53 @@ export function ApplicationsListCore({
 
           {(applicationDateFrom || applicationDateTo) && (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => {
                 setApplicationDateFrom(undefined);
                 setApplicationDateTo(undefined);
               }}
-              className="text-xs border-border/50 hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive transition-all duration-300 shadow-sm"
+              className="h-9 text-xs text-muted-foreground"
             >
-              <X className="w-3 h-3 mr-1.5" />
-              {language === "en" ? "Clear Dates" : "Effacer les Dates"}
+              <X className="mr-1 h-3 w-3" />
+              {language === "en" ? "Clear dates" : "Effacer les dates"}
             </Button>
           )}
         </div>
       </div>
 
-      <div className="rounded-md border border-border overflow-hidden">
-        <div className="overflow-x-hidden">
-          <Table className="[&>div]:overflow-x-hidden">
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                {showBulkCheckboxes && (
-                  <TableHead className="font-semibold text-xs px-2 py-2 h-auto w-10">
+      {enableBulkSelect && bulkSelectedIds && bulkSelectedIds.size > 0 && bulkActionsBar ? (
+        <div className="rounded-lg border border-primary/20 bg-primary/[0.04] px-3 py-2.5 sm:px-4">
+          {bulkActionsBar}
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-lg border border-border/60">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-border/60 bg-muted/30 hover:bg-muted/30">
+              {showBulkCheckboxes && (
+                <TableHead className="h-auto px-2 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground w-10">
                     <Checkbox
                       checked={allBulkSelected ? true : someBulkSelected ? "indeterminate" : false}
                       onCheckedChange={(v) =>
                         onToggleAllBulkSelect?.(bulkSelectableIds, v === true)
                       }
-                      aria-label={language === "en" ? "Select all pending" : "Tout sélectionner"}
+                      aria-label={
+                        bulkSelectScope === "all"
+                          ? language === "en"
+                            ? "Select all visible"
+                            : "Tout sélectionner (affichés)"
+                          : language === "en"
+                            ? "Select all pending"
+                            : "Tout sélectionner (en attente)"
+                      }
                     />
                   </TableHead>
                 )}
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
+                <TableHead className="h-auto px-2 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="flex items-center gap-1.5">
-                    {enableBulkSelect && (
+                    {enableBulkSelect && !bulkSelectAlwaysVisible && (
                       <Button
                         type="button"
                         variant="ghost"
@@ -567,36 +587,36 @@ export function ApplicationsListCore({
                     <span>Name</span>
                   </div>
                 </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
+                <TableHead className="h-auto px-2 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Age
                 </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
+                <TableHead className="h-auto px-2 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Phone
                 </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
+                <TableHead className="h-auto px-2 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Email
                 </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
+                <TableHead className="h-auto px-2 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   City
                 </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
+                <TableHead className="h-auto px-2 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   {language === "en" ? "Ville" : "Quartier"}
                 </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
+                <TableHead className="h-auto px-2 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Status
                 </TableHead>
                 {showAddedByColumn && (
-                  <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
+                  <TableHead className="h-auto px-2 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     {language === "en" ? "Added by" : "Ajouté par"}
                   </TableHead>
                 )}
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
+                <TableHead className="h-auto px-2 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Applied
                 </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto">
+                <TableHead className="h-auto px-2 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Details
                 </TableHead>
-                <TableHead className="font-semibold text-xs px-2 py-2 h-auto text-right">
+                <TableHead className="h-auto px-2 py-2.5 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Actions
                 </TableHead>
               </TableRow>
@@ -614,13 +634,16 @@ export function ApplicationsListCore({
                 const row = (
                     <TableRow
                       className={cn(
-                        "transform transition-all duration-300 hover:bg-muted/30",
+                        "border-border/50 hover:bg-muted/20",
+                        showBulkCheckboxes &&
+                          bulkSelectedIds?.has(application.id) &&
+                          "bg-primary/[0.04] hover:bg-primary/[0.07]",
                         showReviewerTooltip && "cursor-help",
                       )}
                     >
                       {showBulkCheckboxes && (
                         <TableCell className="text-xs px-2 py-2">
-                          {application.status === "pending" ? (
+                          {(bulkSelectScope === "all" || application.status === "pending") ? (
                             <Checkbox
                               checked={bulkSelectedIds?.has(application.id) ?? false}
                               onCheckedChange={(v) =>
@@ -633,46 +656,36 @@ export function ApplicationsListCore({
                           ) : null}
                         </TableCell>
                       )}
-                      <TableCell className="font-medium text-xs px-2 py-2">
+                      <TableCell className="px-2 py-2.5 text-sm font-medium">
                         {application.full_name}
                       </TableCell>
-                      <TableCell className="text-xs px-2 py-2">
+                      <TableCell className="px-2 py-2.5 text-sm tabular-nums text-muted-foreground">
                         {application.age}
                       </TableCell>
-                      <TableCell className="text-xs px-2 py-2">
-                        <div className="flex items-center space-x-1">
-                          <Phone className="w-3 h-3 text-muted-foreground" />
-                          <span>{application.phone_number}</span>
-                        </div>
+                      <TableCell className="px-2 py-2.5 text-sm text-muted-foreground">
+                        {application.phone_number}
                       </TableCell>
-                      <TableCell className="text-xs px-2 py-2">
+                      <TableCell className="px-2 py-2.5 text-sm">
                         {application.email ? (
-                          <div
-                            className="flex items-center space-x-1 group cursor-pointer"
+                          <button
+                            type="button"
+                            className="max-w-[120px] truncate text-left text-primary hover:underline"
                             onClick={() => {
                               navigator.clipboard.writeText(application.email!);
                               toast({
-                                title: "Email Copied!",
-                                description: `${application.email} copied to clipboard`,
+                                title: language === "en" ? "Email copied" : "E-mail copié",
+                                description: application.email!,
                               });
                             }}
-                            title="Click to copy email"
+                            title={application.email}
                           >
-                            <MailIcon className="w-3 h-3 text-primary group-hover:text-primary/80 transition-colors" />
-                            <span className="text-xs break-all max-w-[100px] truncate text-primary group-hover:text-primary/80 transition-colors">
-                              {application.email}
-                            </span>
-                          </div>
+                            {application.email}
+                          </button>
                         ) : (
-                          <span className="text-muted-foreground text-xs">-</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-xs px-2 py-2">
-                        <div className="flex items-center space-x-1">
-                          <MapPin className="w-3 h-3 text-muted-foreground" />
-                          <span>{application.city}</span>
-                        </div>
-                      </TableCell>
+                      <TableCell className="px-2 py-2.5 text-sm">{application.city}</TableCell>
                       <TableCell className="text-xs px-2 py-2">
                         {application.ville ? (
                           <span className="text-xs">{application.ville}</span>
@@ -754,13 +767,8 @@ export function ApplicationsListCore({
                           )}
                         </TableCell>
                       )}
-                      <TableCell className="text-xs px-2 py-2">
-                        <div className="flex items-center space-x-1">
-                          <CalendarIcon className="w-3 h-3 text-muted-foreground" />
-                          <span className="text-xs">
-                            {format(new Date(application.created_at), "dd/MM/yyyy")}
-                          </span>
-                        </div>
+                      <TableCell className="px-2 py-2.5 text-sm tabular-nums text-muted-foreground">
+                        {format(new Date(application.created_at), "dd/MM/yyyy")}
                       </TableCell>
                       <TableCell className="text-xs px-2 py-2">
                         <div className="flex items-center gap-2">
@@ -796,57 +804,40 @@ export function ApplicationsListCore({
                           {application.status === "pending" && (
                             <>
                               <Button
-                                onClick={() => onApprove(application)}
+                                onClick={() => openReviewConfirm(application, "approve")}
                                 disabled={processingId === application.id}
                                 size="sm"
-                                style={{
-                                  background: "#22C55E",
-                                  color: "#FFFFFF",
-                                  fontSize: "0.7rem",
-                                  padding: "0.25rem 0.5rem",
-                                  height: "auto",
-                                }}
-                                className="transform hover:scale-105 transition-all duration-300"
-                                onMouseEnter={(e) =>
-                                  (e.currentTarget.style.background = "#16A34A")
-                                }
-                                onMouseLeave={(e) =>
-                                  (e.currentTarget.style.background = "#22C55E")
-                                }
+                                variant="outline"
+                                className="h-7 border-emerald-500/40 px-2 text-xs text-emerald-600 hover:bg-emerald-500/10"
                               >
                                 {processingId === application.id ? (
                                   <>
-                                    <Loader size="sm" className="[background:white] shrink-0 mr-1" />
-                                    <span className="text-xs">{t.processing}</span>
+                                    <Loader size="sm" className="mr-1 shrink-0" />
+                                    {t.processing}
                                   </>
                                 ) : (
                                   <>
-                                    <CheckCircle className="w-2.5 h-2.5 mr-1" />
-                                    <span className="text-xs">{t.approve}</span>
+                                    <CheckCircle className="mr-1 h-3 w-3" />
+                                    {t.approve}
                                   </>
                                 )}
                               </Button>
                               <Button
-                                onClick={() => onReject(application)}
+                                onClick={() => openReviewConfirm(application, "reject")}
                                 disabled={processingId === application.id}
-                                variant="destructive"
                                 size="sm"
-                                style={{
-                                  fontSize: "0.7rem",
-                                  padding: "0.25rem 0.5rem",
-                                  height: "auto",
-                                }}
-                                className="transform hover:scale-105 transition-all duration-300"
+                                variant="outline"
+                                className="h-7 border-destructive/40 px-2 text-xs text-destructive hover:bg-destructive/10"
                               >
                                 {processingId === application.id ? (
                                   <>
-                                    <Loader size="sm" className="[background:white] shrink-0 mr-1" />
-                                    <span className="text-xs">{t.processing}</span>
+                                    <Loader size="sm" className="mr-1 shrink-0" />
+                                    {t.processing}
                                   </>
                                 ) : (
                                   <>
-                                    <XCircle className="w-2.5 h-2.5 mr-1" />
-                                    <span className="text-xs">{t.reject}</span>
+                                    <XCircle className="mr-1 h-3 w-3" />
+                                    {t.reject}
                                   </>
                                 )}
                               </Button>
@@ -856,24 +847,15 @@ export function ApplicationsListCore({
                                   disabled={processingId === application.id}
                                   size="sm"
                                   variant="outline"
-                                  style={{
-                                    fontSize: "0.7rem",
-                                    padding: "0.25rem 0.5rem",
-                                    height: "auto",
-                                    borderColor: "#E21836",
-                                    color: "#E21836",
-                                  }}
-                                  className="transform hover:scale-105 transition-all duration-300 hover:bg-[#E21836]/10"
+                                  className="h-7 border-primary/40 px-2 text-xs text-primary hover:bg-primary/10"
                                   title={
                                     language === "en"
                                       ? "Add to draft selection"
                                       : "Ajouter à une sélection"
                                   }
                                 >
-                                  <FolderPlus className="w-2.5 h-2.5 mr-1" />
-                                  <span className="text-xs">
-                                    {language === "en" ? "Add" : "Ajouter"}
-                                  </span>
+                                  <FolderPlus className="mr-1 h-3 w-3" />
+                                  {language === "en" ? "Add" : "Ajouter"}
                                 </Button>
                               )}
                             </>
@@ -922,21 +904,15 @@ export function ApplicationsListCore({
                               <Button
                                 onClick={() => onCopyCredentials(application)}
                                 size="sm"
-                                variant="outline"
-                                style={{
-                                  fontSize: "0.7rem",
-                                  padding: "0.25rem 0.4rem",
-                                  height: "auto",
-                                  minWidth: "auto",
-                                }}
-                                className="transform hover:scale-105 transition-all duration-300 p-1"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
                                 title={
                                   language === "en"
                                     ? "Copy credentials to clipboard"
                                     : "Copier les identifiants dans le presse-papiers"
                                 }
                               >
-                                <Copy className="w-3 h-3" />
+                                <Copy className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           )}
@@ -996,26 +972,27 @@ export function ApplicationsListCore({
                   <TableCell colSpan={tableColSpan} className="text-center py-8">
                     {applicationSearchTerm ? (
                       <div className="space-y-2">
-                        <p className="text-muted-foreground animate-pulse">
-                          No applications found matching "{applicationSearchTerm}"
+                        <p className="text-sm text-muted-foreground">
+                          {language === "en"
+                            ? `No results for "${applicationSearchTerm}"`
+                            : `Aucun résultat pour « ${applicationSearchTerm} »`}
                         </p>
                         <Button
-                          variant="outline"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => setApplicationSearchTerm("")}
-                          className="transform hover:scale-105 transition-all duration-300"
                         >
-                          Clear Search
+                          {language === "en" ? "Clear search" : "Effacer la recherche"}
                         </Button>
                       </div>
                     ) : (
-                      <p className="text-muted-foreground animate-pulse">{t.noApplications}</p>
+                      <p className="text-sm text-muted-foreground">{t.noApplications}</p>
                     )}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
-        </div>
       </div>
 
       <Dialog open={isMotivationDialogOpen} onOpenChange={setIsMotivationDialogOpen}>
@@ -1074,6 +1051,24 @@ export function ApplicationsListCore({
           await onResendEmail(resendTarget);
         }}
         isSubmitting={!!resendTarget && processingId === resendTarget.id}
+      />
+
+      <AdminApplicationReviewConfirm
+        open={isReviewConfirmOpen}
+        onOpenChange={(nextOpen) => {
+          setIsReviewConfirmOpen(nextOpen);
+          if (!nextOpen) {
+            window.setTimeout(() => {
+              setReviewTarget(null);
+              setReviewAction(null);
+            }, ADMIN_APPLICATION_REVIEW_CONFIRM_CLOSE_MS);
+          }
+        }}
+        action={isReviewConfirmOpen ? reviewAction : null}
+        application={isReviewConfirmOpen ? reviewTarget : null}
+        language={language}
+        onConfirm={handleReviewConfirm}
+        isSubmitting={!!reviewTarget && processingId === reviewTarget.id}
       />
     </div>
   );

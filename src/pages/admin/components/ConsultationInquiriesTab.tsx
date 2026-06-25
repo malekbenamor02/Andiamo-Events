@@ -3,10 +3,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TabsContent } from "@/components/ui/tabs";
-import { MessageCircle, Settings } from "lucide-react";
+import { Search } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { ConsultationInquiry } from "../types";
+import {
+  AdminTabHeader,
+  AdminTabEmpty,
+  ADMIN_TABLE_HEAD,
+  ADMIN_TABLE_WRAP,
+  ADMIN_TABLE_ROW,
+  ADMIN_FILTERS_PANEL,
+} from "./AdminTabShell";
 
 export interface ConsultationInquiriesTabProps {
   consultationInquiries: ConsultationInquiry[];
@@ -26,40 +35,38 @@ export function ConsultationInquiriesTab({
   return (
     <>
       <TabsContent value="consultation-inquiries" className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-primary">B2B Leads</h2>
-          <div className="flex items-center gap-4">
-            <Badge variant="secondary" className="animate-pulse">
-              {filteredConsultationInquiries.length} of {consultationInquiries.length} inquiries
-            </Badge>
+        <AdminTabHeader
+          title="B2B Leads"
+          subtitle={`${filteredConsultationInquiries.length} of ${consultationInquiries.length} inquiries`}
+        />
+
+        <div className={ADMIN_FILTERS_PANEL}>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by full name, company, service, email, phone, or vision..."
+              value={consultationInquirySearchTerm}
+              onChange={(e) => setConsultationInquirySearchTerm(e.target.value)}
+              className="pl-10"
+            />
           </div>
         </div>
 
-        <div className="relative group">
-          <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input
-            placeholder="Search by full name, company, service, email, phone, or vision..."
-            value={consultationInquirySearchTerm}
-            onChange={(e) => setConsultationInquirySearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-
-        <div className="rounded-lg border border-border bg-card">
+        <div className={ADMIN_TABLE_WRAP}>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Full Name</TableHead>
-                <TableHead>Company</TableHead>
-                <TableHead>Service</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Actions</TableHead>
+              <TableRow className={ADMIN_TABLE_ROW}>
+                <TableHead className={ADMIN_TABLE_HEAD}>Full Name</TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>Company</TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>Service</TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>Email</TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>Phone</TableHead>
+                <TableHead className={ADMIN_TABLE_HEAD}>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredConsultationInquiries.map((inquiry) => (
-                <TableRow key={inquiry.id}>
+                <TableRow key={inquiry.id} className={ADMIN_TABLE_ROW}>
                   <TableCell className="font-medium">{inquiry.full_name}</TableCell>
                   <TableCell>{inquiry.company || "-"}</TableCell>
                   <TableCell>
@@ -84,19 +91,17 @@ export function ConsultationInquiriesTab({
         </div>
 
         {filteredConsultationInquiries.length === 0 && consultationInquiries.length > 0 && (
-          <div className="text-center py-12">
-            <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
-            <h3 className="text-lg font-semibold mb-2">No inquiries found</h3>
-            <p className="text-muted-foreground">Try adjusting your search terms.</p>
-          </div>
+          <AdminTabEmpty
+            message="No inquiries found"
+            hint="Try adjusting your search terms."
+          />
         )}
 
         {consultationInquiries.length === 0 && (
-          <div className="text-center py-12">
-            <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
-            <h3 className="text-lg font-semibold mb-2">No inquiries yet</h3>
-            <p className="text-muted-foreground">Consultation submissions from the subdomain will appear here.</p>
-          </div>
+          <AdminTabEmpty
+            message="No inquiries yet"
+            hint="Consultation submissions from the subdomain will appear here."
+          />
         )}
       </TabsContent>
 

@@ -16,10 +16,11 @@ import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import FileUpload from "@/components/ui/file-upload";
-import { Settings, CheckCircle, XCircle, Clock, Wrench, RefreshCw, Image, Video, Trash2, ArrowUp, ArrowDown, AlertCircle } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Wrench, RefreshCw, Image, Video, Trash2, ArrowUp, ArrowDown, AlertCircle } from "lucide-react";
 import type { HeroImage, AboutImage } from "../types";
 import type { AmbassadorNeighborhoodCity, AmbassadorSelectionSettings } from "@/lib/ambassadorSelectionSettings";
 import { AMBASSADOR_NEIGHBORHOOD_CITIES } from "@/lib/ambassadorSelectionSettings";
+import { AdminTabHeader } from "./AdminTabShell";
 
 export interface ExpirationSetting {
   order_status: string;
@@ -84,10 +85,9 @@ export function SettingsTab(p: SettingsTabProps) {
       {/* Parameters list (no cards / no toggle buttons) */}
       <div className="w-full px-2">
         <div className="w-full space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Settings className="w-4 h-4 text-primary" />
-            <span>{p.language === "en" ? "Settings" : "Paramètres"}</span>
-          </div>
+          <AdminTabHeader
+            title={p.language === "en" ? "Settings" : "Paramètres"}
+          />
 
           <div className="rounded-xl border border-border bg-background/60">
             {/* Sales */}

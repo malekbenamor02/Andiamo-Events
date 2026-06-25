@@ -316,10 +316,9 @@ export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({
   };
 
   return (
-    <Card>
+    <Card className="rounded-lg border border-border/60">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Mail className="h-5 w-5" />
+        <CardTitle className="text-lg font-semibold text-foreground">
           {language === 'en' ? 'Create Official Invitation' : 'Créer une Invitation Officielle'}
         </CardTitle>
         <CardDescription>

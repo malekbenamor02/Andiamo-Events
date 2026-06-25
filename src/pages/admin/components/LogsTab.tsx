@@ -51,6 +51,11 @@ import { Calendar as CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { AdminLog, LogsFilters, LogsPagination } from "../types";
+import {
+  AdminTabHeader,
+  ADMIN_FILTERS_PANEL,
+  ADMIN_FILTER_LABEL,
+} from "./AdminTabShell";
 
 const DEFAULT_LOGS_FILTERS: LogsFilters = {
   type: [],
@@ -117,51 +122,51 @@ export function LogsTab({
 }: LogsTabProps) {
   return (
     <TabsContent value="logs" className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-primary">
-            {language === "en" ? "Site Logs & Analytics" : "Journaux et Analytiques du Site"}
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {language === "en"
-              ? "Comprehensive view of all system logs, security events, and activity"
-              : "Vue complète de tous les journaux système, événements de sécurité et activités"}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border">
-            <Switch
-              checked={autoRefresh}
-              onCheckedChange={setAutoRefresh}
-              id="auto-refresh"
-            />
-            <Label htmlFor="auto-refresh" className="text-sm cursor-pointer">
-              {language === "en" ? "Auto-refresh" : "Actualisation auto"}
-            </Label>
-          </div>
-          <Button
-            onClick={() => onRefresh(true)}
-            disabled={loading}
-            variant="outline"
-           
-          >
-            {loading ? <Loader size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-            {language === "en" ? "Refresh" : "Actualiser"}
-          </Button>
-        </div>
-      </div>
+      <AdminTabHeader
+        title={
+          language === "en" ? "Site Logs & Analytics" : "Journaux et Analytiques du Site"
+        }
+        subtitle={
+          language === "en"
+            ? "Comprehensive view of all system logs, security events, and activity"
+            : "Vue complète de tous les journaux système, événements de sécurité et activités"
+        }
+        actions={
+          <>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/60">
+              <Switch
+                checked={autoRefresh}
+                onCheckedChange={setAutoRefresh}
+                id="auto-refresh"
+              />
+              <Label htmlFor="auto-refresh" className="text-sm cursor-pointer">
+                {language === "en" ? "Auto-refresh" : "Actualisation auto"}
+              </Label>
+            </div>
+            <Button onClick={() => onRefresh(true)} disabled={loading} variant="outline">
+              {loading ? (
+                <Loader size="sm" className="mr-2" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-2" />
+              )}
+              {language === "en" ? "Refresh" : "Actualiser"}
+            </Button>
+          </>
+        }
+      />
 
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="w-5 h-5 text-primary" />
+      <div className={ADMIN_FILTERS_PANEL}>
+        <div className="mb-3 flex items-center gap-2">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">
             {language === "en" ? "Filters" : "Filtres"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label>{language === "en" ? "Log Type" : "Type de Log"}</Label>
+          </span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <Label className={ADMIN_FILTER_LABEL}>
+              {language === "en" ? "Log Type" : "Type de Log"}
+            </Label>
               <Select
                 value={logsFilters.type[0] || "all"}
                 onValueChange={(value) => {
@@ -186,8 +191,10 @@ export function LogsTab({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>{language === "en" ? "Category" : "Catégorie"}</Label>
+            <div>
+              <Label className={ADMIN_FILTER_LABEL}>
+                {language === "en" ? "Category" : "Catégorie"}
+              </Label>
               <Input
                 placeholder={language === "en" ? "Filter by category" : "Filtrer par catégorie"}
                 value={logsFilters.category}
@@ -198,8 +205,10 @@ export function LogsTab({
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>{language === "en" ? "User Role" : "Rôle Utilisateur"}</Label>
+            <div>
+              <Label className={ADMIN_FILTER_LABEL}>
+                {language === "en" ? "User Role" : "Rôle Utilisateur"}
+              </Label>
               <Select
                 value={logsFilters.userRole || "all"}
                 onValueChange={(value) => {
@@ -222,8 +231,10 @@ export function LogsTab({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>{language === "en" ? "Search" : "Recherche"}</Label>
+            <div>
+              <Label className={ADMIN_FILTER_LABEL}>
+                {language === "en" ? "Search" : "Recherche"}
+              </Label>
               <div className="flex gap-2">
                 <Input
                   placeholder={language === "en" ? "Search messages..." : "Rechercher messages..."}
@@ -246,8 +257,10 @@ export function LogsTab({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>{language === "en" ? "Start Date" : "Date de début"}</Label>
+            <div>
+              <Label className={ADMIN_FILTER_LABEL}>
+                {language === "en" ? "Start Date" : "Date de début"}
+              </Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -277,8 +290,10 @@ export function LogsTab({
               </Popover>
             </div>
 
-            <div className="space-y-2">
-              <Label>{language === "en" ? "End Date" : "Date de fin"}</Label>
+            <div>
+              <Label className={ADMIN_FILTER_LABEL}>
+                {language === "en" ? "End Date" : "Date de fin"}
+              </Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -307,9 +322,8 @@ export function LogsTab({
                 </PopoverContent>
               </Popover>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <Card className="shadow-lg">
         <CardHeader>

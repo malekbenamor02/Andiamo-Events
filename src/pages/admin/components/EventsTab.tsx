@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EventPromoCodesPanel, clearEventPromoCodesPanelCache } from "./EventPromoCodesPanel";
+import { AdminTabHeader, AdminTabCard, AdminTabCardGrid } from "./AdminTabShell";
 
 /** Add/Edit Event dialog — subtab triggers: comfortable gaps + ~44px tap height on mobile */
 const EDIT_EVENT_SUBTAB_TRIGGER =
@@ -656,8 +657,9 @@ export function EventsTab(p: EventsTabProps) {
 
   return (
     <TabsContent value="events" className="space-y-6">
-      <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-bold text-primary">Events Management</h2>
+      <AdminTabHeader
+        title="Events Management"
+        actions={
                   <Dialog open={p.isEventDialogOpen} onOpenChange={p.setIsEventDialogOpen}>
                     <DialogTrigger asChild>
                       <Button 
@@ -3917,20 +3919,17 @@ export function EventsTab(p: EventsTabProps) {
                       </div>
                     </DialogContent>
                   </Dialog>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        }
+      />
+                <AdminTabCardGrid>
                   {p.events.map((event, index) => (
-                    <Card 
-                      key={event.id}
-                      className="transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg"
-                    >
-                      <CardContent className="p-6">
+                    <AdminTabCard key={event.id}>
                         {event.poster_url && (
                           <div className="relative">
                             <img 
                               src={event.poster_url} 
                               alt={event.name} 
-                              className="w-full h-48 object-cover rounded-lg mb-4 transform transition-transform duration-300 hover:scale-105" 
+                              className="w-full h-48 object-cover rounded-lg mb-4" 
                             />
                           </div>
                         )}
@@ -3939,16 +3938,16 @@ export function EventsTab(p: EventsTabProps) {
                         </h3>
                         <div className="space-y-2 text-sm text-muted-foreground">
                           <div className="flex items-center space-x-2">
-                            <CalendarIcon className="w-4 h-4 animate-pulse" />
+                            <CalendarIcon className="w-4 h-4" />
                             <span>{formatDateDMY(event.date, p.language)}</span>
                           </div>
                           <div className="flex items-center space-x-2">
-                            <MapPin className="w-4 h-4 animate-pulse" />
+                            <MapPin className="w-4 h-4" />
                             <span>{event.venue}, {event.city}</span>
                           </div>
                           {event.passes && event.passes.length > 0 && (
                             <div className="flex items-center space-x-2">
-                              <DollarSign className="w-4 h-4 animate-pulse" />
+                              <DollarSign className="w-4 h-4" />
                               <span>
                                 {event.passes.length} {p.language === 'en' ? 'pass(es)' : 'pass(es)'} available
                               </span>
@@ -4056,10 +4055,9 @@ export function EventsTab(p: EventsTabProps) {
                             </Button>
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
+                    </AdminTabCard>
                   ))}
-                </div>
+                </AdminTabCardGrid>
                 {p.events.length === 0 && (
                   <div className="text-center py-8">
                     <p className="text-muted-foreground">{p.t.noEvents}</p>

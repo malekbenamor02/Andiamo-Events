@@ -16,7 +16,6 @@ import {
   AlertDialogHeader, 
   AlertDialogTitle 
 } from '@/components/ui/alert-dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
@@ -36,10 +35,17 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  AlertCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatDateDMY, formatDateTimeDMY } from '@/lib/date-utils';
+import { cn } from '@/lib/utils';
+import {
+  ADMIN_TABLE_HEAD,
+  ADMIN_TABLE_WRAP,
+  ADMIN_TABLE_ROW,
+  ADMIN_FILTERS_PANEL,
+  AdminTabEmpty,
+} from '@/pages/admin/components/AdminTabShell';
 
 interface Invitation {
   id: string;
@@ -474,15 +480,14 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
+      <Card className="border border-border/60">
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Mail className="h-5 w-5" />
+              <CardTitle className="text-lg font-semibold text-foreground">
                 {language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="mt-0.5">
                 {language === 'en' 
                   ? `Total: ${totalCount} invitation${totalCount !== 1 ? 's' : ''} • ${totalQrCount} QR code${totalQrCount !== 1 ? 's' : ''} generated`
                   : `Total: ${totalCount} invitation${totalCount !== 1 ? 's' : ''} • ${totalQrCount} code${totalQrCount !== 1 ? 's' : ''} QR généré${totalQrCount !== 1 ? 's' : ''}`}
@@ -501,7 +506,8 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
         </CardHeader>
         <CardContent>
           {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-4 mb-6">
+          <div className={cn(ADMIN_FILTERS_PANEL, "mb-6")}>
+            <div className="flex flex-col gap-4 sm:flex-row">
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -526,6 +532,7 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
                 <SelectItem value="failed">{language === 'en' ? 'Failed' : 'Échoué'}</SelectItem>
               </SelectContent>
             </Select>
+            </div>
           </div>
 
           {/* Table */}
@@ -534,30 +541,27 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
               <Loader size="lg" className="[background:hsl(var(--muted-foreground))]" />
             </div>
           ) : invitations.length === 0 ? (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                {language === 'en' ? 'No invitations found' : 'Aucune invitation trouvée'}
-              </AlertDescription>
-            </Alert>
+            <AdminTabEmpty
+              message={language === 'en' ? 'No invitations found' : 'Aucune invitation trouvée'}
+            />
           ) : (
-            <div className="rounded-md border">
+            <div className={ADMIN_TABLE_WRAP}>
               <Table>
                 <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[100px]">{language === 'en' ? 'Invitation #' : 'Invitation #'}</TableHead>
-                      <TableHead className="w-[180px]">{language === 'en' ? 'Guest' : 'Invité'}</TableHead>
-                      <TableHead className="w-[160px]">{language === 'en' ? 'Event' : 'Événement'}</TableHead>
-                      <TableHead className="w-[100px]">{language === 'en' ? 'Pass Type' : 'Type de Pass'}</TableHead>
-                      <TableHead className="w-[80px] text-center">{language === 'en' ? 'Codes' : 'Codes'}</TableHead>
-                      <TableHead className="w-[100px]">{language === 'en' ? 'Status' : 'Statut'}</TableHead>
-                      <TableHead className="w-[120px] hidden lg:table-cell">{language === 'en' ? 'Created' : 'Créé'}</TableHead>
-                      <TableHead className="w-[120px] text-right">{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
+                    <TableRow className={ADMIN_TABLE_ROW}>
+                      <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[100px]")}>{language === 'en' ? 'Invitation #' : 'Invitation #'}</TableHead>
+                      <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[180px]")}>{language === 'en' ? 'Guest' : 'Invité'}</TableHead>
+                      <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[160px]")}>{language === 'en' ? 'Event' : 'Événement'}</TableHead>
+                      <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[100px]")}>{language === 'en' ? 'Pass Type' : 'Type de Pass'}</TableHead>
+                      <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[80px] text-center")}>{language === 'en' ? 'Codes' : 'Codes'}</TableHead>
+                      <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[100px]")}>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
+                      <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[120px] hidden lg:table-cell")}>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
+                      <TableHead className={cn(ADMIN_TABLE_HEAD, "w-[120px] text-right")}>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {invitations.map((invitation) => (
-                      <TableRow key={invitation.id}>
+                      <TableRow key={invitation.id} className={ADMIN_TABLE_ROW}>
                         <TableCell className="font-mono font-medium">
                           {invitation.invitation_number}
                         </TableCell>
@@ -586,7 +590,7 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
                           <Badge variant="secondary" className="text-xs">{invitation.quantity}</Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="scale-90 origin-left">{getStatusBadge(invitation.status)}</div>
+                          {getStatusBadge(invitation.status)}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground hidden lg:table-cell">
                           {format(new Date(invitation.created_at), 'MMM dd, HH:mm')}

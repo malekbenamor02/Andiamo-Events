@@ -11,13 +11,20 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog";
 import { TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { User, FileText, Mail, Trash2, Settings, MessageCircle } from "lucide-react";
+import { User, FileText, Mail, Trash2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { ContactMessage } from "../types";
+import {
+  AdminTabHeader,
+  AdminTabEmpty,
+  AdminTabCard,
+  ADMIN_FILTERS_PANEL,
+  ADMIN_BTN_EDIT,
+  ADMIN_BTN_DELETE,
+} from "./AdminTabShell";
 
 export interface ContactTabProps {
   filteredContactMessages: ContactMessage[];
@@ -49,137 +56,116 @@ export function ContactTab({
   return (
     <>
       <TabsContent value="contact" className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-primary">
-            Contact Messages
-          </h2>
-          <div className="flex items-center gap-4">
-            <Badge variant="secondary" className="animate-pulse">
-              {filteredContactMessages.length} of {contactMessages.length} messages
-            </Badge>
-          </div>
-        </div>
+        <AdminTabHeader
+          title="Contact Messages"
+          subtitle={`${filteredContactMessages.length} of ${contactMessages.length} messages`}
+        />
 
-        <div>
-          <div className="relative group">
-            <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 transition-transform duration-300 group-hover:rotate-90" />
+        <div className={ADMIN_FILTERS_PANEL}>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search messages by name, email, subject, or content..."
               value={contactMessageSearchTerm}
               onChange={(e) => setContactMessageSearchTerm(e.target.value)}
-              className="pl-10 transition-all duration-300 focus:scale-105 focus:shadow-lg focus:shadow-primary/20"
+              className="border-border/60 bg-background pl-9"
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6">
-          {filteredContactMessages.map((message) => (
-            <div
-              key={message.id}
-              className="bg-card rounded-xl p-6 shadow-lg transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl hover:shadow-primary/10"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center animate-in zoom-in-95 duration-500 delay-300">
-                    <User className="w-5 h-5 text-primary" />
+        {filteredContactMessages.length > 0 ? (
+          <div className="space-y-4">
+            {filteredContactMessages.map((message) => (
+              <AdminTabCard key={message.id}>
+                <div className="mb-4 flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                      <User className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">{message.name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {message.email}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-lg">
-                      {message.name}
-                    </h3>
-                    <p className="text-muted-foreground">
-                      {message.email}
+                  <div className="text-right">
+                    <Badge variant="outline" className="mb-1">
+                      {new Date(message.created_at).toLocaleDateString()}
+                    </Badge>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(message.created_at).toLocaleTimeString()}
                     </p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <Badge variant="outline" className="mb-2">
-                    {new Date(message.created_at).toLocaleDateString()}
-                  </Badge>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(message.created_at).toLocaleTimeString()}
-                  </p>
-                </div>
-              </div>
 
-              <div className="space-y-3">
-                <div>
-                  <h4 className="font-medium text-primary mb-2 flex items-center">
-                    <FileText className="w-4 h-4 mr-2 animate-pulse" />
+                <div className="space-y-3">
+                  <h4 className="flex items-center text-sm font-medium text-primary">
+                    <FileText className="mr-2 h-4 w-4" />
                     Subject: {message.subject}
                   </h4>
+
+                  <div className="rounded-lg border border-border/60 border-l-[3px] border-l-primary bg-muted/20 p-4">
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                      {message.message}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="bg-muted/50 rounded-lg p-4 border-l-4 border-primary/20">
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {message.message}
-                  </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const messageText = `Name: ${message.name}\nEmail: ${message.email}\nSubject: ${message.subject}\nMessage: ${message.message}\nDate: ${new Date(message.created_at).toLocaleString()}`;
+                      navigator.clipboard.writeText(messageText);
+                      toast({
+                        title: "Copied to clipboard",
+                        description: "Message details copied successfully.",
+                      });
+                    }}
+                    className={ADMIN_BTN_EDIT}
+                  >
+                    <FileText className="mr-1.5 h-3.5 w-3.5" />
+                    Copy Details
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      window.open(
+                        `mailto:${message.email}?subject=Re: ${encodeURIComponent(message.subject)}`,
+                        "_blank"
+                      );
+                    }}
+                    className={ADMIN_BTN_EDIT}
+                  >
+                    <Mail className="mr-1.5 h-3.5 w-3.5" />
+                    Reply
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onOpenDelete(message)}
+                    className={ADMIN_BTN_DELETE}
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    Delete
+                  </Button>
                 </div>
-              </div>
-
-              <div className="flex gap-2 mt-4">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const messageText = `Name: ${message.name}\nEmail: ${message.email}\nSubject: ${message.subject}\nMessage: ${message.message}\nDate: ${new Date(message.created_at).toLocaleString()}`;
-                    navigator.clipboard.writeText(messageText);
-                    toast({
-                      title: "Copied to clipboard",
-                      description: "Message details copied successfully.",
-                    });
-                  }}
-                  className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group"
-                >
-                  <FileText className="w-4 h-4 mr-2 transition-transform duration-300 group-hover:rotate-12" />
-                  Copy Details
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    window.open(
-                      `mailto:${message.email}?subject=Re: ${encodeURIComponent(message.subject)}`,
-                      "_blank"
-                    );
-                  }}
-                  className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group"
-                >
-                  <Mail className="w-4 h-4 mr-2 transition-transform duration-300 group-hover:scale-110" />
-                  Reply
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => onOpenDelete(message)}
-                  className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group"
-                >
-                  <Trash2 className="w-4 h-4 mr-2 transition-transform duration-300 group-hover:rotate-12" />
-                  Delete
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {filteredContactMessages.length === 0 && contactMessages.length > 0 && (
-          <div className="text-center py-12">
-            <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
-            <h3 className="text-lg font-semibold mb-2">No messages found</h3>
-            <p className="text-muted-foreground">
-              Try adjusting your search terms.
-            </p>
+              </AdminTabCard>
+            ))}
           </div>
-        )}
-
-        {contactMessages.length === 0 && (
-          <div className="text-center py-12">
-            <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
-            <h3 className="text-lg font-semibold mb-2">No messages yet</h3>
-            <p className="text-muted-foreground">
-              Contact messages from the website will appear here.
-            </p>
-          </div>
+        ) : contactMessages.length > 0 ? (
+          <AdminTabEmpty
+            message="No messages found"
+            hint="Try adjusting your search terms."
+          />
+        ) : (
+          <AdminTabEmpty
+            message="No messages yet"
+            hint="Contact messages from the website will appear here."
+          />
         )}
       </TabsContent>
 
@@ -187,11 +173,9 @@ export function ContactTab({
         open={isDeleteMessageDialogOpen}
         onOpenChange={setIsDeleteMessageDialogOpen}
       >
-        <DialogContent className="animate-in zoom-in-95 duration-300">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              Delete Message
-            </DialogTitle>
+            <DialogTitle>Delete Message</DialogTitle>
           </DialogHeader>
           <div>
             <p className="mb-4">
@@ -199,8 +183,8 @@ export function ContactTab({
               undone.
             </p>
             {messageToDelete && (
-              <div className="bg-muted/50 rounded-lg p-4 mb-4">
-                <div className="flex justify-between items-start mb-2">
+              <div className="mb-4 rounded-lg border border-border/60 border-l-[3px] border-l-primary bg-muted/20 p-4">
+                <div className="mb-2 flex items-start justify-between">
                   <div>
                     <p className="font-semibold">{messageToDelete.name}</p>
                     <p className="text-sm text-muted-foreground">
@@ -213,31 +197,21 @@ export function ContactTab({
                     ).toLocaleDateString()}
                   </Badge>
                 </div>
-                <p className="text-sm font-medium text-primary mb-1">
+                <p className="mb-1 text-sm font-medium text-primary">
                   Subject: {messageToDelete.subject}
                 </p>
-                <p className="text-sm text-muted-foreground line-clamp-2">
+                <p className="line-clamp-2 text-sm text-muted-foreground">
                   {messageToDelete.message}
                 </p>
               </div>
             )}
           </div>
-          <div className="flex justify-end gap-2 mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCloseDelete}
-              className="transform hover:scale-105 transition-all duration-300"
-            >
+          <div className="mt-6 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onCloseDelete}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={onConfirmDelete}
-              className="transform hover:scale-105 transition-all duration-300"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
+            <Button type="button" variant="destructive" onClick={onConfirmDelete}>
+              <Trash2 className="mr-2 h-4 w-4" />
               Delete Message
             </Button>
           </div>

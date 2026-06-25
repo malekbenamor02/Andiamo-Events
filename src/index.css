@@ -229,39 +229,49 @@
   outline: none !important;
 }
 
-/* Admin dashboard: navigation list scrollbar (brand red) */
+/* Admin dashboard sidebar navigation */
 .admin-nav-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: hsl(var(--primary)) hsl(var(--muted));
+  scrollbar-color: hsl(var(--border)) transparent;
 }
 .admin-nav-scrollbar::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 .admin-nav-scrollbar::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
-  border-radius: 4px;
+  background: transparent;
 }
 .admin-nav-scrollbar::-webkit-scrollbar-thumb {
-  background: hsl(var(--primary));
-  border-radius: 4px;
+  background: hsl(var(--border));
+  border-radius: 999px;
 }
 .admin-nav-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--primary) / 0.85);
+  background: hsl(var(--muted-foreground) / 0.35);
 }
 
-/* Desktop admin sidebar: nav label + icon turn brand red on hover; active tab stays red */
 .admin-sidebar-nav-item {
   color: hsl(var(--muted-foreground));
-  transition: color 0.1s ease;
+  border-left: 2px solid transparent;
+  transition:
+    color 0.12s ease,
+    background-color 0.12s ease,
+    border-color 0.12s ease;
 }
-.admin-sidebar-nav-item:hover {
-  color: hsl(var(--primary));
+.admin-sidebar-nav-item:hover:not(:disabled) {
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--muted) / 0.35);
 }
 .admin-sidebar-nav-item[data-active="true"] {
-  color: hsl(var(--primary));
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--muted) / 0.5);
+  border-left-color: hsl(var(--primary));
 }
 .admin-sidebar-nav-item svg {
   color: inherit;
+  opacity: 0.75;
+}
+.admin-sidebar-nav-item[data-active="true"] svg,
+.admin-sidebar-nav-item:hover:not(:disabled) svg {
+  opacity: 1;
 }
 
 /* Main document scrollbar (viewport) — brand red, dark track */

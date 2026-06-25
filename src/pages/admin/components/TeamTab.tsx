@@ -18,6 +18,14 @@ import {
 import { TabsContent } from "@/components/ui/tabs";
 import { Plus, Edit, Trash2, Save, Upload } from "lucide-react";
 import type { TeamMember } from "../types";
+import {
+  AdminTabHeader,
+  AdminTabEmpty,
+  AdminTabCard,
+  AdminTabCardGrid,
+  ADMIN_BTN_EDIT,
+  ADMIN_BTN_DELETE,
+} from "./AdminTabShell";
 
 export interface TeamTabProps {
   teamMembers: TeamMember[];
@@ -54,90 +62,84 @@ export function TeamTab({
 }: TeamTabProps) {
   return (
     <TabsContent value="team" className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-primary">
-          Team Members
-        </h2>
-        <Button
-          variant="default"
-          onClick={onOpenAdd}
-          className="transform hover:scale-105 transition-all duration-300"
-        >
-          <Plus className="w-4 h-4 mr-2 animate-pulse" />
-          Add Team Member
-        </Button>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full px-2">
-        {teamMembers.map((member) => (
-          <div
-            key={member.id}
-            className="rounded-xl bg-card p-6 shadow-lg flex flex-col items-center justify-center transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
-          >
-            {member.photo_url && (
-              <div className="animate-in zoom-in-95 duration-500 delay-200">
+      <AdminTabHeader
+        title="Team Members"
+        subtitle={
+          teamMembers.length > 0
+            ? `${teamMembers.length} member${teamMembers.length === 1 ? "" : "s"}`
+            : undefined
+        }
+        actions={
+          <Button size="sm" onClick={onOpenAdd} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Add Team Member
+          </Button>
+        }
+      />
+
+      {teamMembers.length > 0 ? (
+        <AdminTabCardGrid>
+          {teamMembers.map((member) => (
+            <AdminTabCard
+              key={member.id}
+              className="items-center text-center"
+            >
+              {member.photo_url && (
                 <img
                   src={member.photo_url}
                   alt={member.name}
-                  className="w-24 h-24 object-cover mb-3 rounded-full transform transition-transform duration-300 hover:scale-110"
+                  className="mb-3 h-24 w-24 rounded-full object-cover"
                 />
-              </div>
-            )}
-            <h3 className="font-semibold mb-1">
-              {member.name}
-            </h3>
-            <p className="text-xs text-muted-foreground mb-1">
-              {member.role}
-            </p>
-            {member.bio && (
-              <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
-                {member.bio}
-              </p>
-            )}
-            {member.social_url && (
-              <div>
+              )}
+              <h3 className="font-semibold">{member.name}</h3>
+              <p className="text-xs text-muted-foreground">{member.role}</p>
+              {member.bio && (
+                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                  {member.bio}
+                </p>
+              )}
+              {member.social_url && (
                 <a
                   href={member.social_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary hover:underline text-xs mb-2 transform hover:scale-105 transition-all duration-300"
+                  className="mt-1 text-xs text-primary hover:underline"
                 >
                   Social
                 </a>
+              )}
+              <div className="mt-3 flex justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onOpenEdit(member)}
+                  className={ADMIN_BTN_EDIT}
+                >
+                  <Edit className="mr-1.5 h-3.5 w-3.5" />
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onOpenDelete(member)}
+                  className={ADMIN_BTN_DELETE}
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  Delete
+                </Button>
               </div>
-            )}
-            <div className="flex gap-2 mt-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onOpenEdit(member)}
-                className="transform hover:scale-105 transition-all duration-300"
-              >
-                <Edit className="w-4 h-4 mr-2" />
-                Edit
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => onOpenDelete(member)}
-                className="transform hover:scale-105 transition-all duration-300"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-      {teamMembers.length === 0 && (
-        <div className="text-center py-8">
-          <p className="text-muted-foreground animate-pulse">
-            No team members found
-          </p>
-        </div>
+            </AdminTabCard>
+          ))}
+        </AdminTabCardGrid>
+      ) : (
+        <AdminTabEmpty
+          message="No team members found"
+          hint="Add your first team member to get started."
+        />
       )}
 
       <Dialog open={isTeamDialogOpen} onOpenChange={setIsTeamDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingTeamMember?.id
@@ -158,7 +160,6 @@ export function TeamTab({
                     )
                   }
                   required
-                  className="transition-all duration-300 focus:scale-105"
                 />
               </div>
               <div>
@@ -172,7 +173,6 @@ export function TeamTab({
                     )
                   }
                   required
-                  className="transition-all duration-300 focus:scale-105"
                 />
               </div>
               <div>
@@ -185,20 +185,17 @@ export function TeamTab({
                       prev ? { ...prev, bio: e.target.value } : null
                     )
                   }
-                  className="transition-all duration-300 focus:scale-105"
                 />
               </div>
               <div>
                 <Label htmlFor="memberPhoto">Photo</Label>
                 <div className="space-y-2">
                   {editingTeamMember?.photo_url && (
-                    <div className="animate-in zoom-in-95 duration-300">
-                      <img
-                        src={editingTeamMember.photo_url}
-                        alt="Current photo"
-                        className="w-20 h-20 object-cover rounded-lg border-2 border-border"
-                      />
-                    </div>
+                    <img
+                      src={editingTeamMember.photo_url}
+                      alt="Current photo"
+                      className="h-20 w-20 rounded-lg border border-border/60 object-cover"
+                    />
                   )}
                   <div className="flex items-center gap-2">
                     <Input
@@ -218,7 +215,6 @@ export function TeamTab({
                           reader.readAsDataURL(file);
                         }
                       }}
-                      className="transition-all duration-300 focus:scale-105"
                     />
                     <Button
                       type="button"
@@ -230,9 +226,8 @@ export function TeamTab({
                         ) as HTMLInputElement;
                         input?.click();
                       }}
-                      className="transform hover:scale-105 transition-all duration-300"
                     >
-                      <Upload className="w-4 h-4 mr-2" />
+                      <Upload className="mr-2 h-4 w-4" />
                       Upload
                     </Button>
                   </div>
@@ -249,24 +244,15 @@ export function TeamTab({
                       prev ? { ...prev, social_url: e.target.value } : null
                     )
                   }
-                  className="transition-all duration-300 focus:scale-105"
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-6">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onCloseAddEdit}
-                className="transform hover:scale-105 transition-all duration-300"
-              >
+            <div className="mt-6 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onCloseAddEdit}>
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                className="transform hover:scale-105 transition-all duration-300"
-              >
-                <Save className="w-4 h-4 mr-2 animate-pulse" />
+              <Button type="submit" className="gap-2">
+                <Save className="h-4 w-4" />
                 Save
               </Button>
             </div>
@@ -278,33 +264,19 @@ export function TeamTab({
         open={isDeleteTeamDialogOpen}
         onOpenChange={setIsDeleteTeamDialogOpen}
       >
-        <DialogContent className="animate-in zoom-in-95 duration-300">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              Delete Team Member
-            </DialogTitle>
+            <DialogTitle>Delete Team Member</DialogTitle>
           </DialogHeader>
-          <p>
-            Are you sure you want to delete this team member?
-          </p>
-          <div className="flex justify-end gap-2 mt-4">
+          <p>Are you sure you want to delete this team member?</p>
+          <div className="mt-4 flex justify-end gap-2">
             <DialogClose asChild>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onCloseDelete}
-                className="transform hover:scale-105 transition-all duration-300"
-              >
+              <Button type="button" variant="outline" onClick={onCloseDelete}>
                 Cancel
               </Button>
             </DialogClose>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={onConfirmDelete}
-              className="transform hover:scale-105 transition-all duration-300"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
+            <Button type="button" variant="destructive" onClick={onConfirmDelete}>
+              <Trash2 className="mr-2 h-4 w-4" />
               Delete
             </Button>
           </div>
