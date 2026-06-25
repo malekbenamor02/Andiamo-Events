@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { CheckCircle, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { AcademyRegistrationSuccessScreen } from '@/components/academy/AcademyRegistrationSuccessScreen';
 import { PageMeta } from '@/components/PageMeta';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import NotFound from '@/pages/NotFound';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
-import { ACADEMY_REGISTER_PATH, isAcademyRegistrationId } from '@/lib/academy/academyUtils';
+import {
+  ACADEMY_REGISTER_PATH,
+  isAcademyRegistrationId,
+  type AcademyRegistrationConfirmationLocationState,
+} from '@/lib/academy/academyUtils';
 import type { AcademyLanguage } from '@/types/academy';
 
 interface AcademyRegistrationConfirmationProps {
@@ -15,17 +18,56 @@ interface AcademyRegistrationConfirmationProps {
 
 type ConfirmationState = 'loading' | 'ready' | 'missing';
 
+function resolveInitialConfirmation(
+  registrationId: string,
+  navState: AcademyRegistrationConfirmationLocationState | null,
+  paidFromQuery: boolean
+): {
+  pageState: ConfirmationState;
+  status: string | null;
+  registrationNumber: string | null;
+} {
+  if (!isAcademyRegistrationId(registrationId)) {
+    return { pageState: 'missing', status: null, registrationNumber: null };
+  }
+
+  const hasNavData =
+    navState?.fromSubmission === true ||
+    typeof navState?.registrationNumber === 'string' ||
+    typeof navState?.status === 'string';
+
+  if (hasNavData || paidFromQuery) {
+    return {
+      pageState: 'ready',
+      status: paidFromQuery
+        ? navState?.status ?? 'paid_online'
+        : navState?.status ?? null,
+      registrationNumber: navState?.registrationNumber ?? null,
+    };
+  }
+
+  return { pageState: 'loading', status: null, registrationNumber: null };
+}
+
 export default function AcademyRegistrationConfirmation({
   language,
 }: AcademyRegistrationConfirmationProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const rawRegistrationId = searchParams.get('registrationId');
   const registrationId = rawRegistrationId?.trim() ?? '';
-  const [pageState, setPageState] = useState<ConfirmationState>(() =>
-    isAcademyRegistrationId(registrationId) ? 'loading' : 'missing'
+  const paidFromQuery = searchParams.get('paid') === '1';
+  const navState = (location.state as AcademyRegistrationConfirmationLocationState | null) ?? null;
+
+  const [initial] = useState(() =>
+    resolveInitialConfirmation(registrationId, navState, paidFromQuery)
   );
-  const [status, setStatus] = useState<string | null>(null);
-  const [registrationNumber, setRegistrationNumber] = useState<string | null>(null);
+  const [pageState, setPageState] = useState<ConfirmationState>(initial.pageState);
+  const [status, setStatus] = useState<string | null>(initial.status);
+  const [registrationNumber, setRegistrationNumber] = useState<string | null>(
+    initial.registrationNumber
+  );
 
   useEffect(() => {
     if (!isAcademyRegistrationId(registrationId)) {
@@ -34,7 +76,6 @@ export default function AcademyRegistrationConfirmation({
     }
 
     let cancelled = false;
-    setPageState('loading');
 
     fetch(`${getApiBaseUrl()}${API_ROUTES.ACADEMY_REGISTRATION_STATUS(registrationId)}`)
       .then(async (res) => {
@@ -72,8 +113,16 @@ export default function AcademyRegistrationConfirmation({
     return <NotFound />;
   }
 
+  const message = isOnlineSuccess
+    ? isEn
+      ? 'Thank you! Your online payment was confirmed. We will email you with next steps.'
+      : 'Merci ! Votre paiement en ligne a été confirmé. Nous vous enverrons les prochaines étapes par e-mail.'
+    : isEn
+      ? 'We received your registration. Our team will validate your payment as soon as possible and contact you by email.'
+      : 'Nous avons bien reçu votre inscription. Notre équipe validera votre paiement dans les plus brefs délais et vous contactera par e-mail.';
+
   return (
-    <div className="max-w-lg mx-auto px-4 py-16 text-center">
+    <>
       <PageMeta
         title={isEn ? 'Registration confirmation' : 'Confirmation d\'inscription'}
         description={
@@ -84,31 +133,13 @@ export default function AcademyRegistrationConfirmation({
         path="/academy/register/confirmation"
         noIndex
       />
-      {isOnlineSuccess ? (
-        <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-6" />
-      ) : (
-        <Clock className="w-16 h-16 text-primary mx-auto mb-6" />
-      )}
-      <h1 className="text-2xl font-heading font-bold mb-4">
-        {isEn ? 'Registration received' : 'Inscription enregistrée'}
-      </h1>
-      {registrationNumber && (
-        <p className="text-sm text-muted-foreground mb-4">
-          {isEn ? 'Reference' : 'Référence'}: <strong>{registrationNumber}</strong>
-        </p>
-      )}
-      <p className="text-muted-foreground mb-8 leading-relaxed">
-        {isOnlineSuccess
-          ? isEn
-            ? 'Thank you! Your online payment was confirmed. We will email you with next steps.'
-            : 'Merci ! Votre paiement en ligne a été confirmé. Nous vous enverrons les prochaines étapes par e-mail.'
-          : isEn
-            ? 'We received your registration. Our team will validate your payment as soon as possible and contact you by email.'
-            : 'Nous avons bien reçu votre inscription. Notre équipe validera votre paiement dans les plus brefs délais et vous contactera par e-mail.'}
-      </p>
-      <Button asChild variant="outline">
-        <Link to={ACADEMY_REGISTER_PATH}>{isEn ? 'Back to Academy' : 'Retour à l\'Academy'}</Link>
-      </Button>
-    </div>
+      <AcademyRegistrationSuccessScreen
+        registrationNumber={registrationNumber}
+        message={message}
+        isOnlineSuccess={isOnlineSuccess}
+        onBackToAcademy={() => navigate(ACADEMY_REGISTER_PATH)}
+        language={language}
+      />
+    </>
   );
 }

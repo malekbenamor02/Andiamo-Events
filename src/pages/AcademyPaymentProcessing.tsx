@@ -129,7 +129,15 @@ export default function AcademyPaymentProcessing({ language = 'fr' }: AcademyPay
           setState('success');
           navigate(
             `/academy/register/confirmation?registrationId=${registrationId}&paid=1`,
-            { replace: true }
+            {
+              replace: true,
+              state: {
+                fromSubmission: true,
+                registrationNumber:
+                  typeof data.registrationNumber === 'string' ? data.registrationNumber : null,
+                status: typeof data.status === 'string' ? data.status : 'paid_online',
+              },
+            }
           );
         } else if (res.status === 410 || data.error === 'registration_expired') {
           setState('expired');

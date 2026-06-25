@@ -381,7 +381,14 @@ export function useAcademyRegistration(
               trackConfirmedPurchase(fallbackPayload);
             }
           }
-          navigate(`/academy/register/confirmation?registrationId=${registrationId}`);
+          navigate(`/academy/register/confirmation?registrationId=${registrationId}`, {
+            state: {
+              fromSubmission: true,
+              registrationNumber:
+                typeof data.registrationNumber === 'string' ? data.registrationNumber : null,
+              status: typeof data.status === 'string' ? data.status : null,
+            },
+          });
         }
       } catch (err: unknown) {
         const mapped = mapThrownError(err, language);

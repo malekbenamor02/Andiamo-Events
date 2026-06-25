@@ -125,7 +125,7 @@ function academyPlainTextLines(reg, lines) {
   ].join('\n');
 }
 
-function wrapAcademyEmail({ title, subtitle, bodyHtml, includeLogo = true }) {
+function wrapAcademyEmail({ title, subtitle, bodyHtml, includeLogo = false }) {
   const logoHeader = includeLogo ? academyEmailLogoHeaderHtml() : '';
   return `<!DOCTYPE html>
 <html>

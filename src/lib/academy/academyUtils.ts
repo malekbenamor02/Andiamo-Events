@@ -41,3 +41,10 @@ const ACADEMY_REGISTRATION_ID_RE = /^[0-9a-f-]{36}$/i;
 export function isAcademyRegistrationId(value: string | null | undefined): value is string {
   return typeof value === 'string' && ACADEMY_REGISTRATION_ID_RE.test(value.trim());
 }
+
+/** Passed via react-router location.state after form submit or payment return. */
+export type AcademyRegistrationConfirmationLocationState = {
+  fromSubmission?: boolean;
+  registrationNumber?: string | null;
+  status?: string | null;
+};

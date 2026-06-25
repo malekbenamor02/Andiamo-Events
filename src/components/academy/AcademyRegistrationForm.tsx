@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, Loader2, Tag, Upload, X } from 'lucide-react';
 import AcademyPaymentMethodIcon from '@/components/academy/AcademyPaymentMethodIcon';
@@ -69,6 +69,11 @@ function FormField({ id, label, error, children, hint }: FieldProps) {
 const AcademyRegistrationForm = ({ language, selectedFormula }: AcademyRegistrationFormProps) => {
   const { form } = ACADEMY_UI;
   const paymentProofInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    void import('@/pages/AcademyRegistrationConfirmation');
+  }, []);
+
   const {
     formData,
     errors,
