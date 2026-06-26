@@ -36,6 +36,8 @@ export interface ApplicationsTabProps {
   ambassadors: Ambassador[];
   applicationSearchTerm: string;
   setApplicationSearchTerm: (v: string) => void;
+  applicationInstagramFilter: string;
+  setApplicationInstagramFilter: (v: string) => void;
   applicationStatusFilter: string;
   setApplicationStatusFilter: (v: string) => void;
   applicationCityFilter: string;

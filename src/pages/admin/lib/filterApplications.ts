@@ -6,12 +6,42 @@ import type { AmbassadorApplication } from '../types';
 
 export interface ApplicationFilterParams {
   searchTerm: string;
+  instagramFilter: string;
   statusFilter: string;
   cityFilter: string;
   villeFilter: string;
   dateFrom?: Date;
   dateTo?: Date;
   ambassadorMap: Map<string, { ville?: string }>;
+}
+
+/** Normalize Instagram username or URL for comparison. */
+export function normalizeInstagramForFilter(input: string): string {
+  let value = input.trim().toLowerCase();
+  if (!value) return '';
+  value = value.replace(/^@/, '');
+  value = value.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '');
+  value = value.replace(/^instagram\.com\//i, '');
+  value = value.replace(/\/$/, '');
+  value = value.split('?')[0];
+  value = value.split('/')[0];
+  return value;
+}
+
+function matchesInstagramFilter(
+  socialLink: string | null | undefined,
+  query: string,
+): boolean {
+  const normalizedQuery = normalizeInstagramForFilter(query);
+  if (!normalizedQuery) return true;
+  if (!socialLink?.trim()) return false;
+
+  const linkLower = socialLink.trim().toLowerCase();
+  const normalizedLink = normalizeInstagramForFilter(socialLink);
+
+  return (
+    normalizedLink.includes(normalizedQuery) || linkLower.includes(normalizedQuery)
+  );
 }
 
 export function filterAmbassadorApplications(
@@ -74,6 +104,10 @@ export function filterAmbassadorApplications(
         (application.email && application.email.toLowerCase().includes(searchLower)) ||
         application.phone_number.includes(searchLower);
       if (!matchesSearch) return false;
+    }
+
+    if (!matchesInstagramFilter(application.social_link, params.instagramFilter)) {
+      return false;
     }
 
     return true;

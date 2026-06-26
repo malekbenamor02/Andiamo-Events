@@ -38,6 +38,8 @@ export type ApplicationSelectionsPanelProps = Omit<
   | "filteredApplications"
   | "applicationSearchTerm"
   | "setApplicationSearchTerm"
+  | "applicationInstagramFilter"
+  | "setApplicationInstagramFilter"
   | "applicationStatusFilter"
   | "setApplicationStatusFilter"
   | "applicationCityFilter"
@@ -103,6 +105,7 @@ export function ApplicationSelectionsPanel({
   const [exportingSelectionId, setExportingSelectionId] = useState<string | null>(null);
 
   const [selectionSearchTerm, setSelectionSearchTerm] = useState("");
+  const [selectionInstagramFilter, setSelectionInstagramFilter] = useState("");
   const [selectionStatusFilter, setSelectionStatusFilter] = useState("pending");
   const [selectionCityFilter, setSelectionCityFilter] = useState("all");
   const [selectionVilleFilter, setSelectionVilleFilter] = useState("all");
@@ -170,6 +173,7 @@ export function ApplicationSelectionsPanel({
     () =>
       filterAmbassadorApplications(selectionBaseApps, {
         searchTerm: selectionSearchTerm,
+        instagramFilter: selectionInstagramFilter,
         statusFilter: selectionStatusFilter,
         cityFilter: selectionCityFilter,
         villeFilter: selectionVilleFilter,
@@ -180,6 +184,7 @@ export function ApplicationSelectionsPanel({
     [
       selectionBaseApps,
       selectionSearchTerm,
+      selectionInstagramFilter,
       selectionStatusFilter,
       selectionCityFilter,
       selectionVilleFilter,
@@ -695,6 +700,8 @@ export function ApplicationSelectionsPanel({
             ambassadors={ambassadors}
             applicationSearchTerm={selectionSearchTerm}
             setApplicationSearchTerm={setSelectionSearchTerm}
+            applicationInstagramFilter={selectionInstagramFilter}
+            setApplicationInstagramFilter={setSelectionInstagramFilter}
             applicationStatusFilter={selectionStatusFilter}
             setApplicationStatusFilter={setSelectionStatusFilter}
             applicationCityFilter={selectionCityFilter}

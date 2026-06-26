@@ -135,6 +135,8 @@ export function ApplicationsListCore({
   ambassadors,
   applicationSearchTerm,
   setApplicationSearchTerm,
+  applicationInstagramFilter,
+  setApplicationInstagramFilter,
   applicationStatusFilter,
   setApplicationStatusFilter,
   applicationCityFilter,
@@ -284,6 +286,20 @@ export function ApplicationsListCore({
           />
         </div>
 
+        <div className="relative">
+          <Instagram className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder={
+              language === "en"
+                ? "Filter by Instagram username or link…"
+                : "Filtrer par nom d'utilisateur ou lien Instagram…"
+            }
+            value={applicationInstagramFilter}
+            onChange={(e) => setApplicationInstagramFilter(e.target.value)}
+            className="h-9 border-border/60 bg-background pl-9"
+          />
+        </div>
+
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex min-w-[140px] flex-col gap-1">
             <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -420,7 +436,8 @@ export function ApplicationsListCore({
 
           {(applicationStatusFilter !== "pending" ||
             applicationCityFilter !== "all" ||
-            applicationVilleFilter !== "all") && (
+            applicationVilleFilter !== "all" ||
+            applicationInstagramFilter.trim()) && (
             <Button
               variant="ghost"
               size="sm"
@@ -428,6 +445,7 @@ export function ApplicationsListCore({
                 setApplicationStatusFilter("pending");
                 setApplicationCityFilter("all");
                 setApplicationVilleFilter("all");
+                setApplicationInstagramFilter("");
               }}
               className="h-9 text-xs text-muted-foreground"
             >
@@ -954,17 +972,24 @@ export function ApplicationsListCore({
               {filteredApplications.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={tableColSpan} className="text-center py-8">
-                    {applicationSearchTerm ? (
+                    {applicationSearchTerm || applicationInstagramFilter.trim() ? (
                       <div className="space-y-2">
                         <p className="text-sm text-muted-foreground">
                           {language === "en"
-                            ? `No results for "${applicationSearchTerm}"`
-                            : `Aucun résultat pour « ${applicationSearchTerm} »`}
+                            ? applicationInstagramFilter.trim()
+                              ? `No results for Instagram "${applicationInstagramFilter.trim()}"`
+                              : `No results for "${applicationSearchTerm}"`
+                            : applicationInstagramFilter.trim()
+                              ? `Aucun résultat pour Instagram « ${applicationInstagramFilter.trim()} »`
+                              : `Aucun résultat pour « ${applicationSearchTerm} »`}
                         </p>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setApplicationSearchTerm("")}
+                          onClick={() => {
+                            setApplicationSearchTerm("");
+                            setApplicationInstagramFilter("");
+                          }}
                         >
                           {language === "en" ? "Clear search" : "Effacer la recherche"}
                         </Button>
