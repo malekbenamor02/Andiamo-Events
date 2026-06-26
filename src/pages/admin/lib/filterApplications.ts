@@ -6,7 +6,6 @@ import type { AmbassadorApplication } from '../types';
 
 export interface ApplicationFilterParams {
   searchTerm: string;
-  instagramFilter: string;
   statusFilter: string;
   cityFilter: string;
   villeFilter: string;
@@ -28,19 +27,20 @@ export function normalizeInstagramForFilter(input: string): string {
   return value;
 }
 
-function matchesInstagramFilter(
+function matchesInstagramSearch(
   socialLink: string | null | undefined,
   query: string,
 ): boolean {
-  const normalizedQuery = normalizeInstagramForFilter(query);
-  if (!normalizedQuery) return true;
   if (!socialLink?.trim()) return false;
 
   const linkLower = socialLink.trim().toLowerCase();
+  const normalizedQuery = normalizeInstagramForFilter(query);
   const normalizedLink = normalizeInstagramForFilter(socialLink);
 
   return (
-    normalizedLink.includes(normalizedQuery) || linkLower.includes(normalizedQuery)
+    linkLower.includes(query) ||
+    (normalizedQuery.length > 0 &&
+      (normalizedLink.includes(normalizedQuery) || linkLower.includes(normalizedQuery)))
   );
 }
 
@@ -102,12 +102,9 @@ export function filterAmbassadorApplications(
       const matchesSearch =
         application.full_name.toLowerCase().includes(searchLower) ||
         (application.email && application.email.toLowerCase().includes(searchLower)) ||
-        application.phone_number.includes(searchLower);
+        application.phone_number.includes(searchLower) ||
+        matchesInstagramSearch(application.social_link, searchLower);
       if (!matchesSearch) return false;
-    }
-
-    if (!matchesInstagramFilter(application.social_link, params.instagramFilter)) {
-      return false;
     }
 
     return true;

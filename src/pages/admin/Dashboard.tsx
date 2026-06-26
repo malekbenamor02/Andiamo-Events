@@ -501,7 +501,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [teamMemberToDelete, setTeamMemberToDelete] = useState(null);
 
   const [applicationSearchTerm, setApplicationSearchTerm] = useState('');
-  const [applicationInstagramFilter, setApplicationInstagramFilter] = useState('');
   const [applicationDateFrom, setApplicationDateFrom] = useState<Date | undefined>(undefined);
   const [applicationDateTo, setApplicationDateTo] = useState<Date | undefined>(undefined);
   const [applicationCityFilter, setApplicationCityFilter] = useState<string>('all');
@@ -1627,7 +1626,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     () =>
       filterAmbassadorApplications(applications, {
         searchTerm: applicationSearchTerm,
-        instagramFilter: applicationInstagramFilter,
         statusFilter: applicationStatusFilter,
         cityFilter: applicationCityFilter,
         villeFilter: applicationVilleFilter,
@@ -1641,7 +1639,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       applicationCityFilter,
       applicationVilleFilter,
       applicationSearchTerm,
-      applicationInstagramFilter,
       applicationDateFrom,
       applicationDateTo,
       ambassadorMap,
@@ -9570,8 +9567,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 ambassadors={ambassadors}
                 applicationSearchTerm={applicationSearchTerm}
                 setApplicationSearchTerm={setApplicationSearchTerm}
-                applicationInstagramFilter={applicationInstagramFilter}
-                setApplicationInstagramFilter={setApplicationInstagramFilter}
                 applicationStatusFilter={applicationStatusFilter}
                 setApplicationStatusFilter={setApplicationStatusFilter}
                 applicationCityFilter={applicationCityFilter}
