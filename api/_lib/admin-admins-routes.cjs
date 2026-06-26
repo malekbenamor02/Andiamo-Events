@@ -59,6 +59,39 @@ async function writeTabAccessAudit(supabaseService, actor, targetAdminId, before
   }
 }
 
+async function applyTabAccessUpdate(
+  supabaseService,
+  adminId,
+  role,
+  allowed_tab_keys,
+  mobile_tab_keys,
+  actor,
+  beforeSummary
+) {
+  const validation = validateAdminTabAccessPayload(
+    { role, allowed_tab_keys, mobile_tab_keys },
+    ADMIN_TAB_DEFINITIONS
+  );
+  if (!validation.ok || validation.unchanged) {
+    return validation;
+  }
+
+  if (validation.clearConfig) {
+    await replaceTabAccess(supabaseService, adminId, []);
+  } else if (validation.rows) {
+    await replaceTabAccess(supabaseService, adminId, validation.rows);
+  }
+
+  const afterTabRows = await loadTabRowsByAdminIds(supabaseService, [adminId]);
+  const afterSummary = tabAccessSummaryFromRows(
+    afterTabRows.get(adminId) || [],
+    ADMIN_TAB_DEFINITIONS,
+    { role }
+  );
+  await writeTabAccessAudit(supabaseService, actor, adminId, beforeSummary, afterSummary);
+  return validation;
+}
+
 function assertSuperAdminCanConfigureTabs(req, res) {
   if (req.admin.role !== 'super_admin') {
     res.status(403).json({ error: 'Only super admins can configure tab access' });
@@ -98,7 +131,9 @@ function registerAdminAdminsRoutes(app, deps) {
 
         const enriched = admins.map((admin) => ({
           ...admin,
-          tab_access: tabAccessSummaryFromRows(tabMap.get(admin.id) || [], ADMIN_TAB_DEFINITIONS),
+          tab_access: tabAccessSummaryFromRows(tabMap.get(admin.id) || [], ADMIN_TAB_DEFINITIONS, {
+            role: admin.role,
+          }),
         }));
 
         return res.json({ success: true, data: enriched });
@@ -156,29 +191,28 @@ function registerAdminAdminsRoutes(app, deps) {
           return res.status(400).json({ error: error.message });
         }
 
-        if (tabFieldsInBody(req.body) && adminRole === 'admin') {
-          const validation = validateAdminTabAccessPayload(
-            { role: adminRole, allowed_tab_keys, mobile_tab_keys },
-            ADMIN_TAB_DEFINITIONS
+        if (tabFieldsInBody(req.body)) {
+          const beforeSummary = tabAccessSummaryFromRows([], ADMIN_TAB_DEFINITIONS, {
+            role: adminRole,
+          });
+          const tabResult = await applyTabAccessUpdate(
+            supabaseService,
+            data.id,
+            adminRole,
+            allowed_tab_keys,
+            mobile_tab_keys,
+            req.admin,
+            beforeSummary
           );
-          if (validation.ok && !validation.unchanged) {
-            if (validation.clearConfig) {
-              await replaceTabAccess(supabaseService, data.id, []);
-            } else if (validation.rows) {
-              await replaceTabAccess(supabaseService, data.id, validation.rows);
-              await writeTabAccessAudit(
-                supabaseService,
-                req.admin,
-                data.id,
-                tabAccessSummaryFromRows([], ADMIN_TAB_DEFINITIONS),
-                tabAccessSummaryFromRows(validation.rows, ADMIN_TAB_DEFINITIONS)
-              );
-            }
+          if (tabResult && !tabResult.ok) {
+            return res.status(400).json({ error: tabResult.error });
           }
         }
 
         const tabRows = await loadTabRowsByAdminIds(supabaseService, [data.id]);
-        const tab_access = tabAccessSummaryFromRows(tabRows.get(data.id) || [], ADMIN_TAB_DEFINITIONS);
+        const tab_access = tabAccessSummaryFromRows(tabRows.get(data.id) || [], ADMIN_TAB_DEFINITIONS, {
+          role: data.role,
+        });
 
         return res.status(201).json({
           success: true,
@@ -243,7 +277,8 @@ function registerAdminAdminsRoutes(app, deps) {
         const beforeTabRows = await loadTabRowsByAdminIds(supabaseService, [existing.id]);
         const beforeSummary = tabAccessSummaryFromRows(
           beforeTabRows.get(existing.id) || [],
-          ADMIN_TAB_DEFINITIONS
+          ADMIN_TAB_DEFINITIONS,
+          { role: existing.role }
         );
 
         if (hasAdminFields) {
@@ -256,31 +291,18 @@ function registerAdminAdminsRoutes(app, deps) {
           }
         }
 
-        if (targetRole === 'super_admin') {
-          await replaceTabAccess(supabaseService, req.params.id, []);
-        } else if (hasTabFields) {
-          const validation = validateAdminTabAccessPayload(
-            { role: targetRole, allowed_tab_keys, mobile_tab_keys },
-            ADMIN_TAB_DEFINITIONS
+        if (hasTabFields) {
+          const tabResult = await applyTabAccessUpdate(
+            supabaseService,
+            req.params.id,
+            targetRole,
+            allowed_tab_keys,
+            mobile_tab_keys,
+            req.admin,
+            beforeSummary
           );
-          if (validation.ok && !validation.unchanged) {
-            if (validation.clearConfig) {
-              await replaceTabAccess(supabaseService, req.params.id, []);
-            } else if (validation.rows) {
-              await replaceTabAccess(supabaseService, req.params.id, validation.rows);
-            }
-            const afterTabRows = await loadTabRowsByAdminIds(supabaseService, [req.params.id]);
-            const afterSummary = tabAccessSummaryFromRows(
-              afterTabRows.get(req.params.id) || [],
-              ADMIN_TAB_DEFINITIONS
-            );
-            await writeTabAccessAudit(
-              supabaseService,
-              req.admin,
-              req.params.id,
-              beforeSummary,
-              afterSummary
-            );
+          if (tabResult && !tabResult.ok) {
+            return res.status(400).json({ error: tabResult.error });
           }
         }
 
@@ -294,7 +316,9 @@ function registerAdminAdminsRoutes(app, deps) {
         }
 
         const tabRows = await loadTabRowsByAdminIds(supabaseService, [data.id]);
-        const tab_access = tabAccessSummaryFromRows(tabRows.get(data.id) || [], ADMIN_TAB_DEFINITIONS);
+        const tab_access = tabAccessSummaryFromRows(tabRows.get(data.id) || [], ADMIN_TAB_DEFINITIONS, {
+          role: data.role,
+        });
 
         return res.json({ success: true, data: { ...data, tab_access } });
       } catch (err) {

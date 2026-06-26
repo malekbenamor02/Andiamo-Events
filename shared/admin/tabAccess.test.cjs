@@ -11,6 +11,7 @@ const {
   permissionsFromTabs,
   validateAdminTabAccessPayload,
   rowsFromPayload,
+  rowsFromMobileOnlyPayload,
   tabAccessSummaryFromRows,
   isExplicitTabConfig,
 } = require('./tabAccess.cjs');
@@ -55,12 +56,22 @@ describe('tabAccess', () => {
     assert.ok(!permissions.includes('*'));
   });
 
-  it('super_admin ignores explicit rows', () => {
+  it('super_admin keeps all allowed tabs but uses explicit mobile rows', () => {
+    const superMobileRows = [
+      { tab_key: 'overview', show_in_mobile: true, mobile_order: 0 },
+      { tab_key: 'settings', show_in_mobile: true, mobile_order: 8 },
+    ];
     const allowed = resolveAllowedTabsForAdmin(
-      { role: 'super_admin', tabRows: sampleRows },
+      { role: 'super_admin', tabRows: superMobileRows },
       ADMIN_TAB_DEFINITIONS
     );
     assert.equal(allowed.length, ADMIN_TAB_DEFINITIONS.length);
+
+    const mobile = resolveMobileTabsForAdmin(
+      { role: 'super_admin', allowedTabs: allowed, tabRows: superMobileRows },
+      ADMIN_TAB_DEFINITIONS
+    );
+    assert.deepEqual(mobile, ['overview', 'settings']);
   });
 
   it('mobile tabs from explicit rows', () => {
@@ -162,5 +173,52 @@ describe('tabAccess', () => {
     assert.equal(isExplicitTabConfig([]), false);
     assert.equal(isExplicitTabConfig(null), false);
     assert.equal(isExplicitTabConfig(sampleRows), true);
+  });
+
+  it('super_admin accepts mobile_tab_keys without allowed_tab_keys', () => {
+    const result = validateAdminTabAccessPayload(
+      { role: 'super_admin', mobile_tab_keys: ['overview', 'events'] },
+      ADMIN_TAB_DEFINITIONS
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.mobile, ['overview', 'events']);
+    assert.equal(result.rows.length, 2);
+    assert.equal(result.rows.every((r) => r.show_in_mobile), true);
+  });
+
+  it('super_admin ignores allowed_tab_keys and uses mobile_tab_keys only', () => {
+    const result = validateAdminTabAccessPayload(
+      { role: 'super_admin', allowed_tab_keys: ['overview'], mobile_tab_keys: ['overview', 'events'] },
+      ADMIN_TAB_DEFINITIONS
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.mobile, ['overview', 'events']);
+  });
+
+  it('super_admin allows sensitive tabs in mobile config', () => {
+    const result = validateAdminTabAccessPayload(
+      { role: 'super_admin', mobile_tab_keys: ['overview', 'admins', 'settings', 'logs'] },
+      ADMIN_TAB_DEFINITIONS
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.mobile, ['overview', 'admins', 'settings', 'logs']);
+  });
+
+  it('null mobile_tab_keys clears super_admin mobile config', () => {
+    const result = validateAdminTabAccessPayload(
+      { role: 'super_admin', mobile_tab_keys: null },
+      ADMIN_TAB_DEFINITIONS
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.clearConfig, true);
+    assert.deepEqual(result.rows, []);
+  });
+
+  it('tabAccessSummaryFromRows for super_admin returns mobile-only summary', () => {
+    const rows = rowsFromMobileOnlyPayload(['overview', 'settings'], ADMIN_TAB_DEFINITIONS);
+    const summary = tabAccessSummaryFromRows(rows, ADMIN_TAB_DEFINITIONS, { role: 'super_admin' });
+    assert.equal(summary.is_explicit, true);
+    assert.equal(summary.allowed_tab_keys, null);
+    assert.deepEqual(summary.mobile_tab_keys, ['overview', 'settings']);
   });
 });

@@ -8948,7 +8948,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Mobile nav drawer open state (must be before any conditional return to satisfy Rules of Hooks)
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  // Mobile: regular admin = allowed-tab subset; super_admin = full nav (sheet + bottom bar subsets)
+  // Mobile: regular admin = allowed-tab subset; super_admin = all tabs in drawer, configurable bottom bar
   const mobileAllowedTabs = useMemo(() => allowedTabs, [allowedTabs]);
 
   // On mobile, if current tab is not allowed, switch to first allowed tab

@@ -26,6 +26,17 @@ function filterKnownTabKeys(tabKeys, tabDefinitions) {
   return tabKeys.filter((k) => valid.has(k));
 }
 
+function sortMobileTabRows(tabRows, tabDefinitions) {
+  return [...tabRows].sort((a, b) => {
+    const ao = a.mobile_order ?? 99;
+    const bo = b.mobile_order ?? 99;
+    if (ao !== bo) return ao - bo;
+    const defA = tabDefinitions.find((t) => t.key === a.tab_key);
+    const defB = tabDefinitions.find((t) => t.key === b.tab_key);
+    return (defA?.mobileOrder ?? 99) - (defB?.mobileOrder ?? 99);
+  });
+}
+
 function resolveAllowedTabsForAdmin({ role, tabRows }, tabDefinitions) {
   if (!role) return [];
 
@@ -53,22 +64,19 @@ function resolveMobileTabsForAdmin({ role, allowedTabs, tabRows }, tabDefinition
   if (!role) return [];
 
   if (role === 'super_admin') {
+    if (isExplicitTabConfig(tabRows)) {
+      return sortMobileTabRows(
+        tabRows.filter((r) => r.show_in_mobile),
+        tabDefinitions
+      ).map((r) => r.tab_key);
+    }
     return resolveGlobalMobileTabs(allowedTabs, tabDefinitions);
   }
 
   if (isExplicitTabConfig(tabRows)) {
     const allowed = new Set(allowedTabs);
-    const mobileRows = tabRows
-      .filter((r) => r.show_in_mobile && allowed.has(r.tab_key))
-      .sort((a, b) => {
-        const ao = a.mobile_order ?? 99;
-        const bo = b.mobile_order ?? 99;
-        if (ao !== bo) return ao - bo;
-        const defA = tabDefinitions.find((t) => t.key === a.tab_key);
-        const defB = tabDefinitions.find((t) => t.key === b.tab_key);
-        return (defA?.mobileOrder ?? 99) - (defB?.mobileOrder ?? 99);
-      });
-    return mobileRows.map((r) => r.tab_key);
+    const mobileRows = tabRows.filter((r) => r.show_in_mobile && allowed.has(r.tab_key));
+    return sortMobileTabRows(mobileRows, tabDefinitions).map((r) => r.tab_key);
   }
 
   return resolveGlobalMobileTabs(allowedTabs, tabDefinitions);
@@ -86,12 +94,27 @@ function permissionsFromTabs(role, allowedTabs, tabDefinitions) {
   return [...new Set(perms)];
 }
 
-function tabAccessSummaryFromRows(tabRows, tabDefinitions) {
+function tabAccessSummaryFromRows(tabRows, tabDefinitions, options = {}) {
+  const { role } = options;
+
   if (!isExplicitTabConfig(tabRows)) {
     return {
       is_explicit: false,
       allowed_tab_keys: null,
       mobile_tab_keys: null,
+    };
+  }
+
+  if (role === 'super_admin') {
+    const mobile = sortMobileTabRows(
+      tabRows.filter((r) => r.show_in_mobile),
+      tabDefinitions
+    ).map((r) => r.tab_key);
+
+    return {
+      is_explicit: true,
+      allowed_tab_keys: null,
+      mobile_tab_keys: mobile,
     };
   }
 
@@ -132,10 +155,37 @@ function validateAdminTabAccessPayload(payload, tabDefinitions) {
   const { role, allowed_tab_keys, mobile_tab_keys } = payload || {};
 
   if (role === 'super_admin') {
-    if (allowed_tab_keys !== undefined || mobile_tab_keys !== undefined) {
-      return { ok: false, error: 'Tab access cannot be configured for super_admin accounts' };
+    const hasMobile = mobile_tab_keys !== undefined;
+    if (!hasMobile) {
+      return { ok: true, unchanged: true };
     }
-    return { ok: true };
+
+    if (mobile_tab_keys === null) {
+      return { ok: true, clearConfig: true, rows: [], mobile: [] };
+    }
+
+    if (!Array.isArray(mobile_tab_keys)) {
+      return { ok: false, error: 'mobile_tab_keys must be an array or null' };
+    }
+
+    const mobileDup = detectDuplicateKeys(mobile_tab_keys);
+    if (mobileDup) {
+      return { ok: false, error: `Duplicate mobile tab key: ${mobileDup}` };
+    }
+
+    const valid = validTabKeySet(tabDefinitions);
+    for (const key of mobile_tab_keys) {
+      if (!valid.has(key)) {
+        return { ok: false, error: `Unknown mobile tab key: ${key}` };
+      }
+    }
+
+    const rows = rowsFromMobileOnlyPayload(mobile_tab_keys, tabDefinitions);
+    return {
+      ok: true,
+      rows,
+      mobile: mobile_tab_keys,
+    };
   }
 
   const hasAllowed = allowed_tab_keys !== undefined;
@@ -216,6 +266,21 @@ function rowsFromPayload(allowedTabKeys, mobileTabKeys, tabDefinitions) {
   });
 }
 
+function rowsFromMobileOnlyPayload(mobileTabKeys, tabDefinitions) {
+  return mobileTabKeys.map((tab_key) => {
+    const def = tabDefinitions.find((t) => t.key === tab_key);
+    const row = {
+      tab_key,
+      show_in_mobile: true,
+    };
+    const order = def?.mobileOrder ?? def?.order;
+    if (order != null) {
+      row.mobile_order = order;
+    }
+    return row;
+  });
+}
+
 /**
  * Single entry point for session verification and middleware.
  */
@@ -233,7 +298,7 @@ function resolveAdminEffectiveAccess({ role, tabRows }, tabDefinitions) {
     allowedTabs,
     mobileTabs,
     permissions,
-    isExplicit: role !== 'super_admin' && isExplicitTabConfig(tabRows),
+    isExplicit: isExplicitTabConfig(tabRows),
   };
 }
 
@@ -247,6 +312,7 @@ module.exports = {
   permissionsFromTabs,
   validateAdminTabAccessPayload,
   rowsFromPayload,
+  rowsFromMobileOnlyPayload,
   tabAccessSummaryFromRows,
   resolveAdminEffectiveAccess,
 };

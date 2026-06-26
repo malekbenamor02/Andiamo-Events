@@ -23,7 +23,7 @@
 
 Implemented in `shared/admin/tabAccess.cjs` (`resolveAdminEffectiveAccess`):
 
-1. **`super_admin`** — always all tabs, `permissions: ['*']`, global mobile defaults. Rows in `admin_tab_access` are ignored and cleared on save.
+1. **`super_admin`** — always all desktop tabs, `permissions: ['*']`. Optional `admin_tab_access` rows configure **mobile bottom nav only** (`allowed_tab_keys` is always implicit full access). No rows → global mobile defaults from `tabDefinitions.data.json`. Rows are cleared when `mobile_tab_keys: null` is sent on update.
 2. **No rows** — role defaults from `shared/admin/permissions.cjs` (unchanged legacy behavior).
 3. **Explicit rows** — only listed tabs; permissions derived from each tab’s `requiredPermission`; mobile tabs from `show_in_mobile=true`.
 

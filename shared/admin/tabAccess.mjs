@@ -15,6 +15,7 @@ export const {
   permissionsFromTabs,
   validateAdminTabAccessPayload,
   rowsFromPayload,
+  rowsFromMobileOnlyPayload,
   tabAccessSummaryFromRows,
   resolveAdminEffectiveAccess,
 } = tabAccess;

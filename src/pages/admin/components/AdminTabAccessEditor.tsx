@@ -1,5 +1,5 @@
 /**
- * Per-admin dashboard tab access editor (super_admin configuring regular admins).
+ * Per-admin dashboard tab access editor (super_admin configuring admins).
  */
 
 import React from "react";
@@ -25,12 +25,26 @@ export function defaultAdminTabAccessState(): AdminTabAccessState {
   return { useRoleDefaults: true, allowedTabKeys: [], mobileTabKeys: [] };
 }
 
+function defaultSuperAdminMobileTabKeys(): string[] {
+  return ADMIN_TAB_REGISTRY.filter((t) => t.showInMobileBottomNav).map((t) => t.key);
+}
+
 export function tabAccessStateFromSummary(
-  summary?: AdminTabAccessSummary | null
+  summary?: AdminTabAccessSummary | null,
+  role?: string
 ): AdminTabAccessState {
   if (!summary?.is_explicit) {
     return defaultAdminTabAccessState();
   }
+
+  if (role === "super_admin") {
+    return {
+      useRoleDefaults: false,
+      allowedTabKeys: [],
+      mobileTabKeys: summary.mobile_tab_keys || [],
+    };
+  }
+
   return {
     useRoleDefaults: false,
     allowedTabKeys: summary.allowed_tab_keys || [],
@@ -42,10 +56,14 @@ export function tabAccessStateToApiPayload(
   state: AdminTabAccessState,
   role: string,
   mode: "create" | "update" = "update"
-): { allowed_tab_keys?: string[] | null; mobile_tab_keys?: string[] } {
+): { allowed_tab_keys?: string[] | null; mobile_tab_keys?: string[] | null } {
   if (role === "super_admin") {
-    return mode === "update" ? { allowed_tab_keys: null, mobile_tab_keys: [] } : {};
+    if (state.useRoleDefaults) {
+      return mode === "update" ? { mobile_tab_keys: null } : {};
+    }
+    return { mobile_tab_keys: state.mobileTabKeys };
   }
+
   if (state.useRoleDefaults) {
     return mode === "update" ? { allowed_tab_keys: null, mobile_tab_keys: [] } : {};
   }
@@ -72,6 +90,49 @@ const PRESET_LABELS: Record<string, { en: string; fr: string }> = {
   marketing_only: { en: "Marketing only", fr: "Marketing uniquement" },
 };
 
+function MobileBottomNavChecklist({
+  language,
+  tabKeys,
+  selectedKeys,
+  onToggle,
+  labels,
+  showSensitiveBadge = false,
+}: {
+  language: "en" | "fr";
+  tabKeys: string[];
+  selectedKeys: string[];
+  onToggle: (key: string, checked: boolean) => void;
+  labels: Record<string, string>;
+  showSensitiveBadge?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pr-1">
+      {tabKeys.map((key) => {
+        const tab = ADMIN_TAB_REGISTRY.find((t) => t.key === key);
+        if (!tab) return null;
+        const isSensitive = showSensitiveBadge && SENSITIVE_TAB_KEYS.includes(tab.key);
+        return (
+          <label
+            key={key}
+            className="flex items-center gap-2 text-sm cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted/50"
+          >
+            <Checkbox
+              checked={selectedKeys.includes(key)}
+              onCheckedChange={(c) => onToggle(key, c === true)}
+            />
+            <span className="flex-1 min-w-0 truncate">{labelForTab(tab, labels, language)}</span>
+            {isSensitive && (
+              <Badge variant="outline" className="text-[10px] shrink-0">
+                {language === "en" ? "Sensitive" : "Sensible"}
+              </Badge>
+            )}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AdminTabAccessEditor({
   language,
   role,
@@ -79,13 +140,53 @@ export function AdminTabAccessEditor({
   onChange,
   labels,
 }: AdminTabAccessEditorProps) {
+  const toggleMobile = (key: string, checked: boolean) => {
+    const nextMobile = checked
+      ? [...new Set([...value.mobileTabKeys, key])]
+      : value.mobileTabKeys.filter((k) => k !== key);
+    onChange({ ...value, useRoleDefaults: false, mobileTabKeys: nextMobile });
+  };
+
   if (role === "super_admin") {
     return (
-      <p className="text-sm text-muted-foreground rounded-md border border-border/60 bg-muted/30 px-3 py-2">
-        {language === "en"
-          ? "Super admins always have full dashboard access."
-          : "Les super admins ont toujours un accès complet au tableau de bord."}
-      </p>
+      <div className="space-y-4 rounded-lg border border-border/60 p-4">
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="useRoleDefaultsSuperAdmin"
+            checked={value.useRoleDefaults}
+            onCheckedChange={(checked) => {
+              if (checked === true) {
+                onChange(defaultAdminTabAccessState());
+              } else {
+                onChange({
+                  useRoleDefaults: false,
+                  allowedTabKeys: [],
+                  mobileTabKeys: defaultSuperAdminMobileTabKeys(),
+                });
+              }
+            }}
+          />
+          <Label htmlFor="useRoleDefaultsSuperAdmin" className="text-sm font-medium cursor-pointer">
+            {language === "en" ? "Use role defaults" : "Utiliser les défauts du rôle"}
+          </Label>
+        </div>
+
+        {!value.useRoleDefaults && (
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">
+              {language === "en" ? "Mobile bottom nav" : "Barre mobile"}
+            </Label>
+            <MobileBottomNavChecklist
+              language={language}
+              tabKeys={ADMIN_TAB_REGISTRY.map((t) => t.key)}
+              selectedKeys={value.mobileTabKeys}
+              onToggle={toggleMobile}
+              labels={labels}
+              showSensitiveBadge
+            />
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -100,13 +201,6 @@ export function AdminTabAccessEditor({
       allowedTabKeys: nextAllowed,
       mobileTabKeys: nextMobile,
     });
-  };
-
-  const toggleMobile = (key: string, checked: boolean) => {
-    const nextMobile = checked
-      ? [...new Set([...value.mobileTabKeys, key])]
-      : value.mobileTabKeys.filter((k) => k !== key);
-    onChange({ ...value, useRoleDefaults: false, mobileTabKeys: nextMobile });
   };
 
   const applyPreset = (presetKey: keyof typeof TAB_ACCESS_PRESETS) => {
@@ -180,7 +274,7 @@ export function AdminTabAccessEditor({
             <Label className="text-sm font-medium">
               {language === "en" ? "Allowed dashboard tabs" : "Onglets autorisés"}
             </Label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto overscroll-contain scrollbar-hide touch-pan-y pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto overscroll-contain scrollbar-hide touch-pan-y pr-1">
               {ADMIN_TAB_REGISTRY.map((tab) => {
                 const isSensitive = SENSITIVE_TAB_KEYS.includes(tab.key);
                 return (
@@ -217,24 +311,13 @@ export function AdminTabAccessEditor({
                   : "Sélectionnez d'abord au moins un onglet autorisé."}
               </p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto overscroll-contain scrollbar-hide touch-pan-y pr-1">
-                {value.allowedTabKeys.map((key) => {
-                  const tab = ADMIN_TAB_REGISTRY.find((t) => t.key === key);
-                  if (!tab) return null;
-                  return (
-                    <label
-                      key={key}
-                      className="flex items-center gap-2 text-sm cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted/50"
-                    >
-                      <Checkbox
-                        checked={value.mobileTabKeys.includes(key)}
-                        onCheckedChange={(c) => toggleMobile(key, c === true)}
-                      />
-                      <span className="truncate">{labelForTab(tab, labels, language)}</span>
-                    </label>
-                  );
-                })}
-              </div>
+              <MobileBottomNavChecklist
+                language={language}
+                tabKeys={value.allowedTabKeys}
+                selectedKeys={value.mobileTabKeys}
+                onToggle={toggleMobile}
+                labels={labels}
+              />
             )}
           </div>
         </>
