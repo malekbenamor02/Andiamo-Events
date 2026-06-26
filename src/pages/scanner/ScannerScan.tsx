@@ -1,154 +1,24 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { getApiBaseUrl } from "@/lib/api-routes";
-import { formatDateDMY } from "@/lib/date-utils";
 import { API_ROUTES } from "@/lib/api-routes";
 import Loader from "@/components/ui/Loader";
-import { LogOut, History, RotateCw, PenLine, Square, CheckCircle2, XCircle, Copy, MapPinOff, ScanLine, WifiOff, Cloud, BatteryWarning, BarChart2 } from "lucide-react";
+import { RotateCw, PenLine, Square, ScanLine } from "lucide-react";
+import type { InspectPanel, OrderPassRow, ScanResult, ScanRow, ScanStats, SelectedEvent } from "./components/scannerTypes";
+import { triggerHaptic, preloadScanSuccessSound, playScanSuccessSound } from "./components/scannerFeedback";
+import { SCANNER_BG, SCANNER_BORDER, SCANNER_BRAND } from "./components/scannerTheme";
+import { ScannerScanHeader } from "./components/ScannerScanHeader";
+import { ScannerResultSheet } from "./components/ScannerResultSheet";
+import { ScannerManualEntrySheet } from "./components/ScannerManualEntrySheet";
+import { ScannerRecentPanel } from "./components/ScannerRecentPanel";
+import { ScannerQrViewport } from "./components/ScannerQrViewport";
+import { useScannerCamera } from "./components/useScannerCamera";
+import { STATS_REFRESH_DEBOUNCE_MS } from "./components/scannerCameraConfig";
 
 const STORAGE_KEY = "scanner_selected_event";
-const TIMEOUT_MS = 90000; // 90s
-const READER_ID = "scanner-qr-reader";
 const RECENT_SCANS_LIMIT = 6;
 const UNDO_WINDOW_SEC = 5;
-
-function triggerHaptic(status: string) {
-  if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
-  switch (status) {
-    case "ok":
-    case "valid": navigator.vibrate(50); break;
-    case "invalid":
-    case "already_scanned": navigator.vibrate([40, 30, 40]); break;
-    default: navigator.vibrate([40, 30, 40]);
-  }
-}
-
-function getStatusConfig(result: string): { color: string; border: string; bg: string; icon: React.ElementType; label: string } {
-  switch (result) {
-    case "ok": return { color: "text-[#22C55E]", border: "border-[#22C55E]", bg: "bg-[#22C55E]/10", icon: CheckCircle2, label: "INFO" };
-    case "valid": return { color: "text-[#22C55E]", border: "border-[#22C55E]", bg: "bg-[#22C55E]/10", icon: CheckCircle2, label: "VALID" };
-    case "already_scanned": return { color: "text-[#F59E0B]", border: "border-[#F59E0B]", bg: "bg-[#F59E0B]/10", icon: Copy, label: "ALREADY SCANNED" };
-    case "wrong_event": return { color: "text-[#F59E0B]", border: "border-[#F59E0B]", bg: "bg-[#F59E0B]/10", icon: MapPinOff, label: "WRONG EVENT" };
-    default: return { color: "text-[#EF4444]", border: "border-[#EF4444]", bg: "bg-[#EF4444]/10", icon: XCircle, label: "INVALID" };
-  }
-}
-
-function formatSyncAgo(d: Date | null): string {
-  if (!d) return "";
-  const s = Math.round((Date.now() - d.getTime()) / 1000);
-  if (s < 60) return "Just now";
-  if (s < 120) return "1 min ago";
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  return `${Math.floor(s / 3600)} h ago`;
-}
-
-function getStatusEdgeColor(r: string): string {
-  switch (r) {
-    case "ok":
-    case "valid": return "#22C55E";
-    case "already_scanned":
-    case "wrong_event": return "#F59E0B";
-    default: return "#EF4444";
-  }
-}
-
-interface SelectedEvent {
-  id: string;
-  name: string;
-  date: string;
-  venue: string;
-}
-
-type ScanHistoryRow = {
-  id: string;
-  scan_time: string;
-  scan_result: string;
-  scanner_name?: string | null;
-  notes?: string | null;
-};
-
-type InspectPanel = {
-  qr_ticket_id: string;
-  pass_type: string | null;
-  buyer_name: string | null;
-  buyer_email: string | null;
-  buyer_phone: string | null;
-  event_name: string | null;
-  payment_method: string | null;
-  payment_method_label: string | null;
-  pass_price: number | null;
-  pass_price_formatted: string | null;
-  order_number: string | null;
-};
-
-type OrderPassRow = {
-  qr_ticket_id: string;
-  pass_type: string | null;
-  ticket_status: string | null;
-  token_preview: string | null;
-  is_current: boolean;
-};
-
-type Result = {
-  success: boolean;
-  result: string;
-  message: string;
-  lookup?: boolean;
-  invitation?: Record<string, unknown> | null;
-  scan_history?: ScanHistoryRow[];
-  ticket_status?: string | null;
-  inspect_panel?: InspectPanel | null;
-  order_passes?: OrderPassRow[] | null;
-  ticket?: {
-    pass_type?: string;
-    buyer_name?: string;
-    ambassador_name?: string;
-    event_name?: string;
-    is_invitation?: boolean;
-    source?: string | null;
-    scanned_at?: string;
-    invitation_number?: string | null;
-    recipient_name?: string | null;
-    recipient_phone?: string | null;
-    recipient_email?: string | null;
-    [key: string]: unknown;
-  };
-  previous_scan?: { scanned_at?: string; scanner_name?: string };
-  correct_event?: { event_name?: string; event_date?: string; event_id?: string };
-  event_date?: string;
-  enabled?: boolean;
-};
-
-type ScanRow = { id: string; scan_time: string; scan_result: string; buyer_name: string | null; pass_type: string | null };
-type Stats = { total: number; byStatus: Record<string, number>; byPass: Record<string, number> };
-
-function safeFieldString(v: unknown): string {
-  if (v == null || v === "") return "";
-  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
-  try {
-    return JSON.stringify(v);
-  } catch {
-    return "[unserializable]";
-  }
-}
-
-function formatTicketFields(ticket: Record<string, unknown>): { key: string; value: string }[] {
-  const skip = new Set(["secure_token"]);
-  return Object.keys(ticket)
-    .filter((k) => !skip.has(k) && ticket[k] != null && ticket[k] !== "")
-    .sort()
-    .map((key) => ({ key, value: safeFieldString(ticket[key]) }));
-}
 
 function readStoredSelectedEvent(): SelectedEvent | null {
   if (typeof window === "undefined") return null;
@@ -167,29 +37,29 @@ export default function ScannerScan() {
   const [scannerRole, setScannerRole] = useState<"scanner" | "supervisor" | null>(null);
   const [scanMode, setScanMode] = useState<"gate" | "inspect">("gate");
   const [event, setEvent] = useState<SelectedEvent | null>(readStoredSelectedEvent);
-  const [scanning, setScanning] = useState(false);
+  const [sessionOpen, setSessionOpen] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
-  const [result, setResult] = useState<Result | null>(null);
+  const [result, setResult] = useState<ScanResult | null>(null);
   const [validating, setValidating] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualToken, setManualToken] = useState("");
   const [err, setErr] = useState("");
   const [recentScans, setRecentScans] = useState<ScanRow[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [stats, setStats] = useState<ScanStats | null>(null);
   const [loadingScans, setLoadingScans] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [isOffline, setIsOffline] = useState(false);
   const [lowBattery, setLowBattery] = useState(false);
-  const [expandedScanId, setExpandedScanId] = useState<string | null>(null);
   const [undoSecondsLeft, setUndoSecondsLeft] = useState(0);
-  const [inspectReportExpanded, setInspectReportExpanded] = useState(false);
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const qrHostRef = useRef<HTMLDivElement | null>(null);
+  const scannerRoleRef = useRef(scannerRole);
+  const scanModeRef = useRef(scanMode);
   const processedRef = useRef(false);
+  const statsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    if (!result) setInspectReportExpanded(false);
-  }, [result]);
+  scannerRoleRef.current = scannerRole;
+  scanModeRef.current = scanMode;
 
   useEffect(() => {
     if (!event?.id) {
@@ -213,34 +83,6 @@ export default function ScannerScan() {
     })();
   }, [navigate]);
 
-  useEffect(() => {
-    if (!event?.id) return;
-    // if no event, redirect is done in render
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current.clear().catch(() => {});
-        scannerRef.current = null;
-      }
-    };
-  }, [event?.id]);
-
-  const stopCamera = useCallback(async () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    if (scannerRef.current) {
-      try {
-        await scannerRef.current.stop();
-        scannerRef.current.clear().catch(() => {});
-      } catch {}
-      scannerRef.current = null;
-    }
-    setScanning(false);
-  }, []);
-
   const loadScansAndStats = useCallback(async () => {
     if (!event?.id) return;
     setLoadingScans(true);
@@ -262,9 +104,20 @@ export default function ScannerScan() {
     }
   }, [event?.id]);
 
+  const scheduleStatsRefresh = useCallback(() => {
+    if (statsDebounceRef.current) clearTimeout(statsDebounceRef.current);
+    statsDebounceRef.current = setTimeout(() => {
+      statsDebounceRef.current = null;
+      void loadScansAndStats();
+    }, STATS_REFRESH_DEBOUNCE_MS);
+  }, [loadScansAndStats]);
+
   useEffect(() => {
-    if (event?.id) loadScansAndStats();
-  }, [event?.id, loadScansAndStats]);
+    return () => {
+      if (statsDebounceRef.current) clearTimeout(statsDebounceRef.current);
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const onOnline = () => setIsOffline(false);
@@ -272,42 +125,55 @@ export default function ScannerScan() {
     setIsOffline(!navigator.onLine);
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
-    return () => { window.removeEventListener("online", onOnline); window.removeEventListener("offline", onOffline); };
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
   }, []);
 
   useEffect(() => {
     const b = (navigator as { getBattery?: () => Promise<{ level: number; addEventListener: (a: string, f: () => void) => void }> }).getBattery?.();
     if (!b) return;
     b.then((bat) => {
-      setLowBattery(bat.level < 0.2);
-      bat.addEventListener("levelchange", () => setLowBattery(bat.level < 0.2));
+      const update = () => setLowBattery(bat.level < 0.25);
+      update();
+      bat.addEventListener("levelchange", update);
     }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (result?.result !== "valid") { setUndoSecondsLeft(0); return; }
+    if (undoTimeoutRef.current) {
+      clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = null;
+    }
+    if (result?.result !== "valid") {
+      setUndoSecondsLeft(0);
+      return;
+    }
     setUndoSecondsLeft(UNDO_WINDOW_SEC);
-    const id = setInterval(() => {
-      setUndoSecondsLeft((prev) => {
-        if (prev <= 1) { clearInterval(id); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
+    undoTimeoutRef.current = setTimeout(() => {
+      undoTimeoutRef.current = null;
+      setUndoSecondsLeft(0);
+    }, UNDO_WINDOW_SEC * 1000);
+    return () => {
+      if (undoTimeoutRef.current) {
+        clearTimeout(undoTimeoutRef.current);
+        undoTimeoutRef.current = null;
+      }
+    };
   }, [result?.result]);
 
-  const [, setSyncTick] = useState(0);
   useEffect(() => {
-    const iv = setInterval(() => setSyncTick((t) => t + 1), 60000);
-    return () => clearInterval(iv);
-  }, []);
+    if (result?.result === "valid" && result.success && !result.lookup) {
+      playScanSuccessSound();
+    }
+  }, [result]);
 
   const validate = useCallback(async (secure_token: string) => {
     if (!event?.id) return;
     setValidating(true);
     setErr("");
-    processedRef.current = true;
-    const isInspect = scannerRole === "supervisor" && scanMode === "inspect";
+    const isInspect = scannerRoleRef.current === "supervisor" && scanModeRef.current === "inspect";
     try {
       if (isInspect) {
         const r = await fetch(`${getApiBaseUrl()}${API_ROUTES.SCANNER_LOOKUP_TICKET}`, {
@@ -394,81 +260,64 @@ export default function ScannerScan() {
       triggerHaptic("invalid");
     } finally {
       setValidating(false);
-      loadScansAndStats();
+      scheduleStatsRefresh();
     }
-  }, [event?.id, loadScansAndStats, scannerRole, scanMode]);
+  }, [event?.id, scheduleStatsRefresh]);
+
+  const handleCameraTimeout = useCallback(() => {
+    setSessionOpen(false);
+    setTimedOut(true);
+  }, []);
+
+  const handleCameraError = useCallback((message: string) => {
+    setErr(message);
+    setSessionOpen(false);
+  }, []);
+
+  const { pauseDecode, resumeDecode, fullStop } = useScannerCamera({
+    sessionOpen,
+    lowBattery,
+    hostRef: qrHostRef,
+    onDecode: (token) => {
+      void validate(token);
+    },
+    onError: handleCameraError,
+    onTimeout: handleCameraTimeout,
+    processedRef,
+  });
+
+  const stopSession = useCallback(async () => {
+    await fullStop();
+    setSessionOpen(false);
+  }, [fullStop]);
 
   const onStart = useCallback(() => {
     if (!event?.id) return;
+    preloadScanSuccessSound();
     setResult(null);
     setTimedOut(false);
     setErr("");
     processedRef.current = false;
-    setScanning(true);
+    setSessionOpen(true);
   }, [event?.id]);
 
-  useEffect(() => {
-    if (!scanning || !event?.id) return;
-    let mounted = true;
-    // Defer camera bind so React 18 Strict Mode cleanup can run first (avoids Html5Qrcode "element in use" / race on iOS Safari).
-    const startTimer = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const sc = new Html5Qrcode(READER_ID);
-          scannerRef.current = sc;
-          await sc.start(
-            { facingMode: "environment" },
-            { fps: 8 },
-            (decodedText) => {
-              if (processedRef.current || !mounted) return;
-              void stopCamera().then(() => {
-                if (mounted) void validate(decodedText);
-              });
-            },
-            () => {}
-          );
-          if (!mounted) {
-            sc.stop().catch(() => {});
-            return;
-          }
-          timeoutRef.current = setTimeout(() => {
-            timeoutRef.current = null;
-            void stopCamera();
-            setTimedOut(true);
-          }, TIMEOUT_MS);
-        } catch {
-          if (mounted) {
-            setErr("Camera not available. Use Manual entry.");
-            setScanning(false);
-          }
-        }
-      })();
-    }, 0);
-    return () => {
-      mounted = false;
-      window.clearTimeout(startTimer);
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current.clear().catch(() => {});
-        scannerRef.current = null;
-      }
-    };
-  }, [scanning, event?.id, stopCamera, validate, scannerRole, scanMode]);
+  const onScanNext = useCallback(() => {
+    setResult(null);
+    processedRef.current = false;
+    resumeDecode();
+  }, [resumeDecode]);
 
   const onManualSubmit = () => {
     const t = manualToken.trim();
     if (!t || !event?.id) return;
     setManualOpen(false);
     setManualToken("");
-    validate(t);
+    if (sessionOpen) pauseDecode();
+    void validate(t);
   };
 
   const logout = async () => {
-    await stopCamera();
+    await fullStop();
     try {
       await fetch(`${getApiBaseUrl()}${API_ROUTES.SCANNER_LOGOUT}`, { method: "POST", credentials: "include" });
     } catch {}
@@ -477,522 +326,180 @@ export default function ScannerScan() {
 
   if (!event?.id) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center p-4">
-        <p className="text-[#A3A3A3] text-sm">Loading…</p>
+      <div className="flex min-h-screen items-center justify-center p-4" style={{ backgroundColor: SCANNER_BG }}>
+        <p className="text-sm text-[#A3A3A3]">Loading…</p>
       </div>
     );
   }
 
-  const sc = result ? getStatusConfig(result.result === "disabled" ? "invalid" : result.result) : null;
-  const StatusIcon = sc?.icon;
+  const manualSubmitLabel =
+    scannerRole === "supervisor" && scanMode === "inspect" ? "Lookup" : "Validate";
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] flex flex-col">
-      {/* Header: Compact top bar with event name and status icons */}
-      <div className="sticky top-0 z-40 bg-[#0A0A0A]/95 backdrop-blur-sm border-b border-[#1A1A1A] px-4 py-3">
-        <div className="flex justify-between items-center gap-2">
-          <h1 className="text-sm font-semibold text-white truncate flex-1">{event.name}</h1>
-          <div className="flex items-center gap-1 shrink-0">
-            {scannerRole === "supervisor" && (
-              <Button variant="ghost" size="icon" className="h-9 w-9 text-[#A3A3A3] hover:text-white hover:bg-[#1A1A1A]" onClick={() => navigate("/scanner/event-activity")} aria-label="Event activity" title="Event activity">
-                <BarChart2 className="w-4 h-4" />
-              </Button>
-            )}
-            {isOffline && <span className="p-1.5 text-[#EF4444]" title="Offline — scans will sync when back"><WifiOff className="w-4 h-4" /></span>}
-            {!isOffline && lastSyncedAt && <span className="p-1.5 text-[#22C55E]" title={`Synced ${formatSyncAgo(lastSyncedAt)}`}><Cloud className="w-4 h-4" /></span>}
-            {lowBattery && <span className="p-1.5 text-[#F59E0B]" title="Low battery"><BatteryWarning className="w-4 h-4" /></span>}
-            <Button variant="ghost" size="icon" className="h-9 w-9 text-[#A3A3A3] hover:text-white hover:bg-[#1A1A1A]" onClick={() => navigate("/scanner/history")} aria-label="History"><History className="w-4 h-4" /></Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9 text-[#A3A3A3] hover:text-white hover:bg-[#1A1A1A]" onClick={logout} aria-label="Logout"><LogOut className="w-4 h-4" /></Button>
-          </div>
-        </div>
-        {scannerRole === "supervisor" && (
-          <div className="flex gap-2 mt-2">
-            <Button size="sm" className={scanMode === "gate" ? "bg-[#E21836] hover:bg-[#c4142e]" : "bg-[#1A1A1A] border border-[#2A2A2A] text-[#A3A3A3]"} variant={scanMode === "gate" ? "default" : "outline"} onClick={() => setScanMode("gate")}>
-              Gate
-            </Button>
-            <Button size="sm" className={scanMode === "inspect" ? "bg-[#E21836] hover:bg-[#c4142e]" : "bg-[#1A1A1A] border border-[#2A2A2A] text-[#A3A3A3]"} variant={scanMode === "inspect" ? "default" : "outline"} onClick={() => setScanMode("inspect")}>
-              Inspect
-            </Button>
-          </div>
-        )}
-      </div>
+    <div className="flex min-h-screen flex-col" style={{ backgroundColor: SCANNER_BG }}>
+      <ScannerScanHeader
+        eventName={event.name}
+        scannerRole={scannerRole}
+        scanMode={scanMode}
+        onScanModeChange={setScanMode}
+        isOffline={isOffline}
+        lastSyncedAt={lastSyncedAt}
+        lowBattery={lowBattery}
+        onEventActivity={() => navigate("/scanner/event-activity")}
+        onHistory={() => navigate("/scanner/history")}
+        onLogout={logout}
+      />
 
-      {/* Camera View - Top Section */}
-      <div className="relative flex-1 flex flex-col min-h-0">
-        {scanning ? (
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {sessionOpen ? (
           <div className="flex min-h-0 flex-1 flex-col bg-black">
             <div className="relative min-h-0 flex-1 overflow-hidden">
-              <div id={READER_ID} className="h-full w-full" />
+              <ScannerQrViewport ref={qrHostRef} />
               <div className="absolute left-0 right-0 top-4 px-4">
-                <div className="rounded-lg bg-black/70 px-3 py-2 text-center backdrop-blur-sm">
+                <div className="rounded-full bg-black/70 px-4 py-2 text-center backdrop-blur-sm">
                   <p className="text-sm font-medium text-white">
                     {scannerRole === "supervisor" && scanMode === "inspect"
-                      ? "Point camera at QR (inspect — no entry)"
-                      : "Point camera at QR code"}
+                      ? "Point at QR — inspect only"
+                      : "Point at QR code"}
                   </p>
                 </div>
               </div>
             </div>
-            <div className="flex shrink-0 justify-center border-t border-[#1A1A1A] bg-black/90 px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
+            <div
+              className="flex shrink-0 justify-center border-t bg-black/90 px-4 py-5"
+              style={{ borderColor: SCANNER_BORDER, paddingBottom: "max(1.25rem, env(safe-area-inset-bottom, 0px))" }}
+            >
               <Button
-                className="h-20 w-20 rounded-full border-4 border-white/10 bg-[#EF4444] shadow-2xl transition-transform hover:scale-105 hover:bg-[#DC2626]"
-                onClick={stopCamera}
+                className="h-[4.5rem] w-[4.5rem] rounded-full border-4 border-white/10 bg-red-600 shadow-2xl transition-transform hover:scale-105 hover:bg-red-700"
+                onClick={() => void stopSession()}
                 size="lg"
               >
-                <Square className="h-10 w-10 fill-white" />
+                <Square className="h-9 w-9 fill-white" />
               </Button>
             </div>
           </div>
         ) : !result ? (
           <>
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto bg-gradient-to-b from-[#1A1A1A] to-[#0A0A0A] px-4 py-8">
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-10">
               <div className="text-center">
-                <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-2xl border-2 border-dashed border-[#2A2A2A] bg-[#1A1A1A]">
-                  <ScanLine className="h-12 w-12 text-[#404040]" />
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#141414] ring-1 ring-[#2A2A2A]">
+                  <ScanLine className="h-8 w-8 text-[#525252]" />
                 </div>
-                <p className="text-sm font-medium text-[#737373]">Camera ready</p>
-                <p className="mt-1 text-xs text-[#525252]">Use the controls below to start</p>
+                <p className="text-sm font-medium text-[#A3A3A3]">Ready to scan</p>
+                <p className="mt-1 text-xs text-[#525252]">Tap below to open the camera</p>
               </div>
             </div>
             {!timedOut && (
-              <div className="shrink-0 flex flex-col items-center gap-3 border-t border-[#1A1A1A] bg-[#0A0A0A]/95 px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
+              <div
+                className="flex shrink-0 flex-col items-center gap-3 border-t px-4 py-5"
+                style={{
+                  borderColor: SCANNER_BORDER,
+                  backgroundColor: `${SCANNER_BG}f5`,
+                  paddingBottom: "max(1.25rem, env(safe-area-inset-bottom, 0px))",
+                }}
+              >
                 <Button
-                  className="h-20 w-20 rounded-full border-4 border-white/10 bg-[#E21836] shadow-2xl transition-transform hover:scale-105 hover:bg-[#c4142e]"
+                  className="h-[4.5rem] w-[4.5rem] rounded-full border-4 border-white/10 shadow-2xl transition-transform hover:scale-105"
+                  style={{ backgroundColor: SCANNER_BRAND }}
                   onClick={onStart}
                   size="lg"
                 >
-                  <ScanLine className="h-10 w-10" />
+                  <ScanLine className="h-9 w-9 text-white" />
                 </Button>
-                <p className="text-base font-semibold text-white">Start Scanning</p>
+                <p className="text-base font-semibold text-white">Start scanning</p>
                 <Button
                   variant="outline"
-                  className="h-11 rounded-full border-[#2A2A2A] px-6 text-[#A3A3A3] hover:border-[#404040] hover:bg-[#1A1A1A] hover:text-white"
+                  className="h-11 rounded-full border-[#2A2A2A] px-6 text-[#A3A3A3] hover:border-[#404040] hover:bg-[#141414] hover:text-white"
                   onClick={() => setManualOpen(true)}
                 >
                   <PenLine className="mr-2 h-4 w-4" />
-                  Manual Entry
+                  Manual entry
                 </Button>
               </div>
             )}
           </>
         ) : (
-          <div className="min-h-0 flex-1 bg-[#0A0A0A]" aria-hidden />
+          <div className="min-h-0 flex-1" style={{ backgroundColor: SCANNER_BG }} aria-hidden />
         )}
 
-        {/* Validation Status Overlay */}
         {validating && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/85">
             <div className="text-center">
               <Loader size="xl" className="mx-auto mb-4 [background:#E21836]" />
-              <p className="text-white text-base font-medium">
-                {scannerRole === "supervisor" && scanMode === "inspect" ? "Loading ticket info…" : "Validating ticket…"}
+              <p className="text-base font-medium text-white">
+                {scannerRole === "supervisor" && scanMode === "inspect"
+                  ? "Loading ticket info…"
+                  : "Validating ticket…"}
               </p>
             </div>
           </div>
         )}
 
-        {/* Result dialog */}
-        <Dialog
-          open={Boolean(result && !validating && sc && StatusIcon)}
+        <ScannerResultSheet
+          open={Boolean(result && !validating)}
+          result={result}
+          undoSecondsLeft={undoSecondsLeft}
           onOpenChange={(open) => {
             if (!open) {
-              setInspectReportExpanded(false);
               setResult(null);
+              if (sessionOpen) {
+                processedRef.current = false;
+                resumeDecode();
+              }
             }
           }}
-        >
-          <DialogContent
-            className={`max-h-[90vh] overflow-y-auto border-2 bg-[#141414] p-6 pt-10 text-white shadow-2xl sm:max-w-md ${sc?.border ?? ""} gap-4`}
-            onPointerDownOutside={(e) => e.preventDefault()}
-          >
-            {result && sc && StatusIcon && (
-              <>
-                <DialogHeader className="space-y-0 text-left">
-                  <div className="flex items-center gap-3 pr-6">
-                    <div className={`shrink-0 rounded-xl p-3 ${sc.bg}`}>
-                      <StatusIcon className={`h-8 w-8 ${sc.color}`} />
-                    </div>
-                    <div className="min-w-0">
-                      <DialogTitle className={`text-2xl font-bold tracking-tight ${sc.color}`}>{sc.label}</DialogTitle>
-                      <DialogDescription className="mt-1 text-sm font-normal text-[#A3A3A3]">
-                        {result.message}
-                      </DialogDescription>
-                    </div>
-                  </div>
-                </DialogHeader>
+          onScanNext={onScanNext}
+        />
 
-                <div className="space-y-4">
-                  {result.ticket && !(result.lookup && result.inspect_panel) && (
-                    <div className="space-y-3 rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-4">
-                      <div>
-                        <p className="mb-1 text-xs text-[#737373]">Pass Type</p>
-                        <p className="text-lg font-semibold text-white">{result.ticket.pass_type || "—"}</p>
-                      </div>
-                      <div>
-                        <p className="mb-1 text-xs text-[#737373]">Name</p>
-                        <p className="text-base font-medium text-[#F5F5F5]">
-                          {result.ticket.is_invitation
-                            ? result.ticket.recipient_name || result.ticket.buyer_name || "—"
-                            : result.ticket.buyer_name || "—"}
-                        </p>
-                      </div>
-                      {result.ticket.is_invitation && (result.ticket.invitation_number || result.ticket.recipient_email) && (
-                        <div>
-                          <p className="mb-1 text-xs text-[#737373]">Invitation Details</p>
-                          <p className="text-sm text-[#A3A3A3]">
-                            {(result.ticket.invitation_number ? `#${result.ticket.invitation_number}` : "") +
-                              (result.ticket.recipient_email ? ` · ${result.ticket.recipient_email}` : "")}
-                          </p>
-                        </div>
-                      )}
-                      {!result.ticket.is_invitation && result.ticket.ambassador_name && (
-                        <div>
-                          <p className="mb-1 text-xs text-[#737373]">Ambassador</p>
-                          <p className="text-sm text-[#A3A3A3]">{result.ticket.ambassador_name}</p>
-                        </div>
-                      )}
-                      {result.ticket.source === "point_de_vente" && (
-                        <div className="inline-block rounded bg-[#1A1A1A] border border-[#2A2A2A] px-2 py-1">
-                          <p className="text-xs text-[#A3A3A3]">Point de vente</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {result.lookup && result.inspect_panel && event?.id && !inspectReportExpanded && (
-                    <div className="space-y-3 rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-4">
-                      <p className="text-xs font-medium uppercase tracking-wide text-[#737373]">Summary</p>
-                      <p className="text-lg font-semibold text-white">{result.inspect_panel.pass_type || "—"}</p>
-                      <p className="text-sm text-[#E5E5E5]">{result.inspect_panel.buyer_name || "—"}</p>
-                      <p className="text-xs leading-relaxed text-[#737373]">
-                        Open the full report for email, phone, event, payment, price, order number, and every pass on this order.
-                      </p>
-                      <Button
-                        type="button"
-                        className="h-11 w-full border border-[#2A2A2A] bg-[#1A1A1A] text-white hover:bg-[#252525]"
-                        onClick={() => setInspectReportExpanded(true)}
-                      >
-                        Open full report
-                      </Button>
-                    </div>
-                  )}
-
-                  {result.lookup && result.inspect_panel && inspectReportExpanded && (
-                    <div className="space-y-4 rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-[#737373]">Full report</p>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 shrink-0 text-[#A3A3A3] hover:bg-[#1A1A1A] hover:text-white"
-                          onClick={() => setInspectReportExpanded(false)}
-                        >
-                          Back to summary
-                        </Button>
-                      </div>
-                      <dl className="space-y-3 text-sm">
-                        <div>
-                          <dt className="text-xs text-[#737373]">Pass type</dt>
-                          <dd className="mt-0.5 font-semibold text-white">{result.inspect_panel.pass_type || "—"}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-[#737373]">Name</dt>
-                          <dd className="mt-0.5 text-[#E5E5E5]">{result.inspect_panel.buyer_name || "—"}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-[#737373]">Email</dt>
-                          <dd className="mt-0.5 break-all text-[#E5E5E5]">{result.inspect_panel.buyer_email || "—"}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-[#737373]">Phone</dt>
-                          <dd className="mt-0.5 text-[#E5E5E5]">{result.inspect_panel.buyer_phone || "—"}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-[#737373]">Event</dt>
-                          <dd className="mt-0.5 text-[#E5E5E5]">{result.inspect_panel.event_name || "—"}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-[#737373]">Payment</dt>
-                          <dd className="mt-0.5 text-[#E5E5E5]">
-                            {result.inspect_panel.payment_method_label || result.inspect_panel.payment_method || "—"}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs text-[#737373]">Price</dt>
-                          <dd className="mt-0.5 text-[#E5E5E5]">
-                            {result.inspect_panel.pass_price_formatted != null
-                              ? `${result.inspect_panel.pass_price_formatted} TND`
-                              : "—"}
-                          </dd>
-                        </div>
-                        {result.inspect_panel.order_number != null && (
-                          <div>
-                            <dt className="text-xs text-[#737373]">Order number</dt>
-                            <dd className="mt-0.5 font-mono text-white">#{result.inspect_panel.order_number}</dd>
-                          </div>
-                        )}
-                      </dl>
-                      {result.order_passes && result.order_passes.length > 0 && (
-                        <div>
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#737373]">Passes on this order</p>
-                          <ul className="max-h-48 space-y-2 overflow-y-auto">
-                            {result.order_passes.map((p) => (
-                              <li
-                                key={p.qr_ticket_id}
-                                className={`rounded-lg border px-3 py-2 text-xs ${
-                                  p.is_current ? "border-[#E21836]/50 bg-[#E21836]/10" : "border-[#1A1A1A] bg-[#0F0F0F]"
-                                }`}
-                              >
-                                <div className="flex justify-between gap-2 text-white">
-                                  <span className="font-medium">{p.pass_type || "—"}</span>
-                                  <span className="shrink-0 text-[#737373]">{p.ticket_status || "—"}</span>
-                                </div>
-                                {p.token_preview && (
-                                  <p className="mt-1 font-mono text-[#737373]">{p.token_preview}</p>
-                                )}
-                                {p.is_current && (
-                                  <p className="mt-1 text-[10px] font-semibold uppercase text-[#E21836]">This QR</p>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {result.previous_scan && (
-                    <div className="rounded-lg border border-[#F59E0B]/20 bg-[#F59E0B]/10 p-3">
-                      <p className="mb-1 text-xs font-medium text-[#F59E0B]">Previously Scanned</p>
-                      <p className="text-xs text-[#A3A3A3]">
-                        {result.previous_scan.scanner_name || "—"} at{" "}
-                        {result.previous_scan.scanned_at
-                          ? new Date(result.previous_scan.scanned_at).toLocaleString()
-                          : "—"}
-                      </p>
-                    </div>
-                  )}
-
-                  {result.correct_event && (
-                    <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
-                      <p className="mb-1 text-xs text-[#737373]">Correct Event</p>
-                      <p className="text-sm text-[#A3A3A3]">
-                        {result.correct_event.event_name} —{" "}
-                        {result.correct_event.event_date ? formatDateDMY(result.correct_event.event_date) : ""}
-                      </p>
-                    </div>
-                  )}
-
-                  {result.lookup && result.ticket_status != null && (
-                    <div className="rounded-lg border border-[#2A2A2A] bg-[#0A0A0A]/80 p-2">
-                      <p className="text-xs text-[#737373]">Ticket status</p>
-                      <p className="text-sm font-semibold text-white">{result.ticket_status}</p>
-                    </div>
-                  )}
-
-                  {result.lookup && result.ticket && typeof result.ticket === "object" && !result.inspect_panel && (
-                    <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-3">
-                      <p className="mb-2 text-xs font-medium text-[#737373]">All ticket fields</p>
-                      {formatTicketFields(result.ticket as Record<string, unknown>).map(({ key, value }) => (
-                        <div key={key} className="flex gap-2 text-xs">
-                          <span className="w-28 shrink-0 truncate text-[#737373]" title={key}>
-                            {key}
-                          </span>
-                          <span className="break-all text-[#E5E5E5]">{value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {result.lookup &&
-                    !result.inspect_panel &&
-                    result.invitation &&
-                    typeof result.invitation === "object" &&
-                    !Array.isArray(result.invitation) &&
-                    Object.keys(result.invitation).length > 0 && (
-                      <div className="max-h-40 overflow-y-auto rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-3">
-                        <p className="mb-2 text-xs font-medium text-[#737373]">Invitation</p>
-                        {formatTicketFields(result.invitation as Record<string, unknown>).map(({ key, value }) => (
-                          <div key={key} className="mb-1 flex gap-2 text-xs">
-                            <span className="w-28 shrink-0 truncate text-[#737373]">{key}</span>
-                            <span className="break-all text-[#E5E5E5]">{value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                  {result.lookup && !result.inspect_panel && Array.isArray(result.scan_history) && result.scan_history.length > 0 && (
-                    <div className="max-h-40 overflow-y-auto rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-3">
-                      <p className="mb-2 text-xs font-medium text-[#737373]">Scan history</p>
-                      <ul className="space-y-2 text-xs">
-                        {result.scan_history.map((h) => (
-                          <li key={h.id} className="border-b border-[#1A1A1A] pb-2 last:border-0">
-                            <span className="text-[#F5F5F5]">{h.scan_result}</span>
-                            <span className="ml-2 text-[#737373]">{h.scan_time ? new Date(h.scan_time).toLocaleString() : ""}</span>
-                            <p className="text-[#A3A3A3]">
-                              {h.scanner_name || "—"}
-                              {h.notes ? ` · ${h.notes}` : ""}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                <DialogFooter className="flex-col gap-3 sm:flex-col">
-                  {result.result === "valid" && undoSecondsLeft > 0 && (
-                    <Button
-                      variant="outline"
-                      className="h-12 w-full border-[#2A2A2A] text-[#A3A3A3] hover:bg-[#1A1A1A] hover:text-white"
-                      onClick={() => {}}
-                    >
-                      Undo ({undoSecondsLeft}s)
-                    </Button>
-                  )}
-                  <Button
-                    className="h-12 w-full rounded-xl bg-[#E21836] font-semibold text-base shadow-lg hover:bg-[#c4142e]"
-                    onClick={() => {
-                      setInspectReportExpanded(false);
-                      setResult(null);
-                      onStart();
-                    }}
-                  >
-                    <ScanLine className="mr-2 h-5 w-5" />
-                    Scan Next
-                  </Button>
-                </DialogFooter>
-              </>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {/* Error Message */}
         {err && (
-          <div className="absolute top-4 left-4 right-4 z-50">
-            <div className="bg-[#EF4444]/90 backdrop-blur-sm rounded-lg px-4 py-3 border border-[#EF4444]">
-              <p className="text-white text-sm font-medium">{err}</p>
+          <div className="absolute left-4 right-4 top-4 z-50">
+            <div className="rounded-xl border border-red-500/50 bg-red-500/90 px-4 py-3 backdrop-blur-sm">
+              <p className="text-sm font-medium text-white">{err}</p>
             </div>
           </div>
         )}
 
-        {/* Timeout Message */}
         {timedOut && (
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="w-full max-w-sm rounded-2xl bg-[#1A1A1A] border border-[#2A2A2A] p-6 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#2A2A2A] flex items-center justify-center">
-                <RotateCw className="w-8 h-8 text-[#A3A3A3]" />
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-2xl border border-[#2A2A2A] bg-[#141414] p-6 text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#1A1A1A]">
+                <RotateCw className="h-7 w-7 text-[#A3A3A3]" />
               </div>
-              <p className="text-white text-lg font-semibold mb-2">Session Timeout</p>
-              <p className="text-[#A3A3A3] text-sm mb-6">Camera session expired. Press restart to continue scanning.</p>
-              <Button className="w-full h-12 bg-[#E21836] hover:bg-[#c4142e] font-semibold text-base" onClick={onStart}>
-                <RotateCw className="w-5 h-5 mr-2" />Restart Scanning
+              <p className="mb-2 text-lg font-semibold text-white">Session timeout</p>
+              <p className="mb-6 text-sm text-[#A3A3A3]">Camera session expired. Restart to continue.</p>
+              <Button
+                className="h-12 w-full font-semibold text-white"
+                style={{ backgroundColor: SCANNER_BRAND }}
+                onClick={onStart}
+              >
+                <RotateCw className="mr-2 h-5 w-5" />
+                Restart scanning
               </Button>
             </div>
           </div>
         )}
-
       </div>
 
-      {/* History Section - Bottom */}
-      <div className="bg-[#0A0A0A] border-t border-[#1A1A1A]">
-        <div className="px-4 py-3">
-          {/* Session Stats - Compact */}
-          {stats && (
-            <div className="mb-4 grid grid-cols-4 gap-2">
-              <div className="rounded-lg bg-[#1A1A1A] border border-[#22C55E]/20 p-2.5 text-center">
-                <p className="text-[10px] text-[#737373] uppercase tracking-wide mb-1">Valid</p>
-                <p className="text-xl font-bold text-[#22C55E]">{stats.byStatus.valid ?? 0}</p>
-              </div>
-              <div className="rounded-lg bg-[#1A1A1A] border border-[#EF4444]/20 p-2.5 text-center">
-                <p className="text-[10px] text-[#737373] uppercase tracking-wide mb-1">Invalid</p>
-                <p className="text-xl font-bold text-[#EF4444]">{stats.byStatus.invalid ?? 0}</p>
-              </div>
-              <div className="rounded-lg bg-[#1A1A1A] border border-[#F59E0B]/20 p-2.5 text-center">
-                <p className="text-[10px] text-[#737373] uppercase tracking-wide mb-1">Already</p>
-                <p className="text-xl font-bold text-[#F59E0B]">{stats.byStatus.already_scanned ?? 0}</p>
-              </div>
-              <div className="rounded-lg bg-[#1A1A1A] border border-[#2A2A2A] p-2.5 text-center">
-                <p className="text-[10px] text-[#737373] uppercase tracking-wide mb-1">Total</p>
-                <p className="text-xl font-bold text-white">{stats.total ?? 0}</p>
-              </div>
-            </div>
-          )}
+      <ScannerRecentPanel
+        stats={stats}
+        recentScans={recentScans}
+        loading={loadingScans}
+        onViewAll={() => navigate("/scanner/history")}
+        onExpand={() => void loadScansAndStats()}
+      />
 
-          {/* Recent Scans */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-semibold text-white">Recent Scans</p>
-              {recentScans.length >= RECENT_SCANS_LIMIT && (
-                <button 
-                  type="button" 
-                  className="text-xs text-[#E21836] hover:text-[#c4142e] font-medium" 
-                  onClick={() => navigate("/scanner/history")}
-                >
-                  View All
-                </button>
-              )}
-            </div>
-            
-            {loadingScans ? (
-              <div className="text-center py-4">
-                <p className="text-[#737373] text-sm">Loading...</p>
-              </div>
-            ) : recentScans.length === 0 ? (
-              <div className="text-center py-6 rounded-lg bg-[#1A1A1A] border border-[#2A2A2A]">
-                <p className="text-[#737373] text-sm">No scans yet</p>
-                <p className="text-[#525252] text-xs mt-1">Start scanning to see history</p>
-              </div>
-            ) : (
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {recentScans.map((s) => (
-                  <div 
-                    key={s.id} 
-                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
-                      expandedScanId === s.id ? "bg-[#1A1A1A] border border-[#2A2A2A]" : "bg-[#0F0F0F] hover:bg-[#151515]"
-                    }`} 
-                    style={{ borderLeft: `4px solid ${getStatusEdgeColor(s.scan_result)}` }}
-                    onClick={() => setExpandedScanId(expandedScanId === s.id ? null : s.id)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
-                          s.scan_result === "valid" 
-                            ? "bg-[#22C55E]/20 text-[#22C55E]" 
-                            : s.scan_result === "already_scanned" || s.scan_result === "wrong_event" 
-                            ? "bg-[#F59E0B]/20 text-[#F59E0B]" 
-                            : "bg-[#EF4444]/20 text-[#EF4444]"
-                        }`}>
-                          {s.scan_result === "valid" ? "Valid" : s.scan_result === "already_scanned" ? "Already" : s.scan_result === "wrong_event" ? "Wrong" : "Invalid"}
-                        </span>
-                        <span className="text-xs text-[#737373]">{new Date(s.scan_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                      </div>
-                      <p className="text-sm font-medium text-white truncate">{s.buyer_name || "—"}</p>
-                      <p className="text-xs text-[#737373] mt-0.5">{s.pass_type || "—"}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {manualOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" onClick={() => setManualOpen(false)}>
-          <div className="w-full max-w-sm rounded-xl bg-[#1F1F1F] border border-[#2A2A2A] p-4" onClick={e => e.stopPropagation()}>
-            <p className="text-white font-medium mb-2">Manual entry — Secure token</p>
-            <input className="w-full rounded-lg bg-[#252525] border border-[#2A2A2A] px-3 py-2 text-white text-base" value={manualToken} onChange={e => setManualToken(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-            <div className="flex gap-2 mt-3">
-              <Button variant="outline" className="flex-1 border-[#2A2A2A] text-[#A3A3A3] hover:text-white" onClick={() => { setManualOpen(false); setManualToken(""); }}>Cancel</Button>
-              <Button className="flex-1 bg-[#E21836] hover:bg-[#c4142e]" onClick={onManualSubmit}>
-                {scannerRole === "supervisor" && scanMode === "inspect" ? "Lookup" : "Validate"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ScannerManualEntrySheet
+        open={manualOpen}
+        token={manualToken}
+        submitLabel={manualSubmitLabel}
+        onOpenChange={setManualOpen}
+        onTokenChange={setManualToken}
+        onSubmit={onManualSubmit}
+        onCancel={() => {
+          setManualOpen(false);
+          setManualToken("");
+        }}
+      />
     </div>
   );
 }

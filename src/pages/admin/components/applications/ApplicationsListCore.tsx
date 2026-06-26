@@ -314,7 +314,7 @@ export function ApplicationsListCore({
                   {language === "en" ? "Rejected" : "Rejeté"}
                 </SelectItem>
                 <SelectItem value="suspended">
-                  {language === "en" ? "Suspended" : "Suspendu"}
+                  {language === "en" ? "Paused" : "En Pause"}
                 </SelectItem>
                 <SelectItem value="removed">
                   {language === "en" ? "Removed" : "Retiré"}

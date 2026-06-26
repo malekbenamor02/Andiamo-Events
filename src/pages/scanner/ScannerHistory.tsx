@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
-import { format } from "date-fns";
-import { LogOut, ArrowLeft } from "lucide-react";
+import { ArrowLeft, LogOut } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { ScanHistoryRow } from "./components/ScannerRecentPanel";
+import { SCANNER_BG, SCANNER_BORDER, SCANNER_BRAND } from "./components/scannerTheme";
 
 interface Scan {
   id: string;
@@ -23,13 +24,24 @@ interface Stats {
   byPass: Record<string, number>;
 }
 
+type FilterKey = "all" | "valid" | "already_scanned" | "invalid" | "wrong_event";
+
+const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "valid", label: "Valid" },
+  { key: "already_scanned", label: "Already" },
+  { key: "invalid", label: "Invalid" },
+  { key: "wrong_event", label: "Wrong" },
+];
+
 export default function ScannerHistory() {
   const navigate = useNavigate();
   const [scans, setScans] = useState<Scan[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<FilterKey>("all");
 
-  useEffect(() => {
+  React.useEffect(() => {
     (async () => {
       setLoading(true);
       try {
@@ -54,6 +66,11 @@ export default function ScannerHistory() {
     })();
   }, [navigate]);
 
+  const filteredScans = useMemo(() => {
+    if (filter === "all") return scans;
+    return scans.filter((s) => s.scan_result === filter);
+  }, [scans, filter]);
+
   const logout = async () => {
     try {
       await fetch(`${getApiBaseUrl()}${API_ROUTES.SCANNER_LOGOUT}`, { method: "POST", credentials: "include" });
@@ -62,64 +79,106 @@ export default function ScannerHistory() {
   };
 
   return (
-    <div className="min-h-screen bg-[#1A1A1A] p-4 pb-24">
-      <div className="max-w-lg mx-auto">
-        <div className="flex justify-between items-center mb-4">
-          <Button variant="ghost" size="icon" className="text-[#B0B0B0]" onClick={() => navigate("/scanner/events")}><ArrowLeft className="w-5 h-5" /></Button>
-          <h1 className="text-lg font-semibold text-white">History</h1>
-          <Button variant="ghost" size="icon" className="text-[#B0B0B0]" onClick={logout}><LogOut className="w-5 h-5" /></Button>
+    <div className="min-h-screen pb-24" style={{ backgroundColor: SCANNER_BG }}>
+      <div className="mx-auto max-w-lg">
+        <div
+          className="sticky top-0 z-10 flex items-center justify-between border-b px-4 py-3 backdrop-blur-sm"
+          style={{ backgroundColor: `${SCANNER_BG}f2`, borderColor: SCANNER_BORDER }}
+        >
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-[#A3A3A3] hover:bg-[#141414] hover:text-white"
+            onClick={() => navigate("/scanner/events")}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h1 className="text-base font-semibold text-white">History</h1>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-[#A3A3A3] hover:bg-[#141414] hover:text-white"
+            onClick={logout}
+          >
+            <LogOut className="h-5 w-5" />
+          </Button>
         </div>
 
-        {stats && (
-          <Card className="bg-[#1F1F1F] border-[#2A2A2A] mb-4">
-            <CardContent className="p-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-2">
-                  <p className="text-[10px] text-[#B0B0B0] uppercase tracking-wide">Total</p>
-                  <p className="text-base font-bold" style={{ color: "#E21836" }}>{(stats.total ?? 0).toLocaleString()}</p>
+        <div className="p-4 space-y-4">
+          {stats && (
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hidden">
+              {[
+                { label: "Total", value: stats.total ?? 0, color: "#F5F5F5" },
+                { label: "Valid", value: stats.byStatus.valid ?? 0, color: "#22C55E" },
+                { label: "Already", value: stats.byStatus.already_scanned ?? 0, color: "#F59E0B" },
+                { label: "Invalid", value: stats.byStatus.invalid ?? 0, color: "#EF4444" },
+                { label: "Wrong", value: stats.byStatus.wrong_event ?? 0, color: "#EF4444" },
+              ].map(({ label, value, color }) => (
+                <div
+                  key={label}
+                  className="shrink-0 rounded-xl border border-[#2A2A2A]/80 bg-[#141414] px-4 py-3 min-w-[5.5rem]"
+                >
+                  <p className="text-[10px] uppercase tracking-wide text-[#737373]">{label}</p>
+                  <p className="mt-0.5 text-xl font-bold tabular-nums" style={{ color }}>
+                    {value.toLocaleString()}
+                  </p>
                 </div>
-                <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-2">
-                  <p className="text-[10px] text-[#B0B0B0] uppercase tracking-wide">Valid</p>
-                  <p className="text-base font-bold" style={{ color: "#10B981" }}>{(stats.byStatus.valid ?? 0).toLocaleString()}</p>
-                </div>
-                <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-2">
-                  <p className="text-[10px] text-[#B0B0B0] uppercase tracking-wide">Already scanned</p>
-                  <p className="text-base font-bold" style={{ color: "#F59E0B" }}>{(stats.byStatus.already_scanned ?? 0).toLocaleString()}</p>
-                </div>
-                <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-2">
-                  <p className="text-[10px] text-[#B0B0B0] uppercase tracking-wide">Invalid</p>
-                  <p className="text-base font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.invalid ?? 0).toLocaleString()}</p>
-                </div>
-                <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-2">
-                  <p className="text-[10px] text-[#B0B0B0] uppercase tracking-wide">Wrong event</p>
-                  <p className="text-base font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.wrong_event ?? 0).toLocaleString()}</p>
-                </div>
-              </div>
-              {Object.keys(stats.byPass || {}).length > 0 && (
-                <p className="text-xs text-[#B0B0B0] mt-3 pt-2 border-t border-[#2A2A2A]">By pass: {Object.entries(stats.byPass).map(([k, v]) => `${k}: ${v}`).join(", ")}</p>
-              )}
-            </CardContent>
-          </Card>
-        )}
+              ))}
+            </div>
+          )}
 
-        {loading ? <p className="text-[#B0B0B0]">Loading…</p> : scans.length === 0 ? <p className="text-[#B0B0B0]">No scans yet.</p> : (
-          <div className="space-y-2">
-            {scans.map((s) => (
-              <Card key={s.id} className="bg-[#1F1F1F] border-[#2A2A2A]">
-                <CardContent className="p-3">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="text-white font-medium">{s.buyer_name || "—"}</p>
-                      <p className="text-sm text-[#B0B0B0]">{s.pass_type || "—"} · {s.scan_result}</p>
-                      <p className="text-xs text-[#B0B0B0]">{s.scan_time ? format(new Date(s.scan_time), "PPp") : ""}</p>
-                    </div>
-                    <span className={`text-xs font-medium ${s.scan_result === "valid" ? "text-[#10B981]" : s.scan_result === "already_scanned" ? "text-[#F59E0B]" : "text-[#EF4444]"}`}>{s.scan_result}</span>
-                  </div>
-                </CardContent>
-              </Card>
+          <div className="flex flex-wrap gap-2">
+            {FILTERS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setFilter(key)}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                  filter === key
+                    ? "text-white"
+                    : "border border-[#2A2A2A] bg-[#141414] text-[#737373] hover:text-[#A3A3A3]"
+                )}
+                style={filter === key ? { backgroundColor: SCANNER_BRAND } : undefined}
+              >
+                {label}
+              </button>
             ))}
           </div>
-        )}
+
+          {loading ? (
+            <p className="py-8 text-center text-sm text-[#737373]">Loading…</p>
+          ) : filteredScans.length === 0 ? (
+            <div className="rounded-xl border border-[#2A2A2A]/60 bg-[#141414] py-12 text-center">
+              <p className="text-sm text-[#737373]">No scans found</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredScans.map((s) => (
+                <ScanHistoryRow
+                  key={s.id}
+                  scan={{
+                    id: s.id,
+                    scan_time: s.scan_time,
+                    scan_result: s.scan_result,
+                    buyer_name: s.buyer_name,
+                    pass_type: s.pass_type,
+                  }}
+                  showDate
+                />
+              ))}
+            </div>
+          )}
+
+          {stats && Object.keys(stats.byPass || {}).length > 0 && (
+            <p className="text-xs text-[#737373] pt-2 border-t border-[#2A2A2A]/60">
+              By pass:{" "}
+              {Object.entries(stats.byPass)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(", ")}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

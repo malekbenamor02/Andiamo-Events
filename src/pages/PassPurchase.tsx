@@ -206,7 +206,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   const [presaleRedeeming, setPresaleRedeeming] = useState(false);
   /** Mirrors presale_codes discount for the active session (from session or redeem API). */
   const [presaleDiscountPolicy, setPresaleDiscountPolicy] = useState<PresaleDiscountPolicy | null>(null);
-  /** Server session expiry (ms since epoch); used to re-lock at 3.5 minutes. */
+  /** Server session expiry (ms since epoch); used to re-lock at 5.5 minutes. */
   const [presaleSessionExpiresAt, setPresaleSessionExpiresAt] = useState<number | null>(null);
   const presaleExpiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [checkoutPromoDraft, setCheckoutPromoDraft] = useState('');

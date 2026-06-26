@@ -16,8 +16,8 @@ export { applyPresaleDiscountToPasses } from './presale-discount.js';
 
 export const PRESALE_COOKIE_NAME = 'andm_ps';
 export const PRESALE_CSRF_HEADER = 'x-presale-csrf';
-/** Presale access session lifetime after successful code redeem (3.5 minutes). */
-export const PRESALE_SESSION_TTL_SEC = 210;
+/** Presale access session lifetime after successful code redeem (5.5 minutes). */
+export const PRESALE_SESSION_TTL_SEC = 330;
 export const PRESALE_SESSION_TTL_MS = PRESALE_SESSION_TTL_SEC * 1000;
 
 /** True when X-Forwarded-For / X-Real-IP may be trusted (Vercel, or TRUST_FORWARDED_IP=1 behind your proxy). */

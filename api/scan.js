@@ -26,6 +26,23 @@ function getDb() {
   return createClient(url, key);
 }
 
+const SCAN_ENABLED_CACHE_TTL_MS = 30_000;
+let scanEnabledCache = { value: null, expiresAt: 0 };
+
+async function getScanEnabled(db) {
+  const now = Date.now();
+  if (scanEnabledCache.value !== null && now < scanEnabledCache.expiresAt) {
+    return scanEnabledCache.value;
+  }
+  const { data: cfg } = await db.from('scan_system_config').select('scan_enabled').limit(1).single();
+  const enabled = !!(cfg && cfg.scan_enabled);
+  scanEnabledCache = { value: enabled, expiresAt: now + SCAN_ENABLED_CACHE_TTL_MS };
+  return enabled;
+}
+
+const QR_TICKET_VALIDATE_COLUMNS =
+  'id, event_id, event_name, event_date, event_venue, source, invitation_id, ambassador_id, ambassador_name, pass_type, buyer_name, buyer_phone, buyer_email';
+
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   let b = '';
@@ -529,8 +546,8 @@ export default async function handler(req, res) {
       const auth = await requireScannerAuth(req);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
       if (!db) return res.status(500).json({ success: false, result: 'error', message: 'Service unavailable' });
-      const { data: cfg } = await db.from('scan_system_config').select('scan_enabled').limit(1).single();
-      if (!cfg || !cfg.scan_enabled) return res.status(503).json({ success: false, enabled: false, message: 'Scan system is not started', result: 'disabled' });
+      const scanEnabled = await getScanEnabled(db);
+      if (!scanEnabled) return res.status(503).json({ success: false, enabled: false, message: 'Scan system is not started', result: 'disabled' });
       const body = await parseBody(req);
       const st = (typeof body.secure_token === 'string' ? body.secure_token.trim() : '') || '';
       const ev = (typeof body.event_id === 'string' ? body.event_id.trim() : '') || '';
@@ -539,7 +556,7 @@ export default async function handler(req, res) {
       if (!st) return res.status(400).json({ success: false, result: 'invalid', message: 'secure_token required' });
       if (!ev || !/^[0-9a-f-]{36}$/i.test(ev)) return res.status(400).json({ success: false, result: 'invalid', message: 'event_id required and must be UUID' });
       const scannerId = auth.scanner.scannerId;
-      const { data: qt, error: qtErr } = await db.from('qr_tickets').select('*').eq('secure_token', st).single();
+      const { data: qt, error: qtErr } = await db.from('qr_tickets').select(QR_TICKET_VALIDATE_COLUMNS).eq('secure_token', st).single();
       if (qtErr || !qt) {
         await db.from('scans').insert({ event_id: ev, scanner_id: scannerId, scan_result: 'invalid', scan_location: sl, device_info: di, notes: 'Token not found' });
         return res.status(200).json({ success: false, result: 'invalid', message: 'Ticket not found' });

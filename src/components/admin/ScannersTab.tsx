@@ -5,17 +5,34 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
 import { format } from "date-fns";
-import { Plus, RefreshCw, Power, User } from "lucide-react";
+import { Plus, RefreshCw, Power, ChevronRight, Shield, ScanLine } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 import {
   AdminTabHeader,
   AdminMetricTile,
   ADMIN_TABLE_HEAD,
+  ADMIN_TABLE_ROW,
+  ADMIN_TABLE_WRAP,
+  ADMIN_BTN_EDIT,
 } from "@/pages/admin/components/AdminTabShell";
+
+const MOBILE_SHEET_CLASS =
+  "z-[60] flex max-h-[92dvh] flex-col rounded-t-[1.25rem] border-border/50 shadow-[0_-12px_48px_rgba(0,0,0,0.45)]";
 
 interface ScannersTabProps {
   language: "en" | "fr";
@@ -66,6 +83,7 @@ function fetcher(url: string, options?: RequestInit) {
 }
 
 export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
+  const isMobile = useIsMobile();
   const [config, setConfig] = useState<ScanConfig | null>(null);
   const [scanners, setScanners] = useState<Scanner[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -87,6 +105,8 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
   const [editRole, setEditRole] = useState<"scanner" | "supervisor">("scanner");
   const [toggleLoading, setToggleLoading] = useState(false);
   const [configLoading, setConfigLoading] = useState(true);
+  const [supervisorsOpen, setSupervisorsOpen] = useState(false);
+  const [scannersOpen, setScannersOpen] = useState(false);
   const configReqRef = useRef(0);
   const validSelectedEventId = !!selectedEventId && /^[0-9a-f-]{36}$/i.test(selectedEventId);
 
@@ -226,7 +246,231 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
     if (r.ok) await loadScanners();
   };
 
-  const t = language === "en" ? { start: "Start Scan", stop: "Stop Scan", toggleScan: "Toggle Scan", status: "Status", on: "ON", off: "OFF", scanners: "Scanners", create: "Create Scanner", name: "Name", email: "Email", password: "Password", active: "Active", actions: "Actions", edit: "Edit", deactivate: "Deactivate", all: "All Scanners", total: "Total", valid: "Valid", invalid: "Invalid", alreadyScanned: "Already scanned", wrongEvent: "Wrong event", history: "History", time: "Time", result: "Result", buyer: "Buyer", pass: "Pass", ambassador: "Ambassador", event: "Event", scanner: "Scanner", noScans: "No scans", remainingValidPasses: "Remaining valid passes", scannerPerformance: "Scanner performance", selectEventHint: "Select an event to see remaining valid passes", processing: "Processing...", remainingVsStatus: "Remaining valid vs scan statuses", roleLabel: "Role", roleScanner: "Scanner", roleSupervisor: "Supervisor" } : { start: "Démarrer le scan", stop: "Arrêter le scan", toggleScan: "Basculer le scan", status: "État", on: "ACTIF", off: "INACTIF", scanners: "Scanners", create: "Créer un scanner", name: "Nom", email: "Email", password: "Mot de passe", active: "Actif", actions: "Actions", edit: "Modifier", deactivate: "Désactiver", all: "Tous les scanners", total: "Total", valid: "Valide", invalid: "Invalide", alreadyScanned: "Déjà scanné", wrongEvent: "Mauvais événement", history: "Historique", time: "Heure", result: "Résultat", buyer: "Acheteur", pass: "Pass", ambassador: "Ambassadeur", event: "Événement", scanner: "Scanner", noScans: "Aucun scan", remainingValidPasses: "Pass valides restants", scannerPerformance: "Performance des scanners", selectEventHint: "Sélectionnez un événement pour voir les pass valides restants", processing: "Traitement...", remainingVsStatus: "Pass valides restants vs statuts de scan", roleLabel: "Rôle", roleScanner: "Scanner", roleSupervisor: "Superviseur" };
+  const openEdit = (s: Scanner) => {
+    setEditScanner(s);
+    setEditName(s.name);
+    setEditEmail(s.email);
+    setEditActive(s.is_active);
+    setEditRole(s.role === "supervisor" ? "supervisor" : "scanner");
+    setEditPassword("");
+    setEditOpen(true);
+  };
+
+  const openCreate = () => {
+    setCreateRole("scanner");
+    setCreateError("");
+    setCreateOpen(true);
+  };
+
+  const supervisors = scanners.filter((s) => s.role === "supervisor");
+  const scannerUsers = scanners.filter((s) => s.role !== "supervisor");
+
+  const t = language === "en" ? { start: "Start Scan", stop: "Stop Scan", toggleScan: "Toggle Scan", status: "Status", on: "ON", off: "OFF", scanners: "Scanners", create: "Create Scanner", createBtn: "Create", save: "Save", name: "Name", email: "Email", password: "Password", active: "Active", inactive: "Inactive", actions: "Actions", edit: "Edit", deactivate: "Deactivate", all: "All Scanners", total: "Total", valid: "Valid", invalid: "Invalid", alreadyScanned: "Already scanned", wrongEvent: "Wrong event", history: "History", time: "Time", result: "Result", buyer: "Buyer", pass: "Pass", ambassador: "Ambassador", event: "Event", scanner: "Scanner", noScans: "No scans", remainingValidPasses: "Remaining valid passes", scannerPerformance: "Scanner performance", selectEventHint: "Select an event to see remaining valid passes", processing: "Processing...", remainingVsStatus: "Remaining valid vs scan statuses", roleLabel: "Role", roleScanner: "Scanners", roleSupervisor: "Supervisors", noMembers: "No members yet", team: "Team" } : { start: "Démarrer le scan", stop: "Arrêter le scan", toggleScan: "Basculer le scan", status: "État", on: "ACTIF", off: "INACTIF", scanners: "Scanners", create: "Créer un scanner", createBtn: "Créer", save: "Enregistrer", name: "Nom", email: "Email", password: "Mot de passe", active: "Actif", inactive: "Inactif", actions: "Actions", edit: "Modifier", deactivate: "Désactiver", all: "Tous les scanners", total: "Total", valid: "Valide", invalid: "Invalide", alreadyScanned: "Déjà scanné", wrongEvent: "Mauvais événement", history: "Historique", time: "Heure", result: "Résultat", buyer: "Acheteur", pass: "Pass", ambassador: "Ambassadeur", event: "Événement", scanner: "Scanner", noScans: "Aucun scan", remainingValidPasses: "Pass valides restants", scannerPerformance: "Performance des scanners", selectEventHint: "Sélectionnez un événement pour voir les pass valides restants", processing: "Traitement...", remainingVsStatus: "Pass valides restants vs statuts de scan", roleLabel: "Rôle", roleScanner: "Scanners", roleSupervisor: "Superviseurs", noMembers: "Aucun membre", team: "Équipe" };
+
+  const renderScannerRows = (items: Scanner[]) => {
+    if (items.length === 0) {
+      return (
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t.noMembers}</p>
+      );
+    }
+
+    if (isMobile) {
+      return (
+        <div className="divide-y divide-border/50">
+          {items.map((s) => (
+            <div key={s.id} className="flex items-start gap-3 px-4 py-3.5">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate text-sm font-medium text-foreground">{s.name}</p>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "border-transparent px-2 py-0 text-[10px] font-medium",
+                      s.is_active
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {s.is_active ? t.active : t.inactive}
+                  </Badge>
+                </div>
+                <p className="truncate text-xs text-muted-foreground">{s.email}</p>
+              </div>
+              <div className="flex shrink-0 flex-col gap-1">
+                <Button variant="outline" size="sm" className={ADMIN_BTN_EDIT} onClick={() => openEdit(s)}>
+                  {t.edit}
+                </Button>
+                {s.is_active && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2.5 text-xs text-destructive hover:bg-destructive/10"
+                    onClick={() => onDeactivate(s)}
+                  >
+                    {t.deactivate}
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className={ADMIN_TABLE_WRAP}>
+        <Table>
+          <TableHeader>
+            <TableRow className="border-border/60">
+              <TableHead className={ADMIN_TABLE_HEAD}>{t.name}</TableHead>
+              <TableHead className={ADMIN_TABLE_HEAD}>{t.email}</TableHead>
+              <TableHead className={ADMIN_TABLE_HEAD}>{t.active}</TableHead>
+              <TableHead className={cn(ADMIN_TABLE_HEAD, "text-right")}>{t.actions}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((s) => (
+              <TableRow key={s.id} className={ADMIN_TABLE_ROW}>
+                <TableCell className="font-medium text-foreground">{s.name}</TableCell>
+                <TableCell className="text-muted-foreground">{s.email}</TableCell>
+                <TableCell>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "border-transparent font-normal",
+                      s.is_active
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {s.is_active ? t.active : t.inactive}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button variant="outline" size="sm" className={cn(ADMIN_BTN_EDIT, "mr-1.5")} onClick={() => openEdit(s)}>
+                    {t.edit}
+                  </Button>
+                  {s.is_active && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2.5 text-xs text-destructive hover:bg-destructive/10"
+                      onClick={() => onDeactivate(s)}
+                    >
+                      {t.deactivate}
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  };
+
+  const renderRoleGroup = (
+    title: string,
+    icon: React.ReactNode,
+    items: Scanner[],
+    open: boolean,
+    onOpenChange: (open: boolean) => void
+  ) => (
+    <Collapsible
+      open={open}
+      onOpenChange={onOpenChange}
+      className="overflow-hidden rounded-xl border border-border/60 bg-muted/10"
+    >
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChevronRight
+            className={cn(
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+              open && "rotate-90"
+            )}
+            aria-hidden
+          />
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-background/80 text-muted-foreground">
+            {icon}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-foreground">{title}</span>
+            <span className="text-xs text-muted-foreground">
+              {items.length} {items.length === 1 ? (language === "en" ? "member" : "membre") : (language === "en" ? "members" : "membres")}
+            </span>
+          </span>
+          <Badge variant="secondary" className="shrink-0 font-normal tabular-nums">
+            {items.filter((s) => s.is_active).length} {t.active.toLowerCase()}
+          </Badge>
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="border-t border-border/50 bg-background/40">
+        {renderScannerRows(items)}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+
+  const createForm = (
+    <div className="space-y-4">
+      {createError && <p className="text-sm text-destructive">{createError}</p>}
+      <div className="space-y-2">
+        <Label className="text-muted-foreground">{t.name}</Label>
+        <Input value={createName} onChange={(e) => setCreateName(e.target.value)} className="h-11" />
+      </div>
+      <div className="space-y-2">
+        <Label className="text-muted-foreground">{t.email}</Label>
+        <Input type="email" value={createEmail} onChange={(e) => setCreateEmail(e.target.value)} className="h-11" />
+      </div>
+      <div className="space-y-2">
+        <Label className="text-muted-foreground">{t.password} (min 8)</Label>
+        <Input type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} className="h-11" />
+      </div>
+      <div className="space-y-2">
+        <Label className="text-muted-foreground">{t.roleLabel}</Label>
+        <Select value={createRole} onValueChange={(v) => setCreateRole(v === "supervisor" ? "supervisor" : "scanner")}>
+          <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="scanner">{language === "en" ? "Scanner" : "Scanner"}</SelectItem>
+            <SelectItem value="supervisor">{language === "en" ? "Supervisor" : "Superviseur"}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+
+  const editForm = editScanner ? (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label className="text-muted-foreground">{t.name}</Label>
+        <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-11" />
+      </div>
+      <div className="space-y-2">
+        <Label className="text-muted-foreground">{t.email}</Label>
+        <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="h-11" />
+      </div>
+      <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-3">
+        <Switch checked={editActive} onCheckedChange={setEditActive} />
+        <Label className="text-sm text-foreground">{t.active}</Label>
+      </div>
+      <div className="space-y-2">
+        <Label className="text-muted-foreground">{t.roleLabel}</Label>
+        <Select value={editRole} onValueChange={(v) => setEditRole(v === "supervisor" ? "supervisor" : "scanner")}>
+          <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="scanner">{language === "en" ? "Scanner" : "Scanner"}</SelectItem>
+            <SelectItem value="supervisor">{language === "en" ? "Supervisor" : "Superviseur"}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label className="text-muted-foreground">{t.password} ({language === "en" ? "leave blank to keep" : "laisser vide pour conserver"})</Label>
+        <Input type="password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="••••••••" className="h-11" />
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="space-y-6">
@@ -249,37 +493,29 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
         </CardContent>
       </Card>
 
-      <Card className="bg-card border-border">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-foreground">{t.scanners}</CardTitle>
-          <Button onClick={() => { setCreateRole("scanner"); setCreateOpen(true); }}><Plus className="w-4 h-4 mr-2" />{t.create}</Button>
+      <Card className="bg-card border-border/60">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-4">
+          <CardTitle className="text-base font-semibold text-foreground">{t.team}</CardTitle>
+          <Button size="sm" onClick={openCreate} className="shrink-0">
+            <Plus className="w-4 h-4 mr-1.5" />
+            {t.create}
+          </Button>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border">
-                <TableHead className={ADMIN_TABLE_HEAD}>{t.name}</TableHead>
-                <TableHead className={ADMIN_TABLE_HEAD}>{t.email}</TableHead>
-                <TableHead className={ADMIN_TABLE_HEAD}>{t.roleLabel}</TableHead>
-                <TableHead className={ADMIN_TABLE_HEAD}>{t.active}</TableHead>
-                <TableHead className={ADMIN_TABLE_HEAD}>{t.actions}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {scanners.map((s) => (
-                <TableRow key={s.id} className="border-border">
-                  <TableCell className="text-foreground">{s.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{s.email}</TableCell>
-                  <TableCell className="text-muted-foreground">{s.role === "supervisor" ? t.roleSupervisor : t.roleScanner}</TableCell>
-                  <TableCell><span className={s.is_active ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}>{s.is_active ? "✓" : "✗"}</span></TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground mr-2" onClick={() => { setEditScanner(s); setEditName(s.name); setEditEmail(s.email); setEditActive(s.is_active); setEditRole(s.role === "supervisor" ? "supervisor" : "scanner"); setEditPassword(""); setEditOpen(true); }}>{t.edit}</Button>
-                    {s.is_active && <Button variant="ghost" size="sm" className="text-destructive" onClick={() => onDeactivate(s)}>{t.deactivate}</Button>}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <CardContent className="space-y-2 pt-0">
+          {renderRoleGroup(
+            t.roleSupervisor,
+            <Shield className="h-4 w-4" />,
+            supervisors,
+            supervisorsOpen,
+            setSupervisorsOpen
+          )}
+          {renderRoleGroup(
+            t.roleScanner,
+            <ScanLine className="h-4 w-4" />,
+            scannerUsers,
+            scannersOpen,
+            setScannersOpen
+          )}
         </CardContent>
       </Card>
 
@@ -387,58 +623,57 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
         </CardContent>
       </Card>
 
-      <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCreateError(""); }}>
-        <DialogContent className="bg-card border-border">
-          <DialogHeader><DialogTitle className="text-foreground">{t.create}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            {createError && <p className="text-sm text-destructive">{createError}</p>}
-            <Label className="text-muted-foreground">{t.name}</Label>
-            <Input value={createName} onChange={e => setCreateName(e.target.value)} />
-            <Label className="text-muted-foreground">{t.email}</Label>
-            <Input type="email" value={createEmail} onChange={e => setCreateEmail(e.target.value)} />
-            <Label className="text-muted-foreground">{t.password} (min 8)</Label>
-            <Input type="password" value={createPassword} onChange={e => setCreatePassword(e.target.value)} />
-            <Label className="text-muted-foreground">{t.roleLabel}</Label>
-            <Select value={createRole} onValueChange={(v) => setCreateRole(v === "supervisor" ? "supervisor" : "scanner")}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="scanner">{t.roleScanner}</SelectItem>
-                <SelectItem value="supervisor">{t.roleSupervisor}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button className="w-full" onClick={onCreate}>Create</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {isMobile ? (
+        <Drawer open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCreateError(""); }}>
+          <DrawerContent className={MOBILE_SHEET_CLASS}>
+            <DrawerHeader className="px-5 pb-2 pt-1 text-left">
+              <DrawerTitle className="text-base font-semibold tracking-tight">{t.create}</DrawerTitle>
+            </DrawerHeader>
+            <div className="overflow-y-auto px-5 pb-2">{createForm}</div>
+            <DrawerFooter className="border-t border-border/50 px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
+              <Button className="h-11 w-full" onClick={onCreate}>{t.createBtn}</Button>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCreateError(""); }}>
+          <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[420px] duration-300 data-[state=closed]:duration-300">
+            <DialogHeader className="space-y-1 border-b border-border/50 px-6 py-5 text-left">
+              <DialogTitle className="text-base font-semibold">{t.create}</DialogTitle>
+            </DialogHeader>
+            <div className="px-6 py-5">{createForm}</div>
+            <DialogFooter className="border-t border-border/50 px-6 py-4">
+              <Button className="w-full sm:w-auto" onClick={onCreate}>{t.createBtn}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="bg-card border-border">
-          <DialogHeader><DialogTitle className="text-foreground">{t.edit}</DialogTitle></DialogHeader>
-          {editScanner && (
-            <div className="space-y-3">
-              <Label className="text-muted-foreground">{t.name}</Label>
-              <Input value={editName} onChange={e => setEditName(e.target.value)} />
-              <Label className="text-muted-foreground">{t.email}</Label>
-              <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} />
-              <div className="flex items-center gap-2">
-                <Switch checked={editActive} onCheckedChange={setEditActive} />
-                <Label className="text-muted-foreground">{t.active}</Label>
-              </div>
-              <Label className="text-muted-foreground">{t.roleLabel}</Label>
-              <Select value={editRole} onValueChange={(v) => setEditRole(v === "supervisor" ? "supervisor" : "scanner")}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="scanner">{t.roleScanner}</SelectItem>
-                  <SelectItem value="supervisor">{t.roleSupervisor}</SelectItem>
-                </SelectContent>
-              </Select>
-              <Label className="text-muted-foreground">{t.password} (leave blank to keep)</Label>
-              <Input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="••••••••" />
-              <Button className="w-full" onClick={onEdit}>Save</Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {isMobile ? (
+        <Drawer open={editOpen} onOpenChange={setEditOpen}>
+          <DrawerContent className={MOBILE_SHEET_CLASS}>
+            <DrawerHeader className="px-5 pb-2 pt-1 text-left">
+              <DrawerTitle className="text-base font-semibold tracking-tight">{t.edit}</DrawerTitle>
+            </DrawerHeader>
+            <div className="overflow-y-auto px-5 pb-2">{editForm}</div>
+            <DrawerFooter className="border-t border-border/50 px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
+              <Button className="h-11 w-full" onClick={onEdit}>{t.save}</Button>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[420px] duration-300 data-[state=closed]:duration-300">
+            <DialogHeader className="space-y-1 border-b border-border/50 px-6 py-5 text-left">
+              <DialogTitle className="text-base font-semibold">{t.edit}</DialogTitle>
+            </DialogHeader>
+            <div className="px-6 py-5">{editForm}</div>
+            <DialogFooter className="border-t border-border/50 px-6 py-4">
+              <Button className="w-full sm:w-auto" onClick={onEdit}>{t.save}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
