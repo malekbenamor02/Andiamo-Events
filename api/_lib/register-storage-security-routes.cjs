@@ -19,7 +19,10 @@ const {
   FAVICON_CACHE,
   getClientContext,
 } = require('./r2-media.cjs');
-const { processRasterToWebpAvif, shouldEncodeToWebpAvif } = require('./media-image-pipeline.cjs');
+
+function getMediaImagePipeline() {
+  return require('./media-image-pipeline.cjs');
+}
 
 const IMAGE_FOLDERS = new Set([
   'posters',
@@ -196,6 +199,7 @@ function registerStorageSecurityRoutes(app, deps = {}) {
   async function handleAdminMediaUpload(req, res) {
     try {
       if (!req.file?.buffer) return res.status(400).json({ error: 'No file' });
+      const { processRasterToWebpAvif, shouldEncodeToWebpAvif } = getMediaImagePipeline();
       const scope = String(req.body?.scope || 'images').trim();
       const folder = String(req.body?.folder || 'posters').trim();
       const bucket = scope === 'hero' ? 'hero-images' : 'images';
