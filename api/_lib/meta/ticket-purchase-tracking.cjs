@@ -432,7 +432,7 @@ async function writeTrackingLog(db, orderId, canonical, capiResult) {
 async function processConfirmedTicketPurchaseTracking(db, orderId, options = {}) {
   const { data: order, error: orderError } = await db
     .from('orders')
-    .select('*, events ( id, name ), event_promo_codes ( code )')
+    .select('*, events ( id, name ), event_promo_codes ( label )')
     .eq('id', orderId)
     .single();
 
@@ -468,8 +468,8 @@ async function processConfirmedTicketPurchaseTracking(db, orderId, options = {})
 
   const event = order.events || null;
   const promoCode =
-    order.event_promo_codes?.code != null
-      ? String(order.event_promo_codes.code)
+    order.event_promo_codes?.label != null
+      ? String(order.event_promo_codes.label)
       : null;
 
   const canonical = buildCanonicalTicketPurchaseEvent({

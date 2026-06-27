@@ -25,6 +25,8 @@
     "email:ticket-poster-pdf": "node scripts/render-premium-ticket-poster-pdf.cjs",
     "test:purchase-channel": "node --test api/_lib/purchase-channel-label.test.cjs",
     "test:admin-auth-order": "node --test api/_lib/admin-route-auth-order.test.cjs api/_lib/admin-permission-routes.test.cjs",
+    "test:payment-fulfillment": "node --test api/_lib/payment-fulfillment.test.cjs",
+    "verify:order-fulfillment-migration": "node scripts/verify-order-fulfillment-migration.mjs",
     "test:login-security": "node --test api/_lib/scanner-auth.test.cjs api/_lib/scanner-login-rate-limit.test.cjs api/_lib/ambassador-auth.test.cjs",
     "test": "vitest run",
     "test:watch": "vitest"

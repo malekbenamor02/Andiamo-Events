@@ -21,6 +21,15 @@ interface PaymentProcessingProps {
   language?: 'en' | 'fr';
 }
 
+type PageState =
+  | 'loading'
+  | 'success'
+  | 'success_pending'
+  | 'success_email_pending'
+  | 'failed'
+  | 'redirecting'
+  | 'unknown';
+
 export default function PaymentProcessing({ language = 'en' }: PaymentProcessingProps) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -28,18 +37,22 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
   const isReturn = searchParams.get('return') === '1';
   const isInit = searchParams.get('init') === '1';
 
-  const [state, setState] = useState<'loading' | 'success' | 'failed' | 'redirecting' | 'unknown'>('loading');
+  const [state, setState] = useState<PageState>('loading');
   const [error, setError] = useState<string | null>(null);
   const [confirmResult, setConfirmResult] = useState<{
     success?: boolean;
+    paymentConfirmed?: boolean;
+    fulfillmentComplete?: boolean;
     orderId?: string;
     status?: string;
     message?: string;
     ticketsGenerated?: boolean;
     ticketsCount?: number;
     emailSent?: boolean;
+    emailAttempted?: boolean;
     smsSent?: boolean;
     alreadyPaid?: boolean;
+    ticketError?: string | null;
     metaTracking?: TicketMetaTrackingResponse;
   } | null>(null);
   const [purchaseTracked, setPurchaseTracked] = useState(false);
@@ -52,6 +65,14 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
     successTitle: 'Payment confirmed',
     successSubtitle: 'Thank you for your order',
     successMessage: 'Your payment has been confirmed. Your tickets have been sent to your email.',
+    fulfillmentPendingTitle: 'Payment confirmed',
+    fulfillmentPendingSubtitle: 'Thank you for your order',
+    fulfillmentPendingMessage:
+      'Payment received. Your tickets are being generated. If you do not receive them shortly, contact support with your order number.',
+    emailPendingTitle: 'Payment confirmed',
+    emailPendingSubtitle: 'Thank you for your order',
+    emailPendingMessage:
+      'Your payment was successful and your tickets are ready. The confirmation email may be delayed — check spam or contact support with your order number if needed.',
     failedTitle: 'Payment failed',
     failedMessage: 'Your payment could not be completed. Please try again or choose another payment method.',
     unknownTitle: 'Payment not confirmed',
@@ -71,6 +92,14 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
     successTitle: 'Paiement confirmé',
     successSubtitle: 'Merci pour votre commande',
     successMessage: 'Votre paiement a été confirmé. Vos billets ont été envoyés par email.',
+    fulfillmentPendingTitle: 'Paiement confirmé',
+    fulfillmentPendingSubtitle: 'Merci pour votre commande',
+    fulfillmentPendingMessage:
+      'Paiement reçu. Vos billets sont en cours de génération. Si vous ne les recevez pas sous peu, contactez le support avec votre numéro de commande.',
+    emailPendingTitle: 'Paiement confirmé',
+    emailPendingSubtitle: 'Merci pour votre commande',
+    emailPendingMessage:
+      'Votre paiement a réussi et vos billets sont prêts. L\'email de confirmation peut être retardé — vérifiez les spams ou contactez le support avec votre numéro de commande.',
     failedTitle: 'Paiement échoué',
     failedMessage: 'Votre paiement n\'a pas pu être traité. Veuillez réessayer ou choisir un autre mode de paiement.',
     unknownTitle: 'Paiement non confirmé',
@@ -87,6 +116,23 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
 
   const mapPaymentError = (input: Parameters<typeof mapPublicError>[0]) =>
     mapPublicError(input, language);
+
+  function resolveFulfillmentState(data: NonNullable<typeof confirmResult>): PageState {
+    const paid =
+      data.alreadyPaid ||
+      (data.paymentConfirmed !== false && data.success && data.status === 'PAID');
+    if (!paid) return 'failed';
+
+    if (data.fulfillmentComplete === true) return 'success';
+    if (data.ticketsGenerated && data.emailAttempted && !data.emailSent) {
+      return 'success_email_pending';
+    }
+    if (!data.ticketsGenerated || data.ticketError) {
+      return 'success_pending';
+    }
+    if (data.fulfillmentComplete === false) return 'success_pending';
+    return 'success';
+  }
 
   useEffect(() => {
     if (!orderId) {
@@ -140,9 +186,7 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
         const data = await res.json().catch(() => ({}));
         setConfirmResult(data);
 
-        if (data.alreadyPaid || (data.success && data.status === 'PAID')) {
-          setState('success');
-        } else if (data.status === 'UNKNOWN') {
+        if (data.status === 'UNKNOWN') {
           setState('unknown');
           setError(
             mapPaymentError({
@@ -150,7 +194,7 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
               message: data.message,
             }).description
           );
-        } else if (data.status === 'failed' || !data.success) {
+        } else if (data.status === 'failed' || (data.success === false && data.status !== 'PAID')) {
           setState('failed');
           setError(
             mapPaymentError({
@@ -158,7 +202,7 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
               message: data.message || t.failedMessage,
             }).description
           );
-        } else if (!res.ok) {
+        } else if (!res.ok && data.status !== 'PAID') {
           setState('failed');
           setError(
             mapPaymentError({
@@ -167,7 +211,7 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
             }).description
           );
         } else {
-          setState('success');
+          setState(resolveFulfillmentState(data));
         }
       } catch (err: unknown) {
         setState('failed');
@@ -186,14 +230,20 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
   }, [orderId, isReturn, isInit, language]);
 
   useEffect(() => {
-    if (state !== 'success' || purchaseTracked || !orderId) return;
-    if (!confirmResult?.alreadyPaid && !(confirmResult?.success && confirmResult?.status === 'PAID')) return;
+    const paidConfirmed =
+      confirmResult?.alreadyPaid ||
+      (confirmResult?.paymentConfirmed !== false &&
+        confirmResult?.success &&
+        confirmResult?.status === 'PAID');
+    if (!paidConfirmed || purchaseTracked || !orderId) return;
+    if (state !== 'success' && state !== 'success_pending' && state !== 'success_email_pending') {
+      return;
+    }
 
     const metaTracking = confirmResult.metaTracking;
     if (metaTracking?.pixel && isValidTicketMetaPixelPayload(metaTracking.pixel)) {
       trackPurchaseFromBackend(metaTracking.pixel);
     } else {
-      // Transitional fallback for in-flight sessions created before backend tracking.
       const snapshot = consumePurchaseSnapshot(orderId);
       if (snapshot) {
         trackConfirmedPurchase(snapshot);
@@ -203,32 +253,48 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
   }, [state, purchaseTracked, confirmResult, orderId]);
 
   const statusVariant =
-    state === 'redirecting' ? 'redirecting' : state;
+    state === 'redirecting'
+      ? 'redirecting'
+      : state === 'success_pending' || state === 'success_email_pending'
+        ? 'unknown'
+        : state;
 
   const statusTitle =
     statusVariant === 'loading' || statusVariant === 'redirecting'
       ? t.title
-      : statusVariant === 'success'
+      : state === 'success'
         ? t.successTitle
-        : statusVariant === 'unknown'
-          ? t.unknownTitle
-          : t.failedTitle;
+        : state === 'success_pending'
+          ? t.fulfillmentPendingTitle
+          : state === 'success_email_pending'
+            ? t.emailPendingTitle
+            : statusVariant === 'unknown'
+              ? t.unknownTitle
+              : t.failedTitle;
 
   const statusSubtitle =
     statusVariant === 'loading' || statusVariant === 'redirecting'
       ? statusVariant === 'redirecting'
         ? t.redirecting
         : t.pleaseWait
-      : statusVariant === 'success'
+      : state === 'success'
         ? t.successSubtitle
-        : undefined;
+        : state === 'success_pending'
+          ? t.fulfillmentPendingSubtitle
+          : state === 'success_email_pending'
+            ? t.emailPendingSubtitle
+            : undefined;
 
   const statusMessage =
-    statusVariant === 'success'
+    state === 'success'
       ? t.successMessage
-      : statusVariant === 'failed' || statusVariant === 'unknown'
-        ? error || (statusVariant === 'unknown' ? t.unknownMessage : t.failedMessage)
-        : undefined;
+      : state === 'success_pending'
+        ? t.fulfillmentPendingMessage
+        : state === 'success_email_pending'
+          ? t.emailPendingMessage
+          : statusVariant === 'failed' || statusVariant === 'unknown'
+            ? error || (statusVariant === 'unknown' ? t.unknownMessage : t.failedMessage)
+            : undefined;
 
   const buyAgainPath = getPaymentReturnPath();
 
@@ -244,14 +310,14 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
           statusVariant === 'failed' ? navigate(buyAgainPath) : navigate('/events')
         }
         primaryActionLabel={
-          statusVariant === 'unknown'
+          statusVariant === 'unknown' || state === 'success_pending' || state === 'success_email_pending'
             ? t.contactSupport
             : statusVariant === 'failed'
               ? t.buyAgain
               : t.backToEvents
         }
         onPrimaryAction={() =>
-          statusVariant === 'unknown'
+          statusVariant === 'unknown' || state === 'success_pending' || state === 'success_email_pending'
             ? navigate('/contact')
             : statusVariant === 'failed'
               ? navigate(buyAgainPath)
