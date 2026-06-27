@@ -584,30 +584,49 @@ Billets envoyés par email. We Create Memories`;
   return result;
 }
 
-function buildFulfillmentDepsFromMisc(requireFromRoot, nodePath, __dirname) {
+const FULFILLMENT_FEE_MODULE = 'online-payment-fee.cjs';
+
+/**
+ * Ensures callers pass `api/_lib`, not an API entrypoint directory (`api/`).
+ * @param {string} fulfillmentLibDir Absolute or project-relative path to api/_lib
+ */
+function assertFulfillmentLibDir(fulfillmentLibDir, nodePath) {
+  if (!fulfillmentLibDir || typeof fulfillmentLibDir !== 'string') {
+    throw new Error(
+      `Invalid fulfillment lib directory: expected api/_lib, received ${String(fulfillmentLibDir)}`
+    );
+  }
+  const feePath = nodePath.join(fulfillmentLibDir, FULFILLMENT_FEE_MODULE);
+  const normalized = feePath.replace(/\\/g, '/');
+  if (
+    !normalized.includes('/_lib/online-payment-fee.cjs') &&
+    !normalized.endsWith('_lib/online-payment-fee.cjs')
+  ) {
+    throw new Error(
+      `Invalid fulfillment lib directory: expected api/_lib, received ${fulfillmentLibDir} (resolved ${FULFILLMENT_FEE_MODULE} to ${normalized})`
+    );
+  }
+}
+
+function buildFulfillmentDepsFromMisc(requireFromRoot, nodePath, fulfillmentLibDir) {
+  assertFulfillmentLibDir(fulfillmentLibDir, nodePath);
+  const lib = (file) => nodePath.join(fulfillmentLibDir, file);
   const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot(
-    nodePath.join(__dirname, 'online-payment-fee.cjs')
+    lib(FULFILLMENT_FEE_MODULE)
   );
-  const { buildTicketQrApiUrl } = requireFromRoot(nodePath.join(__dirname, 'r2-media.cjs'));
+  const { buildTicketQrApiUrl } = requireFromRoot(lib('r2-media.cjs'));
   const {
     prepareTicketsByPassTypeForEmail,
     mergeEmailAttachments,
-  } = requireFromRoot(nodePath.join(__dirname, 'ticket-qr-email.cjs'));
-  const { sendTransactionalEmail } = requireFromRoot(nodePath.join(__dirname, 'transactional-email.cjs'));
-  const { canSendTransactionalEmail } = requireFromRoot(
-    nodePath.join(__dirname, 'can-send-transactional-email.cjs')
-  );
-  const { buildOnlineTicketEmailHtml } = requireFromRoot(
-    nodePath.join(__dirname, 'online-ticket-email-html.cjs')
-  );
-  const { safeInsertEmailDeliveryLog } = requireFromRoot(
-    nodePath.join(__dirname, 'safe-email-delivery-log.cjs')
-  );
+  } = requireFromRoot(lib('ticket-qr-email.cjs'));
+  const { sendTransactionalEmail } = requireFromRoot(lib('transactional-email.cjs'));
+  const { canSendTransactionalEmail } = requireFromRoot(lib('can-send-transactional-email.cjs'));
+  const { buildOnlineTicketEmailHtml } = requireFromRoot(lib('online-ticket-email-html.cjs'));
+  const { safeInsertEmailDeliveryLog } = requireFromRoot(lib('safe-email-delivery-log.cjs'));
   let tryBuildPremiumTicketsPdfAttachment = null;
   try {
     tryBuildPremiumTicketsPdfAttachment =
-      requireFromRoot(nodePath.join(__dirname, 'render-premium-ticket-pdf.cjs'))
-        .tryBuildPremiumTicketsPdfAttachment;
+      requireFromRoot(lib('render-premium-ticket-pdf.cjs')).tryBuildPremiumTicketsPdfAttachment;
   } catch {
     /* optional */
   }
@@ -696,6 +715,7 @@ module.exports = {
   allowUnsafeFulfillmentFallback,
   fulfillPaidOrderTicketsAndEmail,
   buildFulfillmentDepsFromMisc,
+  assertFulfillmentLibDir,
   fulfillmentResultToLegacyResponse,
   buildPaymentConfirmJson,
 };

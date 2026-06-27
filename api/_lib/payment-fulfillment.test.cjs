@@ -477,6 +477,44 @@ describe('buildPaymentConfirmJson', () => {
   });
 });
 
+describe('buildFulfillmentDepsFromMisc lib path', () => {
+  const nodePath = require('path');
+  const {
+    buildFulfillmentDepsFromMisc,
+    assertFulfillmentLibDir,
+  } = require('./paid-order-fulfillment.cjs');
+
+  it('rejects api/ entrypoint directory with a clear error', () => {
+    const apiDir = nodePath.join(root, 'api');
+    assert.throws(
+      () => buildFulfillmentDepsFromMisc(require, nodePath, apiDir),
+      /Invalid fulfillment lib directory: expected api\/_lib/
+    );
+    const feePath = nodePath.join(apiDir, 'online-payment-fee.cjs').replace(/\\/g, '/');
+    assert.doesNotMatch(feePath, /\/_lib\/online-payment-fee\.cjs$/);
+  });
+
+  it('loads online-payment-fee.cjs from api/_lib', () => {
+    const apiLibDir = nodePath.join(root, 'api/_lib');
+    assert.doesNotThrow(() => assertFulfillmentLibDir(apiLibDir, nodePath));
+    const deps = buildFulfillmentDepsFromMisc(require, nodePath, apiLibDir);
+    assert.equal(typeof deps.computeOnlinePaymentFees, 'function');
+    assert.equal(typeof deps.buildOnlineTicketEmailHtml, 'function');
+  });
+
+  it('clictopay-confirm-payment.js passes fulfillmentLibDir under api/_lib', () => {
+    const src = read('api/clictopay-confirm-payment.js');
+    assert.match(src, /fulfillmentLibDir\s*=\s*nodePath\.join\(__dirname,\s*'_lib'\)/);
+    assert.match(src, /fulfillmentLibDir,/);
+    assert.doesNotMatch(src, /handleClicToPayConfirmPayment\([\s\S]*?\b__dirname,/);
+  });
+
+  it('misc.js passes fulfillmentLibDir under api/_lib to confirm handler', () => {
+    const misc = read('api/misc.js');
+    assert.match(misc, /fulfillmentLibDir:\s*nodePath\.join\(__dirname,\s*'_lib'\)/);
+  });
+});
+
 describe('clictopay confirm public safety', () => {
   it('requires gateway verification before fulfillment', () => {
     const src = read('api/_lib/clictopay-confirm-payment.cjs');

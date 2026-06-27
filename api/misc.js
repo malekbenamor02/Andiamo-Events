@@ -4132,7 +4132,7 @@ We Create Memories`;
         createServiceRoleClient,
         requireFromRoot,
         nodePath,
-        __dirname,
+        fulfillmentLibDir: nodePath.join(__dirname, '_lib'),
         runTicketMetaTrackingSafe,
       });
     }

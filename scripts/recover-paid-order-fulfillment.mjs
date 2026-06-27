@@ -90,10 +90,11 @@ async function main() {
   }
 
   const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const fulfillmentLibDir = nodePath.join(root, 'api/_lib');
   const fulfillmentDeps = buildFulfillmentDepsFromMisc(
     requireCjs,
     nodePath,
-    nodePath.join(root, 'api/_lib')
+    fulfillmentLibDir
   );
 
   if (args.batchUnderfulfilled) {

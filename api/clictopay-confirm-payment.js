@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { createServiceRoleClient } from './_lib/service-role-client.js';
 
 const __dirname = nodePath.dirname(fileURLToPath(import.meta.url));
+const fulfillmentLibDir = nodePath.join(__dirname, '_lib');
 const requireFromRoot = createRequire(import.meta.url);
 
 const { ensureSupabaseServerEnv } = requireFromRoot(
@@ -98,7 +99,7 @@ export default async function handler(req, res) {
     createServiceRoleClient,
     requireFromRoot,
     nodePath,
-    __dirname,
+    fulfillmentLibDir,
     runTicketMetaTrackingSafe,
   });
 }

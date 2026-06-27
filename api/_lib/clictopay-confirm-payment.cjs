@@ -42,8 +42,8 @@ async function verifyClicToPayForOrder(order, orderPasses) {
   };
 }
 
-async function runFulfillment(dbClient, requireFromRoot, nodePath, __dirname, orderId, source) {
-  const fulfillmentDeps = buildFulfillmentDepsFromMisc(requireFromRoot, nodePath, __dirname);
+async function runFulfillment(dbClient, requireFromRoot, nodePath, fulfillmentLibDir, orderId, source) {
+  const fulfillmentDeps = buildFulfillmentDepsFromMisc(requireFromRoot, nodePath, fulfillmentLibDir);
   return fulfillPaidOrderTicketsAndEmail(dbClient, fulfillmentDeps, {
     orderId,
     source,
@@ -77,7 +77,7 @@ async function handleClicToPayConfirmPayment(ctx) {
     createServiceRoleClient,
     requireFromRoot,
     nodePath,
-    __dirname,
+    fulfillmentLibDir,
     runTicketMetaTrackingSafe,
   } = ctx;
 
@@ -132,7 +132,7 @@ async function handleClicToPayConfirmPayment(ctx) {
         dbClient,
         requireFromRoot,
         nodePath,
-        __dirname,
+        fulfillmentLibDir,
         orderId,
         'clictopay_confirm'
       );
@@ -221,7 +221,7 @@ async function handleClicToPayConfirmPayment(ctx) {
           dbClient,
           requireFromRoot,
           nodePath,
-          __dirname,
+          fulfillmentLibDir,
           orderId,
           'clictopay_confirm'
         );
@@ -237,7 +237,7 @@ async function handleClicToPayConfirmPayment(ctx) {
       dbClient,
       requireFromRoot,
       nodePath,
-      __dirname,
+      fulfillmentLibDir,
       orderId,
       'clictopay_confirm'
     );
