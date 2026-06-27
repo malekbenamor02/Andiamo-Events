@@ -24,6 +24,12 @@ const {
   QRCODE_PROGRAMMATIC_RUNTIME_PACKAGES,
   programmaticRuntimePackagesFromLockfile,
   QR_GENERATING_VERCEL_FUNCTIONS,
+  TICKET_EMAIL_VERCEL_INCLUDE_FILES,
+  MISC_TICKET_EMAIL_VERCEL_INCLUDE_FILES,
+  REQUIRED_TICKET_EMAIL_RUNTIME_GLOBS,
+  TICKET_EMAIL_VERCEL_NODE_MODULES,
+  ticketEmailNodeModuleGlobsFromLockfile,
+  assertIncludeFilesCoversTicketEmailRuntime,
 } = require('./qrcode-runtime-deps.cjs');
 
 function includeFilesForFunction(vercelJson, functionPath) {
@@ -115,12 +121,55 @@ describe('ClicToPay confirm QR bundling', () => {
     }
   });
 
-  it('confirm function also bundles PDF runtime packages', () => {
+  it('vercel.json ticket-email functions match lockfile-derived bundle list', () => {
     const vercel = read('vercel.json');
-    const includeFiles = includeFilesForFunction(vercel, 'api/clictopay-confirm-payment.js');
-    assert.match(includeFiles, /node_modules\/pdf-lib\/\*\*/);
-    assert.match(includeFiles, /node_modules\/puppeteer-core\/\*\*/);
-    assert.match(includeFiles, /node_modules\/@sparticuz\/chromium\/\*\*/);
+    const expectedGlobs = ticketEmailNodeModuleGlobsFromLockfile();
+    assert.deepEqual(TICKET_EMAIL_VERCEL_NODE_MODULES, expectedGlobs);
+
+    const confirm = includeFilesForFunction(vercel, 'api/clictopay-confirm-payment.js');
+    assert.equal(confirm, TICKET_EMAIL_VERCEL_INCLUDE_FILES);
+
+    const misc = includeFilesForFunction(vercel, 'api/misc.js');
+    assert.equal(misc, MISC_TICKET_EMAIL_VERCEL_INCLUDE_FILES);
+
+    for (const fn of [
+      'api/admin-approve-order.js',
+      'api/admin-pos.js',
+      'api/clictopay-confirm-payment.js',
+    ]) {
+      assertIncludeFilesCoversTicketEmailRuntime(includeFilesForFunction(vercel, fn));
+    }
+    assertIncludeFilesCoversTicketEmailRuntime(includeFilesForFunction(vercel, 'api/misc.js'));
+  });
+
+  it('vercel.json includes required QR/PDF/SMTP runtime packages', () => {
+    const vercel = read('vercel.json');
+    for (const fn of QR_GENERATING_VERCEL_FUNCTIONS) {
+      const includeFiles = includeFilesForFunction(vercel, fn);
+      for (const glob of REQUIRED_TICKET_EMAIL_RUNTIME_GLOBS) {
+        assert.match(
+          includeFiles,
+          new RegExp(glob.replace(/\//g, '\\/').replace(/\*\*/g, '\\*\\*')),
+          `${fn} missing ${glob}`
+        );
+      }
+    }
+  });
+
+  it('ticket email runtime smoke: nodemailer, chromium, follow-redirects load', () => {
+    assert.equal(typeof require('nodemailer').createTransport, 'function');
+    const followRedirects = require('follow-redirects');
+    assert.ok(followRedirects && (followRedirects.http || followRedirects.https));
+    const chromium = require('@sparticuz/chromium');
+    assert.equal(typeof chromium.executablePath, 'function');
+    assert.equal(typeof chromium.args, 'object');
+  });
+
+  it('PDF module loads without MODULE_NOT_FOUND for bundled deps', () => {
+    const pdf = require('./render-premium-ticket-pdf.cjs');
+    assert.equal(typeof pdf.tryBuildPremiumTicketsPdfAttachment, 'function');
+    require('puppeteer-core');
+    require('pdf-lib');
   });
 
   it('confirm fulfillment chain loads ticket-qr-generate without dynamic qrcode', () => {

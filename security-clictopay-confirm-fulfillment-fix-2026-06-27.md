@@ -215,3 +215,78 @@ Added `node_modules/dijkstrajs/**` and `node_modules/pngjs/**` to:
 ### Tests
 
 `npm run test:payment-fulfillment` → **51/51** (includes lockfile-aware bundle assertions)
+
+---
+
+## Follow-up: missing `follow-redirects` and `nodemailer` in ticket email bundle
+
+### Root cause
+
+After qrcode transitive deps were bundled, production reached PDF rendering and SMTP attachment sending but Vercel still omitted **hoisted sibling** `node_modules` packages. `@sparticuz/chromium` requires `follow-redirects` (and `tar-fs`); `paid-order-fulfillment.cjs` uses `require('nodemailer')` for attachment email. Listing only the parent package glob does not copy its runtime dependencies.
+
+Production errors:
+
+```txt
+[premium-ticket-pdf] PDF render failed: Cannot find module 'follow-redirects'
+[transactional-email] SMTP failed for message with attachments: Cannot find module 'nodemailer'
+[safeInsertEmailDeliveryLog] insert failed: [object Object]
+```
+
+### Dependency status
+
+| Package | In `dependencies`? | Lockfile | Required by |
+|---------|-------------------|----------|-------------|
+| `nodemailer` | Yes (`^6.10.1`) | `6.10.1`, zero runtime deps | `paid-order-fulfillment.cjs`, `get-email-transporter.cjs` |
+| `follow-redirects` | Transitive only | `1.16.0` | `@sparticuz/chromium` → `helper.cjs` |
+
+Lockfile walk from `qrcode`, `@sparticuz/chromium`, `puppeteer-core`, `pdf-lib`, `nodemailer` yields **65** minimal `node_modules/*/**` globs (Chromium/Puppeteer proxy stack, pdf-lib fonts, qrcode PNG deps, etc.). `yargs` excluded (CLI-only).
+
+### Files changed
+
+- `api/_lib/qrcode-runtime-deps.cjs` — lockfile-aware full ticket-email bundle list + assertions
+- `vercel.json` — all QR/PDF/email functions use complete runtime tree
+- `api/_lib/safe-email-delivery-log.cjs` — structured Supabase error logging (non-blocking)
+- `api/_lib/ticket-qr-generate.test.cjs` — bundle parity, required globs, runtime smoke tests
+
+### Vercel includeFiles (all QR/PDF/email functions)
+
+Minimum required globs (plus lockfile-derived transitive set):
+
+```txt
+api/_lib/**
+node_modules/@sparticuz/chromium/**
+node_modules/follow-redirects/**
+node_modules/qrcode/**
+node_modules/dijkstrajs/**
+node_modules/pngjs/**
+node_modules/pdf-lib/**
+node_modules/puppeteer-core/**
+node_modules/nodemailer/**
+… (+ puppeteer/chromium/pdf-lib transitive deps from lockfile)
+```
+
+`api/misc.js` also keeps: `academyRoutes.cjs`, `shared/admin/**`, `multer`, `sharp`, `bcryptjs`.
+
+### Tests
+
+`npm run test:payment-fulfillment` → **54/54**; `npm run build` → pass.
+
+### Production resend plan
+
+**Do not re-charge.** After one successful post-deploy test payment (PAID + inline QR + PDF):
+
+1. Resend incomplete-email orders with existing tickets:
+
+```bash
+node scripts/recover-paid-order-fulfillment.mjs --order-number 755282
+```
+
+2. Resend any new PAID orders from the latest broken deploy (tickets exist, email missing QR/PDF, logs show `nodemailer` / `follow-redirects` errors).
+
+3. Zero-ticket recovery (separate):
+
+```bash
+node scripts/recover-paid-order-fulfillment.mjs --batch-underfulfilled --since 2026-06-27
+```
+
+Recovery script reuses existing tickets (`forceEmail: true`); does not duplicate tickets or re-charge.

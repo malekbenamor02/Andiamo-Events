@@ -14,7 +14,12 @@ async function safeInsertEmailDeliveryLog(dbClient, payload) {
         console.warn('[safeInsertEmailDeliveryLog] table missing — email send still counts as success');
         return { ok: false, warning: 'email_delivery_logs table not available' };
       }
-      console.warn('[safeInsertEmailDeliveryLog] insert failed:', msg);
+      console.warn('[safeInsertEmailDeliveryLog] insert failed:', {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+      });
       return { ok: false, warning: msg };
     }
     return { ok: true };
