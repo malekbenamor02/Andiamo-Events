@@ -118,23 +118,23 @@
     },
     {
       "source": "/api/admin/media/upload",
-      "destination": "/api/media.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/admin/media/delete",
-      "destination": "/api/media.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/media/upload",
-      "destination": "/api/media.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/media/delete",
-      "destination": "/api/media.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/media/favicon/cleanup",
-      "destination": "/api/media.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/passes/:eventId",
