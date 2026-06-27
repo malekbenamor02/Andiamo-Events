@@ -45,4 +45,108 @@ export const adminApi = {
 
   deletePass: (id: string) =>
     adminFetch(API_ROUTES.ADMIN_PASS_DELETE(id), { method: 'DELETE' }),
+
+  fetchDashboardBootstrap: () => adminFetch(API_ROUTES.ADMIN_DASHBOARD_BOOTSTRAP),
+
+  listAmbassadors: () =>
+    adminFetch(API_ROUTES.ADMIN_AMBASSADORS).then((r: { data?: unknown[] }) => r.data || []),
+
+  updateApplication: (payload: {
+    applicationId: string;
+    status: 'approved' | 'rejected';
+    reapply_delay_date?: string | null;
+    /** Plaintext temporary password (HTTPS only); server hashes before storage */
+    temporaryPassword?: string;
+    /** Server generates password and returns temporaryPassword once */
+    generatePassword?: boolean;
+  }) =>
+    adminFetch(API_ROUTES.ADMIN_UPDATE_APPLICATION, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  createAmbassador: (payload: Record<string, unknown>) =>
+    adminFetch(API_ROUTES.ADMIN_AMBASSADORS, { method: 'POST', body: JSON.stringify(payload) }).then(
+      (r: { data: unknown; temporaryPassword?: string }) => ({
+        data: r.data,
+        temporaryPassword: r.temporaryPassword,
+      }),
+    ),
+
+  updateAmbassador: (id: string, payload: Record<string, unknown>) =>
+    adminFetch(API_ROUTES.ADMIN_AMBASSADOR(id), {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }).then((r: { data: unknown; temporaryPassword?: string }) => ({
+      data: r.data,
+      temporaryPassword: r.temporaryPassword,
+    })),
+
+  deleteAmbassador: (id: string) =>
+    adminFetch(API_ROUTES.ADMIN_AMBASSADOR(id), { method: 'DELETE' }),
+
+  listAmbassadorApplications: () =>
+    adminFetch(API_ROUTES.ADMIN_AMBASSADOR_APPLICATIONS).then((r: { data?: unknown[] }) => r.data || []),
+
+  listContactMessages: () =>
+    adminFetch(API_ROUTES.ADMIN_CONTACT_MESSAGES).then((r: { data?: unknown[] }) => r.data || []),
+
+  updateContactMessage: (id: string, payload: Record<string, unknown>) =>
+    adminFetch(API_ROUTES.ADMIN_CONTACT_MESSAGE(id), {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }).then((r: { data: unknown }) => r.data),
+
+  deleteContactMessage: (id: string) =>
+    adminFetch(API_ROUTES.ADMIN_CONTACT_MESSAGE(id), { method: 'DELETE' }),
+
+  listPhoneSubscribers: () =>
+    adminFetch(API_ROUTES.ADMIN_SUBSCRIBERS_PHONES).then((r: { data?: unknown[] }) => r.data || []),
+
+  updatePhoneSubscriber: (id: string, payload: Record<string, unknown>) =>
+    adminFetch(API_ROUTES.ADMIN_SUBSCRIBER_PHONE(id), {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }).then((r: { data: unknown }) => r.data),
+
+  deletePhoneSubscriber: (id: string) =>
+    adminFetch(API_ROUTES.ADMIN_SUBSCRIBER_PHONE(id), { method: 'DELETE' }),
+
+  listNewsletterSubscribers: () =>
+    adminFetch(API_ROUTES.ADMIN_SUBSCRIBERS_NEWSLETTERS).then((r: { data?: unknown[] }) => r.data || []),
+
+  updateNewsletterSubscriber: (id: string, payload: Record<string, unknown>) =>
+    adminFetch(API_ROUTES.ADMIN_SUBSCRIBER_NEWSLETTER(id), {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }).then((r: { data: unknown }) => r.data),
+
+  deleteNewsletterSubscriber: (id: string) =>
+    adminFetch(API_ROUTES.ADMIN_SUBSCRIBER_NEWSLETTER(id), { method: 'DELETE' }),
+
+  listAudienceSuggestions: () =>
+    adminFetch(API_ROUTES.ADMIN_AUDIENCE_SUGGESTIONS).then((r: { data?: unknown[] }) => r.data || []),
+
+  updateAudienceSuggestion: (id: string, payload: Record<string, unknown>) =>
+    adminFetch(API_ROUTES.ADMIN_AUDIENCE_SUGGESTION(id), {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }).then((r: { data: unknown }) => r.data),
+
+  deleteAudienceSuggestion: (id: string) =>
+    adminFetch(API_ROUTES.ADMIN_AUDIENCE_SUGGESTION(id), { method: 'DELETE' }),
+
+  listSmsLogs: (limit = 200) =>
+    adminFetch(`${API_ROUTES.ADMIN_SMS_LOGS}?limit=${limit}`).then((r: { data?: unknown[] }) => r.data || []),
+
+  listSiteLogs: (limit = 200) =>
+    adminFetch(`${API_ROUTES.ADMIN_SITE_LOGS}?limit=${limit}`).then((r: { data?: unknown[] }) => r.data || []),
+
+  listOrderPassesByPassIds: (passIds: string[]) => {
+    if (passIds.length === 0) return Promise.resolve([]);
+    const qs = passIds.map(encodeURIComponent).join(',');
+    return adminFetch(`${API_ROUTES.ADMIN_ORDER_PASSES}?pass_ids=${qs}`).then(
+      (r: { data?: unknown[] }) => r.data || []
+    );
+  },
 };

@@ -235,9 +235,59 @@ async function createExcelWorkbook() {
   return new ExcelJS.Workbook();
 }
 
-async function hashPasswordBcrypt(plain: string, rounds = 10) {
-  const bcrypt = (await import("bcryptjs")).default;
-  return bcrypt.hash(plain, rounds);
+async function fetchAdminPassesForEventId(eventId: string) {
+  const apiBase = getApiBaseUrl();
+  const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventId}`, { credentials: 'include' });
+  if (!passesResponse.ok) return null;
+  return passesResponse.json();
+}
+
+function normalizePhoneForLookup(phone: string) {
+  return phone.replace(/[\s\-\(\)]/g, '').trim();
+}
+
+function findAmbassadorInList(
+  list: Ambassador[],
+  opts: { phone?: string; email?: string; id?: string },
+): Ambassador | null {
+  const { phone, email, id } = opts;
+  if (id) {
+    const byId = list.find((a) => a.id === id);
+    if (byId) return byId;
+  }
+  if (phone) {
+    const exact = list.find((a) => a.phone === phone);
+    if (exact) return exact;
+    const normalized = normalizePhoneForLookup(phone);
+    const normalizedMatch = list.find((a) => normalizePhoneForLookup(a.phone || '') === normalized);
+    if (normalizedMatch) return normalizedMatch;
+  }
+  if (email) {
+    const byEmail = list.find(
+      (a) => a.email && email && a.email.toLowerCase() === email.toLowerCase(),
+    );
+    if (byEmail) return byEmail;
+  }
+  return null;
+}
+
+async function subscribePhoneViaApi(phoneNumber: string, language = 'en') {
+  const apiBase = getApiBaseUrl();
+  const cleaned = phoneNumber.replace(/\D/g, '');
+  const response = await fetch(`${apiBase}${API_ROUTES.PHONE_SUBSCRIBE}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ phone_number: cleaned, language }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 400 && String(body.error || '').includes('already exists')) {
+      return { duplicate: true as const };
+    }
+    throw new Error(body.error || body.details || 'Failed to subscribe phone');
+  }
+  return { duplicate: false as const, subscriber: body.subscriber };
 }
 
 /** Cap payload size; overview KPIs may omit very old orders if an event exceeds this many online rows. */
@@ -741,11 +791,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   const handleViewAmbassador = async (ambassadorId: string) => {
-    const { data: ambassadorData } = await (supabase as any)
-      .from('ambassadors')
-      .select('*')
-      .eq('id', ambassadorId)
-      .single();
+    let ambassadorData = ambassadors.find((a) => a.id === ambassadorId) || null;
+    if (!ambassadorData) {
+      const all = await adminApi.listAmbassadors();
+      ambassadorData = findAmbassadorInList(all as Ambassador[], { id: ambassadorId });
+    }
     setSelectedOrderAmbassador(ambassadorData);
     setIsAmbassadorInfoDialogOpen(true);
   };
@@ -1512,67 +1562,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, []);
 
-  // Realtime: keep applications in sync without refresh
-  useEffect(() => {
-    const channel = supabase
-      .channel('admin-ambassador-applications-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ambassador_applications',
-        },
-        (payload) => {
-          const eventType = payload.eventType;
-          const newRecord = payload.new as Record<string, unknown> | null;
-          const oldRecord = payload.old as Record<string, unknown> | null;
-
-          if (eventType === 'INSERT' && newRecord?.id) {
-            const asApp = newRecord as unknown as AmbassadorApplication;
-            setApplications((prev) => {
-              if (prev.some((a) => a.id === asApp.id)) return prev;
-              return [asApp, ...prev].sort(
-                (a, b) =>
-                  new Date(b.created_at || 0).getTime() -
-                  new Date(a.created_at || 0).getTime()
-              );
-            });
-            // New ambassador application notification
-            const cityVille = [asApp.city, asApp.ville].filter(Boolean).join(" / ");
-            pushNotification({
-              kind: "ambassador_application",
-              title:
-                language === "en"
-                  ? "Ambassador application"
-                  : "Candidature ambassadeur",
-              message: cityVille
-                ? `${asApp.full_name} — ${cityVille}`
-                : asApp.full_name,
-            });
-          } else if (eventType === 'UPDATE' && newRecord?.id) {
-            setApplications((prev) =>
-              prev.map((app) =>
-                app.id === newRecord.id
-                  ? (newRecord as unknown as AmbassadorApplication)
-                  : app
-              )
-            );
-          } else if (eventType === 'DELETE' && oldRecord?.id) {
-            setApplications((prev) =>
-              prev.filter((app) => app.id !== oldRecord.id)
-            );
-          }
-        }
-      )
-      .subscribe((_status) => {
-        // CHANNEL_ERROR is common (tab background, network blip); Supabase reconnects. Don't log as error.
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [language]);
+  // Ambassador applications realtime removed — use admin API bootstrap refresh instead (RLS Wave B).
 
   // Orders realtime disabled (RLS Wave B): refresh after mutations and on event change.
   // Tradeoff: no live INSERT notifications; lower risk than anon realtime on privileged table.
@@ -2434,9 +2424,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (ambassadors.length > 0) {
         allAmbassadorsData = ambassadors;
       } else {
-        const res = await (supabase as any).from('ambassadors').select('id, full_name, ville, status, city');
-        allAmbassadorsData = res.data || [];
-        ambassadorsError = res.error;
+        allAmbassadorsData = await adminApi.listAmbassadors();
       }
 
       if (!ambassadorsError && allAmbassadorsData?.length) {
@@ -3238,38 +3226,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     await saveAboutImages(newOrder);
   };
 
-  // Fetch phone subscribers (paginated: Supabase/PostgREST caps at 1000 rows per request)
   const fetchPhoneSubscribers = async () => {
     try {
       setLoadingSubscribers(true);
-      const PAGE_SIZE = 1000;
-      let allData: any[] = [];
-      let offset = 0;
-      let hasMore = true;
-
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('phone_subscribers' as any)
-          .select('id, phone_number, created_at, import_label')
-          .order('created_at', { ascending: false })
-          .range(offset, offset + PAGE_SIZE - 1);
-
-        if (error) {
-          console.warn('phone_subscribers query error:', error);
-          setPhoneSubscribers([]);
-          return;
-        }
-        const chunk = data || [];
-        allData = allData.concat(chunk);
-        hasMore = chunk.length === PAGE_SIZE;
-        offset += PAGE_SIZE;
-      }
-
-      setPhoneSubscribers(allData.map((item: any) => ({
+      const allData = await adminApi.listPhoneSubscribers();
+      setPhoneSubscribers((allData || []).map((item: any) => ({
         id: item.id,
         phone_number: item.phone_number,
-        subscribed_at: item.created_at || new Date().toISOString(),
-        city: undefined,
+        subscribed_at: item.created_at || item.subscribed_at || new Date().toISOString(),
+        city: item.city ?? undefined,
         import_label: item.import_label ?? null,
       })));
     } catch (error) {
@@ -3284,179 +3249,54 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const handleImportFromApplications = async () => {
     try {
       setImportingFromApplications(true);
-      
-      // Fetch all ambassador applications with phone numbers
-      const { data: applications, error } = await supabase
-        .from('ambassador_applications')
-        .select('phone_number, city')
-        .not('phone_number', 'is', null);
-
-      if (error) throw error;
-
-      if (!applications || applications.length === 0) {
-        toast({
-          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
-          description: language === 'en' 
-            ? 'No ambassador applications found with phone numbers'
-            : 'Aucune candidature d\'ambassadeur trouvée avec numéros de téléphone',
-          variant: 'default'
-        });
-        return;
-      }
-
-      // Prepare phone numbers with city info (only include city if column exists)
-      // We'll try to insert with city, but handle errors gracefully
-      const phonesToImport = applications
-        .filter(app => app.phone_number)
-        .map(app => ({
-          phone_number: app.phone_number,
-          language: 'en' as const,
-          ...(app.city ? { city: app.city } : {}) // Only include city if it exists
-        }));
+      const appList = await adminApi.listAmbassadorApplications();
+      const phonesToImport = (appList || [])
+        .filter((app: any) => app.phone_number)
+        .map((app: any) => ({ phone_number: app.phone_number, language: 'en' as const }));
 
       if (phonesToImport.length === 0) {
         toast({
           title: language === 'en' ? 'No Data' : 'Aucune Donnée',
-          description: language === 'en' 
-            ? 'No valid phone numbers found in applications'
-            : 'Aucun numéro de téléphone valide trouvé dans les candidatures',
-          variant: 'default'
+          description: language === 'en'
+            ? 'No ambassador applications found with phone numbers'
+            : "Aucune candidature d'ambassadeur trouvée avec numéros de téléphone",
+          variant: 'default',
         });
         return;
       }
 
-      // Get all existing phone numbers in one query (batch check)
-      const existingPhones = phonesToImport.map(p => p.phone_number);
-      const { data: existingSubscribers, error: checkError } = await supabase
-        .from('phone_subscribers')
-        .select('phone_number')
-        .in('phone_number', existingPhones);
-
-      if (checkError) throw checkError;
-
-      const existingPhoneSet = new Set(
-        (existingSubscribers || []).map((s: any) => s.phone_number)
-      );
-
-      // Filter out duplicates
-      const newPhonesToImport = phonesToImport.filter(
-        phone => !existingPhoneSet.has(phone.phone_number)
-      );
-
+      const existingRows = await adminApi.listPhoneSubscribers();
+      const existingPhoneSet = new Set((existingRows || []).map((row: any) => row.phone_number));
+      const newPhonesToImport = phonesToImport.filter((p) => !existingPhoneSet.has(p.phone_number));
       let duplicates = phonesToImport.length - newPhonesToImport.length;
       const results: string[] = [];
       const errors: Array<{ phone: string; error: string }> = [];
 
-      // Batch insert all new phones at once (in chunks of 100 to avoid payload limits)
-      const chunkSize = 100;
-      for (let i = 0; i < newPhonesToImport.length; i += chunkSize) {
-        const chunk = newPhonesToImport.slice(i, i + chunkSize);
-        
+      for (const phone of newPhonesToImport) {
         try {
-          const { data: inserted, error: insertError } = await supabase
-            .from('phone_subscribers')
-            .insert(chunk)
-            .select('phone_number');
-
-          if (insertError) {
-            // Check if error is about city column not existing
-            const isCityColumnError = insertError.message?.includes('city') && 
-                                     (insertError.code === '42703' || insertError.code === 'PGRST116');
-            
-            if (isCityColumnError) {
-              // Retry insert without city column
-              const chunkWithoutCity = chunk.map((p: any) => {
-                const { city, ...rest } = p;
-                return rest;
-              });
-              
-              const { data: insertedWithoutCity, error: errorWithoutCity } = await supabase
-                .from('phone_subscribers')
-                .insert(chunkWithoutCity)
-                .select('phone_number');
-              
-              if (errorWithoutCity) {
-                // If still fails, try individual inserts
-                for (const phone of chunkWithoutCity) {
-                  try {
-                    const { error: singleError } = await supabase
-                      .from('phone_subscribers')
-                      .insert(phone);
-
-                    if (singleError) {
-                      if (singleError.code === '23505') {
-                        duplicates++;
-                      } else {
-                        errors.push({ phone: phone.phone_number, error: singleError.message });
-                      }
-                    } else {
-                      results.push(phone.phone_number);
-                    }
-                  } catch (err: any) {
-                    errors.push({ phone: phone.phone_number, error: err.message });
-                  }
-                }
-              } else {
-                if (insertedWithoutCity) {
-                  results.push(...insertedWithoutCity.map((item: any) => item.phone_number));
-                }
-              }
-            } else {
-              // If batch insert fails for other reasons, try individual inserts for this chunk
-              for (const phone of chunk) {
-                try {
-                  const { error: singleError } = await supabase
-                    .from('phone_subscribers')
-                    .insert(phone);
-
-                  if (singleError) {
-                    if (singleError.code === '23505') {
-                      // Duplicate (race condition)
-                      duplicates++;
-                    } else {
-                      errors.push({ phone: phone.phone_number, error: singleError.message });
-                    }
-                  } else {
-                    results.push(phone.phone_number);
-                  }
-                } catch (err: any) {
-                  errors.push({ phone: phone.phone_number, error: err.message });
-                }
-              }
-            }
-          } else {
-            // Success - add all inserted phone numbers to results
-            if (inserted) {
-              results.push(...inserted.map((item: any) => item.phone_number));
-            }
-          }
+          const r = await subscribePhoneViaApi(phone.phone_number, phone.language);
+          if (r.duplicate) duplicates++;
+          else results.push(phone.phone_number);
         } catch (err: any) {
-          // If batch fails completely, log error
-          console.error('Batch insert error:', err);
-          errors.push({ phone: 'batch', error: err.message });
+          errors.push({ phone: phone.phone_number, error: err?.message || 'Unknown error' });
         }
       }
 
-      // Refresh subscribers list
       await fetchPhoneSubscribers();
-
       toast({
-        title: language === 'en' ? 'Import Complete' : 'Importation terminée',
+        title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
         description: language === 'en'
-          ? `Imported: ${results.length}, Duplicates: ${duplicates}, Errors: ${errors.length}`
-          : `Importé : ${results.length}, Doublons : ${duplicates}, Erreurs : ${errors.length}`,
-        variant: results.length > 0 ? 'default' : 'destructive'
+          ? `Imported: ${results.length}, Skipped duplicates: ${duplicates}, Errors: ${errors.length}`
+          : `Importé: ${results.length}, Doublons ignorés: ${duplicates}, Erreurs: ${errors.length}`,
+        variant: results.length > 0 ? 'default' : 'destructive',
       });
-
-      if (errors.length > 0) {
-        console.error('Import errors:', errors);
-      }
+      if (errors.length > 0) console.error('Import errors:', errors);
     } catch (error: any) {
       console.error('Error importing from applications:', error);
       toast({
-        title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : 'Échec de l\'importation des numéros'),
-        variant: 'destructive'
+        title: language === 'en' ? 'Import Failed' : "Échec de l'Importation",
+        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : "Échec de l'importation des numéros"),
+        variant: 'destructive',
       });
     } finally {
       setImportingFromApplications(false);
@@ -3480,13 +3320,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const workbook = await createExcelWorkbook();
       const worksheet = workbook.addWorksheet('Phone Numbers');
 
-      // Add header row
       worksheet.columns = [
         { header: 'Phone Number', key: 'phone_number', width: 20 },
         { header: 'Import Label', key: 'import_label', width: 24 },
       ];
 
-      // Style header row
       worksheet.getRow(1).font = { bold: true };
       worksheet.getRow(1).fill = {
         type: 'pattern',
@@ -3495,7 +3333,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       };
       worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
 
-      // Add data rows
       phoneSubscribers.forEach(subscriber => {
         worksheet.addRow({
           phone_number: subscriber.phone_number,
@@ -3503,7 +3340,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
       });
 
-      // Generate buffer and download
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = window.URL.createObjectURL(blob);
@@ -3525,8 +3361,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     } catch (error: any) {
       console.error('Error exporting phone numbers:', error);
       toast({
-        title: language === 'en' ? 'Export Failed' : 'Échec de l\'Exportation',
-        description: error.message || (language === 'en' ? 'Failed to export phone numbers' : 'Échec de l\'exportation des numéros'),
+        title: language === 'en' ? 'Export Failed' : "Échec de l'Exportation",
+        description: error.message || (language === 'en' ? 'Failed to export phone numbers' : "Échec de l'exportation des numéros"),
         variant: 'destructive'
       });
     }
@@ -3606,20 +3442,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      const existingPhoneSet = new Set<string>();
-      const checkChunkSize = 500;
-      for (let i = 0; i < phoneNumbers.length; i += checkChunkSize) {
-        const chunk = phoneNumbers.slice(i, i + checkChunkSize);
-        const { data: existingSubscribers, error: checkError } = await supabase
-          .from('phone_subscribers')
-          .select('phone_number')
-          .in('phone_number', chunk);
-
-        if (checkError) throw checkError;
-        (existingSubscribers || []).forEach((s: { phone_number: string }) => {
-          existingPhoneSet.add(s.phone_number);
-        });
-      }
+      const existingRows = await adminApi.listPhoneSubscribers();
+      const existingPhoneSet = new Set((existingRows || []).map((row: any) => row.phone_number));
 
       const newPhonesToImport = phoneNumbers.filter(
         phone => !existingPhoneSet.has(phone)
@@ -3640,55 +3464,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Batch insert in chunks of 100
-      const chunkSize = 100;
-      for (let i = 0; i < newPhonesToImport.length; i += chunkSize) {
-        const chunk = newPhonesToImport.slice(i, i + chunkSize).map(phone => ({
-          phone_number: phone,
-          language: 'en' as const,
-          import_label: label,
-        }));
-
+      for (const phone of newPhonesToImport) {
         try {
-          const { data: inserted, error: insertError } = await supabase
-            .from('phone_subscribers')
-            .insert(chunk)
-            .select('phone_number');
-
-          if (insertError) {
-            // If batch fails, try individual inserts
-            for (const phone of chunk) {
-              try {
-                const { error: singleError } = await supabase
-                  .from('phone_subscribers')
-                  .insert(phone);
-
-                if (singleError) {
-                  if (singleError.code === '23505') {
-                    // Duplicate (race condition)
-                    duplicatesCount++;
-                  } else {
-                    errors.push({ phone: phone.phone_number, error: singleError.message });
-                  }
-                } else {
-                  results.push(phone.phone_number);
-                }
-              } catch (err: any) {
-                errors.push({ phone: phone.phone_number, error: err.message });
-              }
-            }
-          } else {
-            if (inserted) {
-              results.push(...inserted.map((item: any) => item.phone_number));
-            }
+          const r = await subscribePhoneViaApi(phone, 'en');
+          if (r.duplicate) {
+            duplicatesCount++;
+            continue;
           }
+          if (label && r.subscriber?.id) {
+            await adminApi.updatePhoneSubscriber(r.subscriber.id, { import_label: label });
+          }
+          results.push(phone);
         } catch (err: any) {
-          console.error('Batch insert error:', err);
-          errors.push({ phone: 'batch', error: err.message });
+          errors.push({ phone, error: err?.message || 'Unknown error' });
         }
       }
 
-      // Refresh subscribers list
       await fetchPhoneSubscribers();
 
       toast({
@@ -3717,34 +3508,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Fetch email subscribers (paginated: Supabase/PostgREST caps at 1000 rows per request)
   const fetchEmailSubscribers = async () => {
     try {
       setLoadingEmailSubscribers(true);
-      const PAGE_SIZE = 1000;
-      let allData: any[] = [];
-      let offset = 0;
-      let hasMore = true;
-
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('newsletter_subscribers')
-          .select('id, email, subscribed_at, language, import_label')
-          .order('subscribed_at', { ascending: false })
-          .range(offset, offset + PAGE_SIZE - 1);
-
-        if (error) {
-          console.warn('newsletter_subscribers query error:', error);
-          setEmailSubscribers([]);
-          return;
-        }
-        const chunk = data || [];
-        allData = allData.concat(chunk);
-        hasMore = chunk.length === PAGE_SIZE;
-        offset += PAGE_SIZE;
-      }
-
-      setEmailSubscribers(allData.map((item: any) => ({
+      const allData = await adminApi.listNewsletterSubscribers();
+      setEmailSubscribers((allData || []).map((item: any) => ({
         id: item.id,
         email: item.email,
         subscribed_at: item.subscribed_at || new Date().toISOString(),
@@ -3889,29 +3657,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Check for duplicates against existing subscribers (batch in chunks of 500)
-      const existingEmailSet = new Set<string>();
-      const checkChunkSize = 500;
-      for (let i = 0; i < emails.length; i += checkChunkSize) {
-        const chunk = emails.slice(i, i + checkChunkSize);
-        const { data: existingSubscribers, error: checkError } = await supabase
-          .from('newsletter_subscribers')
-          .select('email')
-          .in('email', chunk);
-
-        if (checkError) throw checkError;
-        (existingSubscribers || []).forEach((s: { email: string }) => {
-          existingEmailSet.add(s.email.toLowerCase());
-        });
-      }
+      const existingEmailRows = await adminApi.listNewsletterSubscribers();
+      const existingEmailSet = new Set(
+        (existingEmailRows || []).map((row: any) => String(row.email || '').toLowerCase()),
+      );
 
       const newEmailsToImport = emails.filter(
         email => !existingEmailSet.has(email.toLowerCase())
       );
 
       let duplicatesCount = emails.length - newEmailsToImport.length + duplicatesInFile;
-      const results: string[] = [];
-      const errors: Array<{ email: string; error: string }> = [];
+      void duplicatesCount;
 
       if (newEmailsToImport.length === 0) {
         toast({
@@ -3924,68 +3680,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Batch insert in chunks of 100
-      const chunkSize = 100;
-      for (let i = 0; i < newEmailsToImport.length; i += chunkSize) {
-        const chunk = newEmailsToImport.slice(i, i + chunkSize).map(email => ({
-          email: email,
-          language: 'en' as const,
-          import_label: label,
-        }));
-
-        try {
-          const { data: inserted, error: insertError } = await supabase
-            .from('newsletter_subscribers')
-            .insert(chunk)
-            .select('email');
-
-          if (insertError) {
-            for (const emailData of chunk) {
-              try {
-                const { error: singleError } = await supabase
-                  .from('newsletter_subscribers')
-                  .insert(emailData);
-
-                if (singleError) {
-                  if (singleError.code === '23505') {
-                    duplicatesCount++;
-                  } else {
-                    errors.push({ email: emailData.email, error: singleError.message });
-                  }
-                } else {
-                  results.push(emailData.email);
-                }
-              } catch (err: any) {
-                errors.push({ email: emailData.email, error: err.message });
-              }
-            }
-          } else {
-            if (inserted) {
-              results.push(...inserted.map((item: any) => item.email));
-            }
-          }
-        } catch (err: any) {
-          console.error('Batch insert error:', err);
-          errors.push({ email: 'batch', error: err.message });
-        }
-      }
-
-      await fetchEmailSubscribers();
-
-      toast({
-        title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
-        description: language === 'en'
-          ? `Label "${label}" — Imported: ${results.length}, Skipped duplicates: ${duplicatesCount}, Errors: ${errors.length}`
-          : `Libellé Â« ${label} Â» — Importé: ${results.length}, Doublons ignorés: ${duplicatesCount}, Erreurs: ${errors.length}`,
-        variant: results.length > 0 ? 'default' : 'destructive'
-      });
-
-      if (errors.length > 0) {
-        console.error('Import errors:', errors);
-      }
-
-      setShowEmailImportDialog(false);
-      resetEmailImportDialog();
+      throw new Error(
+        language === 'en'
+          ? 'Newsletter bulk import insert requires a server admin API (list-only via admin API).'
+          : "L'import en masse de newsletters nécessite une API admin serveur (liste uniquement côté client).",
+      );
     } catch (error: any) {
       console.error('Error importing from Excel:', error);
       toast({
@@ -4195,48 +3894,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Fetch SMS logs
   const fetchSmsLogs = async () => {
-    // Import getSourceDisplayName at the top if not already imported
     try {
       setLoadingLogs(true);
-      // Note: sms_logs table may not exist in schema
-      const { data, error } = await supabase
-        .from('sms_logs' as any)
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (error) {
-        console.warn('sms_logs table not found, skipping:', error);
-        setSmsLogs([]);
-        return;
-      }
+      const data = await adminApi.listSmsLogs(100);
       setSmsLogs((data || []) as unknown as Array<{id: string; phone_number: string; message: string; status: string; error_message?: string; sent_at?: string; created_at: string; api_response?: any; source?: string; campaign_name?: string}>);
     } catch (error) {
-      console.error('Error fetching SMS logs:', error);
+      console.warn('sms_logs fetch failed, skipping:', error);
       setSmsLogs([]);
     } finally {
       setLoadingLogs(false);
     }
   };
 
-  // Fetch Site logs
   const fetchSiteLogs = async () => {
     try {
       setLoadingSiteLogs(true);
-      // Note: site_logs table may not exist in schema
-      const { data, error } = await supabase
-        .from('site_logs' as any)
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(500);
-
-      if (error) {
-        console.warn('site_logs table not found, skipping:', error);
-        setSiteLogs([]);
-        return;
-      }
+      const data = await adminApi.listSiteLogs(500);
       setSiteLogs((data || []) as unknown as Array<{id: string; log_type: string; category: string; message: string; details: any; user_type: string; created_at: string}>);
     } catch (error) {
       console.error('Error fetching site logs:', error);
@@ -4776,15 +4450,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setSendingTargeted(true);
       
       // Fetch phone numbers from ambassador applications for selected city
-      const { data: applicationsData, error } = await supabase
-        .from('ambassador_applications')
-        .select('phone_number')
-        .eq('city', targetedCity)
-        .not('phone_number', 'is', null);
-      
-      if (error) {
-        throw new Error(`Failed to fetch phone numbers: ${error.message}`);
-      }
+      const applicationsData = (await adminApi.listAmbassadorApplications()).filter(
+        (app: any) => app.city === targetedCity && app.phone_number,
+      );
       
       const phonesToSend = (applicationsData || []).map((app: any) => app.phone_number).filter((phone: string) => phone);
       
@@ -5413,28 +5081,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (adminPassesFetchAttemptRef.current === editingEvent.id) return;
         adminPassesFetchAttemptRef.current = editingEvent.id;
         
-        const { data: passesData, error: passesError } = await supabase
-          .from('event_passes')
-          .select('*')
-          .eq('event_id', editingEvent.id)
-          .order('is_primary', { ascending: false })
-          .order('created_at', { ascending: true });
-        
-        if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
-          console.error(`Error fetching passes in useEffect:`, passesError);
-          return;
-        }
-        
-        // Fetch passes with stock info from admin API
         try {
-          // Use getApiBaseUrl() for consistent API routing
-          const apiBase = getApiBaseUrl();
-          const passesResponse = await fetch(`${apiBase}/api/admin/passes/${editingEvent.id}`, {
-            credentials: 'include'
-          });
-          
-          if (passesResponse.ok) {
-            const passesResult = await passesResponse.json();
+          const passesResult = await fetchAdminPassesForEventId(editingEvent.id);
+          if (passesResult) {
             const passesWithStock = (passesResult.passes || []).map((p: any) => ({
               id: p.id,
               name: p.name || '',
@@ -5450,28 +5099,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               allowed_payment_methods: p.allowed_payment_methods || null
             }));
             setEditingEvent(prev => prev ? { ...prev, passes: passesWithStock } : null);
-            return;
           }
         } catch (apiError) {
-          console.warn('Failed to fetch passes with stock from API, falling back to direct query:', apiError);
+          console.warn('Failed to fetch passes from admin API:', apiError);
         }
-        
-        // Fallback to direct query if API fails
-        const mappedPasses = (passesData || []).map((p: any) => ({
-          id: p.id,
-          name: p.name || '',
-          price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
-          description: p.description || '',
-          is_primary: p.is_primary || false,
-          max_quantity: p.max_quantity ?? null,
-          sold_quantity: p.sold_quantity || 0,
-          remaining_quantity: p.max_quantity === null ? null : (p.max_quantity - (p.sold_quantity || 0)),
-          is_unlimited: p.max_quantity === null,
-          is_active: p.is_active !== undefined ? p.is_active : true,
-          is_sold_out: p.max_quantity !== null && (p.max_quantity - (p.sold_quantity || 0)) <= 0
-        }));
-        
-        setEditingEvent(prev => prev ? { ...prev, passes: mappedPasses } : null);
       }
     };
     
@@ -5542,73 +5173,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }, SAFETY_TIMEOUT_MS);
 
     try {
-      // Core bootstrap data in parallel to reduce initial dashboard wait.
-      const [{ data: appsData, error: appsError }, { data: eventsData, error: eventsError }, { data: ambassadorsData, error: ambassadorsError }] = await Promise.all([
-        supabase.from('ambassador_applications').select(APPLICATIONS_LIST_COLUMNS).order('created_at', { ascending: false }),
-        supabase.from('events').select(EVENTS_ADMIN_LIST_COLUMNS).order('date', { ascending: false }),
-        supabase.from('ambassadors').select(AMBASSADORS_LIST_COLUMNS).order('created_at', { ascending: false }),
-      ]);
+      const bootstrap = await adminApi.fetchDashboardBootstrap();
+      const appsData = bootstrap.applications;
+      const eventsData = bootstrap.events;
+      const ambassadorsData = bootstrap.ambassadors;
 
-      if (appsError) {
-        console.error('Error fetching applications:', appsError);
-        console.error('Error details:', {
-          message: appsError.message,
-          details: appsError.details,
-          hint: appsError.hint,
-          code: appsError.code
-        });
-      } else {
-        setApplications(appsData || []);
-      }
+      setApplications(appsData || []);
+      setAmbassadors(ambassadorsData || []);
 
-      if (ambassadorsError) console.error('Error fetching ambassadors:', ambassadorsError);
-      else setAmbassadors(ambassadorsData || []);
+      const eventRows = eventsData || [];
+      const eventsWithPasses = eventRows.map((event: any) => ({
+        ...event,
+        passes: (event.passes || []).map((p: any) => ({
+          id: p.id,
+          name: p.name || '',
+          price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+          description: p.description || '',
+          is_primary: p.is_primary || false,
+          sold_quantity: p.sold_quantity ?? 0,
+        })),
+      }));
 
-      if (eventsError) {
-        console.error('Error fetching events:', eventsError);
-      } else {
-        const eventRows = eventsData || [];
-        const eventIds = eventRows.map((event: any) => event.id).filter(Boolean);
-        let passesByEventId: Record<string, any[]> = {};
-
-        if (eventIds.length > 0) {
-          const { data: allPassesData, error: passesError } = await supabase
-            .from('event_passes')
-            .select(
-              'id, event_id, name, price, description, is_primary, sold_quantity, max_quantity, is_active, allowed_payment_methods, release_version, created_at, updated_at',
-            )
-            .in('event_id', eventIds)
-            .order('is_primary', { ascending: false })
-            .order('created_at', { ascending: true });
-
-          if (passesError) {
-            if (passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
-              console.error('Error fetching event passes:', passesError);
-            }
-          } else {
-            for (const p of allPassesData || []) {
-              const eid = p?.event_id;
-              if (!eid) continue;
-              if (!passesByEventId[eid]) passesByEventId[eid] = [];
-              passesByEventId[eid].push({
-                id: p.id,
-                name: p.name || '',
-                price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
-                description: p.description || '',
-                is_primary: p.is_primary || false,
-                sold_quantity: p.sold_quantity ?? 0
-              });
-            }
-          }
-        }
-
-        const eventsWithPasses = eventRows.map((event: any) => ({
-          ...event,
-          passes: passesByEventId[event.id] || [],
-        }));
-
-        setEvents(eventsWithPasses);
-      }
+      setEvents(eventsWithPasses);
 
       // Legacy clients table has been removed; keep ambassador sales empty here.
       setAmbassadorSales({});
@@ -5649,107 +5235,40 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setProcessingId(application.id);
     
     try {
-      // Generate username and password
-      const username = application.phone_number; // Use phone as username
+      const username = application.phone_number;
       const password = generatePassword();
 
-      // Hash the password before saving
-      const hashedPassword = await hashPasswordBcrypt(password, 10);
-
-      // Check if ambassador already exists
-      const { data: existingAmbassador } = await supabase
-        .from('ambassadors')
-        .select('*')
-        .eq('phone', application.phone_number)
-        .maybeSingle();
-
-      let ambassadorId: string;
-
-      if (existingAmbassador) {
-        // Update their info
-        const { error: updateAmbassadorError } = await supabase
-          .from('ambassadors')
-          .update({
-            full_name: application.full_name,
-            email: application.email,
-            city: application.city,
-            ville: (application.city === 'Sousse' || application.city === 'Tunis') ? (application.ville?.trim() || null) : null,
-            password: hashedPassword, // Store hashed password
-            status: 'approved',
-            updated_at: new Date().toISOString()
-          })
-          .eq('phone', application.phone_number);
-        if (updateAmbassadorError) throw updateAmbassadorError;
-        ambassadorId = existingAmbassador.id;
-      } else {
-        // Create ambassador account
-        const { data: newAmbassador, error: createError } = await supabase
-          .from('ambassadors')
-          .insert({
-            full_name: application.full_name,
-            phone: application.phone_number,
-            email: application.email,
-            city: application.city,
-            ville: (application.city === 'Sousse' || application.city === 'Tunis') ? (application.ville?.trim() || null) : null,
-            password: hashedPassword, // Store hashed password
-            status: 'approved',
-            created_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-        if (createError) throw createError;
-        if (!newAmbassador) throw new Error('Failed to create ambassador account');
-        ambassadorId = newAmbassador.id;
-      }
-
-      // Update application status via API route (bypasses RLS)
-      const response = await apiFetch(API_ROUTES.ADMIN_UPDATE_APPLICATION, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          applicationId: application.id,
-          status: 'approved'
-        })
+      const result = await adminApi.updateApplication({
+        applicationId: application.id,
+        status: 'approved',
+        temporaryPassword: password,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Error updating application status:', errorData);
-        let errorMessage = language === 'en' ? 'Failed to approve application' : 'Échec de l\'approbation';
-        if (errorData.details) {
-          errorMessage = errorData.details;
-        } else if (errorData.error) {
-          errorMessage = errorData.error;
-        }
-        throw new Error(errorMessage);
+      const serverPassword =
+        typeof result.temporaryPassword === 'string' ? result.temporaryPassword : password;
+
+      const updatedApp = result.data;
+      if (!updatedApp || updatedApp.status !== 'approved') {
+        throw new Error(
+          language === 'en'
+            ? 'Failed to approve application'
+            : "Échec de l'approbation",
+        );
       }
 
-      const result = await response.json();
-      const updateData = result.data ? [result.data] : null;
-
-      // Verify the update worked
-      if (!updateData || updateData.length === 0) {
-        // Check if application still exists and what its status is
-        const { data: verifyData } = await supabase
-          .from('ambassador_applications')
-          .select('id, status')
-          .eq('id', application.id)
-          .single();
-        
-        if (verifyData && verifyData.status !== 'approved') {
-          console.error('Application status was not updated. Current status:', verifyData.status);
-          throw new Error(`Failed to update application status. Current status: ${verifyData.status}. Check RLS policies.`);
-        }
-      }
+      const allAmb = (await adminApi.listAmbassadors()) as Ambassador[];
+      const matchedAmbassador = findAmbassadorInList(allAmb, {
+        phone: application.phone_number,
+        email: application.email,
+      });
+      const ambassadorId = matchedAmbassador?.id || application.id;
 
       // Store credentials for potential resend (before email attempt)
       setAmbassadorCredentials(prev => ({
         ...prev,
         [application.id]: {
           username: username,
-          password: password
+          password: serverPassword
         }
       }));
 
@@ -5770,7 +5289,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           phone: application.phone_number,
           email: application.email,
           city: application.city,
-          password: password // Send plain password
+          password: serverPassword // Send plain password for email only
         },
         `${window.location.origin}/ambassador/auth`,
         ambassadorId // Pass ambassador ID for tracking
@@ -5849,31 +5368,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           : app
       ));
 
-      // Also update ambassadors list if a new one was created
-      if (!existingAmbassador) {
-        // Refresh ambassadors to include the new one
-        const { data: newAmbassadors } = await supabase
-          .from('ambassadors')
-          .select('*')
-          .order('created_at', { ascending: false });
-        if (newAmbassadors) {
-          setAmbassadors(newAmbassadors);
-        }
-      } else {
-        // Update existing ambassador in the list
-        setAmbassadors(prev => prev.map(amb => 
-          amb.id === ambassadorId
-            ? { 
-                ...amb, 
-                status: 'approved', 
-                ville: (application.city === 'Sousse' || application.city === 'Tunis') ? (application.ville?.trim() || null) : null,
-                updated_at: new Date().toISOString() 
-              }
-            : amb
-        ));
-      }
-
-      // Then refresh all data to ensure consistency
       await fetchAllData();
 
     } catch (error) {
@@ -5963,22 +5457,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       worksheet.getColumn(8).width = 15; // Joined Date
 
       // Fetch age and social_link for each ambassador from applications
-      const ambassadorsWithAge = await Promise.all(
-        approvedAmbassadors.map(async (ambassador) => {
+      const ambassadorsWithAge = approvedAmbassadors.map((ambassador) => {
           let age: number | undefined = ambassador.age;
           let socialLink: string | undefined = ambassador.social_link;
           
-          // If age or social_link not in ambassador object, fetch from application
           if (!age || !socialLink) {
-            const { data: appData } = await supabase
-              .from('ambassador_applications')
-              .select('age, social_link')
-              .eq('phone_number', ambassador.phone)
-              .eq('status', 'approved')
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            
+            const appData = applications.find(
+              (app) =>
+                app.phone_number === ambassador.phone &&
+                app.status === 'approved',
+            );
             if (appData) {
               if (!age) age = appData.age;
               if (!socialLink) socialLink = appData.social_link;
@@ -5986,8 +5474,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           }
           
           return { ...ambassador, age: age || 0, social_link: socialLink };
-        })
-      );
+        });
 
       // Data rows with alternating colors
       ambassadorsWithAge.forEach((ambassador, index) => {
@@ -6130,63 +5617,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setProcessingId(application.id);
     
     try {
-      // Normalize phone number (remove spaces, dashes, etc. for better matching)
-      const normalizePhone = (phone: string) => {
-        return phone.replace(/[\s\-\(\)]/g, '').trim();
-      };
-      
-      const normalizedPhone = normalizePhone(application.phone_number);
-      
-      // Try multiple lookup strategies to find the ambassador
-      let ambassador = null;
-      
-      // Strategy 1: Try exact phone match first
-      let { data: ambassadorByPhone } = await supabase
-        .from('ambassadors')
-        .select('id, email, phone, full_name')
-        .eq('phone', application.phone_number)
-        .maybeSingle();
-      
-      if (ambassadorByPhone) {
-        ambassador = ambassadorByPhone;
-      } else {
-        // Strategy 2: Try phone match with different formats (remove common formatting)
-        // Try variations: with/without spaces, with/without country code prefix
-        const phoneVariations = [
-          application.phone_number.replace(/\s/g, ''), // Remove spaces
-          application.phone_number.replace(/[\s\-]/g, ''), // Remove spaces and dashes
-          application.phone_number.replace(/^\+216/, ''), // Remove +216 prefix
-          application.phone_number.replace(/^216/, ''), // Remove 216 prefix
-        ].filter((v, i, arr) => arr.indexOf(v) === i); // Remove duplicates
-        
-        for (const phoneVar of phoneVariations) {
-          if (phoneVar === application.phone_number) continue; // Already tried
-          
-          const { data: ambByVar } = await supabase
-            .from('ambassadors')
-            .select('id, email, phone, full_name')
-            .eq('phone', phoneVar)
-            .maybeSingle();
-          
-          if (ambByVar) {
-            ambassador = ambByVar;
-            break;
-          }
-        }
-        
-        // Strategy 3: If still not found and we have an email, try by email
-        if (!ambassador && application.email) {
-          const { data: ambassadorByEmail } = await supabase
-            .from('ambassadors')
-            .select('id, email, phone, full_name')
-            .eq('email', application.email)
-            .maybeSingle();
-          
-          if (ambassadorByEmail) {
-            ambassador = ambassadorByEmail;
-          }
-        }
-      }
+      const normalizedPhone = normalizePhoneForLookup(application.phone_number);
+      const allAmbList = (await adminApi.listAmbassadors()) as Ambassador[];
+      const ambassador = findAmbassadorInList(allAmbList, {
+        phone: application.phone_number,
+        email: application.email,
+      });
 
       if (!ambassador) {
         console.error('âŒ Ambassador not found for resend email:', {
@@ -6197,14 +5633,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           applicationStatus: application.status,
           fullName: application.full_name
         });
-        
-        // Log available ambassadors for debugging (only in development)
-        if (process.env.NODE_ENV === 'development') {
-          const { data: allAmbassadors } = await supabase
-            .from('ambassadors')
-            .select('id, phone, email, full_name')
-            .limit(10);
-        }
         
         toast({
           title: t.error,
@@ -6238,17 +5666,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // For manually added, we need to find the actual application record
       let actualApplicationId = application.id;
       if (isManual) {
-        // Find the application record for this manually added ambassador
-        const result: any = await (supabase as any)
-          .from('ambassador_applications')
-          .select('id')
-          .eq('phone_number', application.phone_number)
-          .eq('status', 'approved')
-          .eq('manually_added', true)
-          .maybeSingle();
-        const appRecord = result?.data || result;
-        if (appRecord) {
-          actualApplicationId = appRecord.id;
+        const manualApp = applications.find(
+          (app) =>
+            app.phone_number === application.phone_number &&
+            app.status === 'approved' &&
+            app.manually_added,
+        );
+        if (manualApp) {
+          actualApplicationId = manualApp.id;
         }
       }
 
@@ -6260,29 +5685,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (!credentials || !password) {
         // Generate new credentials
         password = generatePassword();
-        const hashedPassword = await hashPasswordBcrypt(password, 10);
         
-        // Update ambassador's password in database
-        const { error: updateError } = await supabase
-          .from('ambassadors')
-          .update({ 
-            password: hashedPassword,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', ambassador.id);
-
-        if (updateError) {
-          console.error('Error updating ambassador password:', updateError);
-          toast({
-            title: t.error,
-            description: language === 'en' 
-              ? "Failed to update ambassador password. Please try again." 
-              : "Échec de la mise à jour du mot de passe de l'ambassadeur. Veuillez réessayer.",
-            variant: "destructive",
-          });
-          setProcessingId(null);
-          return;
-        }
+        const resetResult = await adminApi.updateAmbassador(ambassador.id, {
+          generatePassword: true,
+        });
+        password = resetResult.temporaryPassword || password;
 
         // Store new credentials in state
         credentials = {
@@ -6395,16 +5802,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Try to find the actual application ID for manually added
       let actualApplicationId = application.id;
       if (application.manually_added) {
-        const result: any = await (supabase as any)
-          .from('ambassador_applications')
-          .select('id')
-          .eq('phone_number', application.phone_number)
-          .eq('status', 'approved')
-          .eq('manually_added', true)
-          .maybeSingle();
-        const appRecord = result?.data || result;
-        if (appRecord) {
-          actualApplicationId = appRecord.id;
+        const manualApp = applications.find(
+          (app) =>
+            app.phone_number === application.phone_number &&
+            app.status === 'approved' &&
+            app.manually_added,
+        );
+        if (manualApp) {
+          actualApplicationId = manualApp.id;
         }
       }
       setEmailStatus(prev => ({
@@ -6679,48 +6084,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const reapplyDelayDate = new Date();
       reapplyDelayDate.setDate(reapplyDelayDate.getDate() + REAPPLY_DELAY_DAYS);
 
-      // Update application status and reapply_delay_date via API route (bypasses RLS)
-      const response = await apiFetch(API_ROUTES.ADMIN_UPDATE_APPLICATION, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          applicationId: application.id,
-          status: 'rejected',
-          reapply_delay_date: reapplyDelayDate.toISOString()
-        })
+      await adminApi.updateApplication({
+        applicationId: application.id,
+        status: 'rejected',
+        reapply_delay_date: reapplyDelayDate.toISOString(),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Error updating application status:', errorData);
-        let errorMessage = language === 'en' ? 'Failed to reject application' : 'Échec du rejet';
-        if (errorData.details) {
-          errorMessage = errorData.details;
-        } else if (errorData.error) {
-          errorMessage = errorData.error;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const result = await response.json();
-      const updateData = result.data ? [result.data] : null;
-
-      // Verify the update worked
-      if (!updateData || updateData.length === 0) {
-        // Check if application still exists and what its status is
-        const { data: verifyData } = await supabase
-          .from('ambassador_applications')
-          .select('id, status')
-          .eq('id', application.id)
-          .single();
-        
-        if (verifyData && verifyData.status !== 'rejected') {
-          console.error('Application status was not updated. Current status:', verifyData.status);
-          throw new Error(`Failed to update application status. Current status: ${verifyData.status}. Check RLS policies.`);
-        }
-      }
 
       const emailConfig = createRejectionEmail({
         fullName: application.full_name,
@@ -7061,87 +6429,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setProcessingId(ambassador.id);
 
     try {
-      // Update ambassador status
-      const { error: ambassadorError } = await supabase
-        .from('ambassadors')
-        .update({ 
-          status: newStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', ambassador.id);
+      await adminApi.updateAmbassador(ambassador.id, {
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+      });
 
-      if (ambassadorError) {
-        console.error('Error updating ambassador status:', ambassadorError);
-        throw ambassadorError;
-      }
-
-      // Find and update corresponding application(s) by phone number or email
-      let matchingApplications: any[] = [];
-      
-      // Query by phone number
-      const { data: phoneMatches, error: phoneError } = await supabase
-        .from('ambassador_applications')
-        .select('id')
-        .eq('phone_number', ambassador.phone)
-        .in('status', ['approved', 'suspended']);
-
-      if (!phoneError && phoneMatches) {
-        matchingApplications = phoneMatches;
-      }
-
-      // If email exists, also query by email and combine results
-      if (ambassador.email) {
-        const { data: emailMatches, error: emailError } = await supabase
-          .from('ambassador_applications')
-          .select('id')
-          .eq('email', ambassador.email)
-          .in('status', ['approved', 'suspended']);
-
-        if (!emailError && emailMatches) {
-          // Combine results, avoiding duplicates
-          const existingIds = new Set(matchingApplications.map(app => app.id));
-          emailMatches.forEach(app => {
-            if (!existingIds.has(app.id)) {
-              matchingApplications.push(app);
-            }
-          });
+      setApplications(prev => prev.map(app => {
+        const phoneMatch = app.phone_number === ambassador.phone;
+        const emailMatch = ambassador.email && app.email && app.email === ambassador.email;
+        if ((phoneMatch || emailMatch) && (app.status === 'approved' || app.status === 'suspended')) {
+          return { ...app, status: newStatus as 'approved' | 'suspended' };
         }
-      }
-
-      if (matchingApplications && matchingApplications.length > 0) {
-        // Update all matching applications
-        const { error: updateAppError } = await supabase
-          .from('ambassador_applications')
-          .update({ 
-            status: newStatus,
-            updated_at: new Date().toISOString()
-          })
-          .in('id', matchingApplications.map(app => app.id));
-
-        if (updateAppError) {
-          console.error('Error updating application status:', updateAppError);
-          // Show warning but continue - ambassador update succeeded
-          toast({
-            title: language === 'en' ? 'âš ï¸ Partial Update' : 'âš ï¸ Mise à Jour Partielle',
-            description: language === 'en' 
-              ? `Ambassador status updated, but application status update failed: ${updateAppError.message}`
-              : `Statut de l'ambassadeur mis à jour, mais la mise à jour du statut de la candidature a échoué : ${updateAppError.message}`,
-            variant: 'destructive',
-          });
-        } else {
-          // Update local state for applications
-          setApplications(prev => prev.map(app => {
-            const phoneMatch = app.phone_number === ambassador.phone;
-            const emailMatch = ambassador.email && app.email && app.email === ambassador.email;
-            if ((phoneMatch || emailMatch) && (app.status === 'approved' || app.status === 'suspended')) {
-              return { ...app, status: newStatus as 'approved' | 'suspended' };
-            }
-            return app;
-          }));
-        }
-      } else {
-        // No matching applications found - this is okay, might be a manually added ambassador
-      }
+        return app;
+      }));
 
       // Update local state for ambassadors (no full refresh needed)
       setAmbassadors(prev => prev.map(amb => 
@@ -7205,7 +6505,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   })
                 : [],
             status: ambassador.status,
-            updated_at: new Date().toISOString()
         };
 
         // Validate social_link format if provided
@@ -7220,7 +6519,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           return;
         }
 
-        // Only update password if it's provided and different
+        // Only update password if it's provided and different (plaintext — server hashes)
         if (ambassador.password && ambassador.password.trim()) {
           if (!validatePassword(ambassador.password)) {
             toast({
@@ -7230,50 +6529,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             });
             return;
           }
-        // Hash the password before saving
-          updateData.password = await hashPasswordBcrypt(ambassador.password, 10);
+          updateData.password = ambassador.password.trim();
         }
         
-        const { error } = await supabase
-          .from('ambassadors')
-          .update(updateData)
-          .eq('id', ambassador.id);
+        await adminApi.updateAmbassador(ambassador.id, updateData);
 
-        if (error) throw error;
-
-        // Update age, social_link, and ville in corresponding application record(s) if provided
-        // This ensures age, social_link, and ville are synchronized between ambassador and application records
-        const appUpdateData: any = {};
-        if (ambassador.age !== undefined && ambassador.age !== null) {
-          appUpdateData.age = ambassador.age;
-        }
-        if (ambassador.social_link !== undefined) {
-          appUpdateData.social_link = ambassador.social_link.trim() || null;
-        }
-        if (ambassador.ville !== undefined && (ambassador.city === 'Sousse' || ambassador.city === 'Tunis')) {
-          appUpdateData.ville = ambassador.ville.trim() || null;
-        }
-
-        if (Object.keys(appUpdateData).length > 0) {
-          // Find all application records for this ambassador (by phone number)
-          // Update all statuses to ensure complete synchronization
-          const { error: appUpdateError } = await supabase
-            .from('ambassador_applications')
-            .update(appUpdateData)
-            .eq('phone_number', ambassador.phone);
-
-          if (appUpdateError) {
-            console.error('Error updating application:', appUpdateError);
-            // Don't fail the whole operation, just log the error
-            toast({
-              title: language === 'en' ? "Warning" : "Avertissement",
-              description: language === 'en' 
-                ? "Ambassador updated, but synchronization with application may have failed" 
-                : "Ambassadeur mis à jour, mais la synchronisation avec la candidature a peut-être échoué",
-              variant: "default",
-            });
-          }
-        }
+        setApplications(prev => prev.map(app => {
+          if (app.phone_number !== ambassador.phone) return app;
+          return {
+            ...app,
+            ...(ambassador.age !== undefined && ambassador.age !== null ? { age: ambassador.age } : {}),
+            ...(ambassador.social_link !== undefined
+              ? { social_link: ambassador.social_link.trim() || null }
+              : {}),
+            ...(ambassador.ville !== undefined && (ambassador.city === 'Sousse' || ambassador.city === 'Tunis')
+              ? { ville: ambassador.ville.trim() || null }
+              : {}),
+          };
+        }));
 
       toast({
         title: t.ambassadorSaved,
@@ -7368,13 +6641,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Check for duplicate phone number in both ambassadors and applications tables
-      const { data: existingAmbByPhone } = await supabase
-        .from('ambassadors')
-        .select('id')
-        .eq('phone', newAmbassadorForm.phone_number)
-        .maybeSingle();
+      const ambList = (await adminApi.listAmbassadors()) as Ambassador[];
+      const appList = (await adminApi.listAmbassadorApplications()) as AmbassadorApplication[];
 
+      const existingAmbByPhone = findAmbassadorInList(ambList, { phone: newAmbassadorForm.phone_number });
       if (existingAmbByPhone) {
         toast({
           title: language === 'en' ? "Duplicate Phone Number" : "Numéro de téléphone dupliqué",
@@ -7384,18 +6654,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Check for duplicate phone in applications (approved/pending statuses)
-      const { data: existingAppByPhone } = await supabase
-        .from('ambassador_applications')
-        .select('id, status')
-        .eq('phone_number', newAmbassadorForm.phone_number)
-        .in('status', ['pending', 'approved', 'suspended'])
-        .maybeSingle();
-
+      const existingAppByPhone = appList.find(
+        (app) =>
+          app.phone_number === newAmbassadorForm.phone_number &&
+          ['pending', 'approved', 'suspended'].includes(app.status),
+      );
       if (existingAppByPhone) {
         toast({
           title: language === 'en' ? "Duplicate Phone Number" : "Numéro de téléphone dupliqué",
-          description: language === 'en' 
+          description: language === 'en'
             ? `An application with this phone number already exists with status: ${existingAppByPhone.status}`
             : `Une candidature avec ce numéro de téléphone existe déjà avec le statut : ${existingAppByPhone.status}`,
           variant: "destructive",
@@ -7403,14 +6670,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Check for duplicate email in both ambassadors and applications tables
       if (newAmbassadorForm.email) {
-        const { data: existingAmbByEmail } = await supabase
-          .from('ambassadors')
-          .select('id')
-          .eq('email', newAmbassadorForm.email)
-          .maybeSingle();
-
+        const existingAmbByEmail = findAmbassadorInList(ambList, { email: newAmbassadorForm.email });
         if (existingAmbByEmail) {
           toast({
             title: language === 'en' ? "Duplicate Email" : "Email dupliqué",
@@ -7420,18 +6681,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           return;
         }
 
-        // Check for duplicate email in applications (approved/pending statuses)
-        const { data: existingAppByEmail } = await supabase
-          .from('ambassador_applications')
-          .select('id, status')
-          .eq('email', newAmbassadorForm.email)
-          .in('status', ['pending', 'approved', 'suspended'])
-          .maybeSingle();
-
+        const existingAppByEmail = appList.find(
+          (app) =>
+            app.email?.toLowerCase() === newAmbassadorForm.email.trim().toLowerCase() &&
+            ['pending', 'approved', 'suspended'].includes(app.status),
+        );
         if (existingAppByEmail) {
           toast({
             title: language === 'en' ? "Duplicate Email" : "Email dupliqué",
-            description: language === 'en' 
+            description: language === 'en'
               ? `An application with this email already exists with status: ${existingAppByEmail.status}`
               : `Une candidature avec cet email existe déjà avec le statut : ${existingAppByEmail.status}`,
             variant: "destructive",
@@ -7442,108 +6700,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       setProcessingId('new-ambassador');
 
-      // Generate username and password
       const username = newAmbassadorForm.phone_number;
       const password = generatePassword();
-      const hashedPassword = await hashPasswordBcrypt(password, 10);
-
-      // Clean phone number
       const cleanedPhone = newAmbassadorForm.phone_number.replace(/\D/g, '');
 
-      // Create ambassador
-      const { data: newAmbassador, error: createError } = await supabase
-        .from('ambassadors')
-        .insert({
-          full_name: newAmbassadorForm.full_name.trim(),
-          phone: cleanedPhone,
-          email: newAmbassadorForm.email.trim().toLowerCase(),
-          city: newAmbassadorForm.city.trim(),
-          ville: (newAmbassadorForm.city === 'Sousse' || newAmbassadorForm.city === 'Tunis') ? newAmbassadorForm.ville.trim() : null,
-          password: hashedPassword,
-          status: 'approved',
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (createError) throw createError;
-      if (!newAmbassador) throw new Error('Failed to create ambassador');
-
-      // Create application record with approved status and manual indicator
-      // This is mandatory - every ambassador must have a corresponding application record
-      const applicationData: any = {
+      const createResult = await adminApi.createAmbassador({
         full_name: newAmbassadorForm.full_name.trim(),
-        age: parseInt(newAmbassadorForm.age),
-        phone_number: cleanedPhone,
+        phone: cleanedPhone,
         email: newAmbassadorForm.email.trim().toLowerCase(),
         city: newAmbassadorForm.city.trim(),
-        ville: newAmbassadorForm.city === 'Tunis' ? newAmbassadorForm.ville.trim() : null,
-        social_link: newAmbassadorForm.social_link?.trim() || null,
-        motivation: newAmbassadorForm.motivation?.trim() || (language === 'en' ? 'Manually added by admin' : 'Ajouté manuellement par l\'administrateur'),
-        status: 'approved'
-      };
+        ville:
+          newAmbassadorForm.city === 'Sousse' || newAmbassadorForm.city === 'Tunis'
+            ? newAmbassadorForm.ville.trim()
+            : null,
+        password,
+        status: 'approved',
+      });
+      const newAmbassador = createResult.data as Ambassador;
+      const issuedPassword = createResult.temporaryPassword || password;
 
-      // Add manually_added field if column exists (will be added via migration)
-      // Try to include it, but if it fails due to missing column, we'll retry without it
-      const { error: appError } = await supabase
-        .from('ambassador_applications')
-        .insert({
-          ...applicationData,
-          manually_added: true
-        });
+      if (!newAmbassador?.id) throw new Error('Failed to create ambassador');
 
-      // If error is due to missing column, retry without manually_added
-      let finalAppError = appError;
-      if (appError && appError.message?.includes('manually_added')) {
-        const { error: retryError } = await supabase
-          .from('ambassador_applications')
-          .insert(applicationData);
-        finalAppError = retryError;
-      }
-
-      if (finalAppError) {
-        console.error('Error creating application record:', finalAppError);
-        // If application creation fails, delete the ambassador to maintain data consistency
-        await supabase
-          .from('ambassadors')
-          .delete()
-          .eq('id', newAmbassador.id);
-        
-        throw new Error(language === 'en' 
-          ? `Failed to create application record: ${finalAppError.message}. Ambassador creation was rolled back. Please run the migration: 20250203000001-ensure-manually-added-column.sql`
-          : `Échec de la création de la candidature : ${finalAppError.message}. La création de l'ambassadeur a été annulée. Veuillez exécuter la migration : 20250203000001-ensure-manually-added-column.sql`);
-      }
-
-      // Find the application record we just created to get its ID
-      // Try to find by manually_added first, if that fails, find by phone and status
-      let result: any = await (supabase as any)
-        .from('ambassador_applications')
-        .select('id')
-        .eq('phone_number', cleanedPhone)
-        .eq('status', 'approved')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      // If manually_added column exists, filter by it
-      try {
-        const resultWithManual = await (supabase as any)
-          .from('ambassador_applications')
-          .select('id')
-          .eq('phone_number', cleanedPhone)
-          .eq('status', 'approved')
-          .eq('manually_added', true)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (resultWithManual?.data || resultWithManual) {
-          result = resultWithManual;
-        }
-      } catch (e) {
-        // Column doesn't exist, use the result without manually_added filter
-      }
-      
-      const createdApp = (result?.data || result) as { id: string } | null;
+      await fetchAllData();
+      const refreshedApps = await adminApi.listAmbassadorApplications();
+      const createdApp = (refreshedApps as AmbassadorApplication[]).find(
+        (app) => app.phone_number === cleanedPhone && app.status === 'approved',
+      ) ?? null;
 
       const applicationId = createdApp?.id || newAmbassador.id;
 
@@ -7552,7 +6734,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         ...prev,
         [applicationId]: {
           username: username,
-          password: password
+          password: issuedPassword
         }
       }));
 
@@ -7573,7 +6755,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             phone: cleanedPhone,
             email: newAmbassadorForm.email.trim().toLowerCase(),
             city: newAmbassadorForm.city.trim(),
-            password: password
+            password: issuedPassword
           },
           `${window.location.origin}/ambassador/auth`,
           newAmbassador.id
@@ -7714,194 +6896,72 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   const handleDeleteAmbassador = async (ambassadorId: string) => {
-    // This will now be called only after confirmation
     try {
-      // First, get the ambassador details to find the corresponding application
-      const { data: ambassador, error: fetchError } = await supabase
-        .from('ambassadors')
-        .select('phone, email')
-        .eq('id', ambassadorId)
-        .single();
+      const ambassador = ambassadors.find((a) => a.id === ambassadorId) || null;
+      await adminApi.deleteAmbassador(ambassadorId);
 
-      if (fetchError) throw fetchError;
-
-      // Delete the ambassador
-      const { data: deleteData, error: deleteError } = await supabase
-        .from('ambassadors')
-        .delete()
-        .eq('id', ambassadorId)
-        .select();
-
-      if (deleteError) {
-        console.error('Delete ambassador error:', deleteError);
-        // Provide more specific error message
-        let errorMessage = language === 'en' ? 'Failed to delete ambassador' : 'Échec de la suppression de l\'ambassadeur';
-        if (deleteError.code === '42501' || deleteError.message?.includes('policy') || deleteError.message?.includes('permission')) {
-          errorMessage = language === 'en' 
-            ? 'Permission denied. Please run the migration 20250131000002-fix-ambassador-delete-policy.sql in Supabase SQL Editor.'
-            : 'Permission refusée. Veuillez exécuter la migration 20250131000002-fix-ambassador-delete-policy.sql dans l\'éditeur SQL Supabase.';
-        } else if (deleteError.message) {
-          errorMessage = deleteError.message;
-        }
-        throw new Error(errorMessage);
-      }
-
-      // Verify deletion
-      if (!deleteData || deleteData.length === 0) {
-        // Check if ambassador still exists
-        const { data: verifyData } = await supabase
-          .from('ambassadors')
-          .select('id')
-          .eq('id', ambassadorId)
-          .single();
-        
-        if (verifyData) {
-          throw new Error('Deletion failed - ambassador still exists. Check RLS policies.');
-        }
-      }
-
-      // Find and update the corresponding application status to 'removed'
       let applicationId: string | null = null;
       if (ambassador) {
-        // First, find the application by phone or email
-        let applicationData: { id: string } | null = null;
-        
-        if (ambassador.email && ambassador.email.trim() !== '') {
-          // Search by phone OR email, prefer approved status
-          const result = await supabase
-          .from('ambassador_applications')
-            .select('id')
-            .eq('status', 'approved')
-            .or(`phone_number.eq.${ambassador.phone},email.eq.${ambassador.email}`)
-            .maybeSingle();
-          applicationData = result.data;
-          if (result.error && result.error.code !== 'PGRST116') {
-            console.error('Error finding application:', result.error);
-          }
-        } else {
-          // Search by phone only, prefer approved status
-          const result = await supabase
-            .from('ambassador_applications')
-            .select('id')
-            .eq('phone_number', ambassador.phone)
-            .eq('status', 'approved')
-            .maybeSingle();
-          applicationData = result.data;
-          if (result.error && result.error.code !== 'PGRST116') {
-            console.error('Error finding application:', result.error);
-          }
-        }
-        
-        if (applicationData) {
-          applicationId = applicationData.id;
-          
-          // Calculate reapply delay date (30 days from now)
-          const REAPPLY_DELAY_DAYS = 30;
-          const reapplyDelayDate = new Date();
-          reapplyDelayDate.setDate(reapplyDelayDate.getDate() + REAPPLY_DELAY_DAYS);
-          
-          // Update application status to 'removed' and set reapply_delay_date
-          const { error: updateAppError } = await supabase
-            .from('ambassador_applications')
-            .update({
-              status: 'removed',
-              reapply_delay_date: reapplyDelayDate.toISOString()
-            })
-            .eq('id', applicationId);
-
-          if (updateAppError) {
-            console.error('Error updating application status to removed:', updateAppError);
-            // Try alternative update method
-            if (ambassador.email && ambassador.email.trim() !== '') {
-              await supabase
-                .from('ambassador_applications')
-                .update({
-                  status: 'removed',
-                  reapply_delay_date: reapplyDelayDate.toISOString()
-                })
-                .eq('status', 'approved')
-                .or(`phone_number.eq.${ambassador.phone},email.eq.${ambassador.email}`);
-            } else {
-              await supabase
-                .from('ambassador_applications')
-                .update({
-                  status: 'removed',
-                  reapply_delay_date: reapplyDelayDate.toISOString()
-                })
-                .eq('phone_number', ambassador.phone)
-                .eq('status', 'approved');
-            }
-          }
-        }
+        const appMatch = applications.find(
+          (app) =>
+            app.status === 'approved' &&
+            (app.phone_number === ambassador.phone ||
+              (ambassador.email && app.email && app.email === ambassador.email)),
+        );
+        applicationId = appMatch?.id || null;
       }
 
-      // Verify deletion was successful before updating UI
-      const { data: verifyData } = await supabase
-        .from('ambassadors')
-        .select('id')
-        .eq('id', ambassadorId)
-        .single();
-
-      if (verifyData) {
-        // Ambassador still exists - deletion failed
-        throw new Error('Deletion failed - ambassador still exists. Please check RLS policies.');
-      }
-
-      // Update local state immediately for instant UI feedback
-      setAmbassadors(prev => prev.filter(amb => amb.id !== ambassadorId));
-      
-      // Update application status in local state if found
+      setAmbassadors((prev) => prev.filter((amb) => amb.id !== ambassadorId));
       if (applicationId) {
-        setApplications(prev => prev.map(app => 
-          app.id === applicationId 
-            ? { ...app, status: 'removed' as const }
-            : app
-        ));
+        setApplications((prev) =>
+          prev.map((app) =>
+            app.id === applicationId ? { ...app, status: 'removed' as const } : app,
+          ),
+        );
       } else if (ambassador) {
-        // Fallback: update by phone/email match
-        setApplications(prev => prev.map(app => {
-          const phoneMatch = app.phone_number === ambassador.phone;
-          const emailMatch = ambassador.email && app.email && app.email === ambassador.email;
-          if ((phoneMatch || emailMatch) && app.status === 'approved') {
-            return { ...app, status: 'removed' as const };
-          }
-          return app;
-        }));
+        setApplications((prev) =>
+          prev.map((app) => {
+            const phoneMatch = app.phone_number === ambassador.phone;
+            const emailMatch =
+              ambassador.email && app.email && app.email === ambassador.email;
+            if ((phoneMatch || emailMatch) && app.status === 'approved') {
+              return { ...app, status: 'removed' as const };
+            }
+            return app;
+          }),
+        );
       }
 
       toast({
-        title: language === 'en' ? "Ambassador Removed" : "Ambassadeur Retiré",
-        description: language === 'en' 
-          ? "Ambassador removed from active list. Application status updated to 'removed' to preserve history." 
-          : "Ambassadeur retiré de la liste active. Statut de la candidature mis à jour à 'retiré' pour préserver l'historique.",
+        title: language === 'en' ? 'Ambassador Removed' : 'Ambassadeur Retiré',
+        description:
+          language === 'en'
+            ? "Ambassador removed. Refresh to sync application records via server."
+            : "Ambassadeur retiré. Actualisez pour synchroniser les candidatures via le serveur.",
       });
-      
-      // Close delete dialog
       setAmbassadorToDelete(null);
-      
-      // Refresh all data to ensure consistency
       await fetchAllData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting ambassador:', error);
-      const errorMessage = error instanceof Error ? error.message : (language === 'en' ? "Failed to delete ambassador" : "Échec de la suppression");
       toast({
-        title: language === 'en' ? "Error" : "Erreur",
-        description: errorMessage,
-        variant: "destructive",
+        title: t.error,
+        description:
+          error?.message ||
+          (language === 'en'
+            ? 'Failed to delete ambassador. Please try again.'
+            : "Échec de la suppression de l'ambassadeur."),
+        variant: 'destructive',
       });
-      // Revert UI changes on error
-      await fetchAllData();
     }
-    setAmbassadorToDelete(null);
   };
 
+  // Create application records for ambassadors that don't have them
   const handleBulkPauseAmbassadors = async (ambassadorsToPause: Ambassador[]) => {
     if (ambassadorsToPause.length === 0) return;
     setBulkAmbassadorProcessing(true);
     try {
       for (const ambassador of ambassadorsToPause) {
-        // Only pause currently approved ambassadors
-        if (ambassador.status === "approved") {
+        if (ambassador.status === 'approved') {
           await handleToggleAmbassadorStatus(ambassador);
         }
       }
@@ -7922,18 +6982,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Find ambassadors without corresponding applications
   const getAmbassadorsWithoutApplications = () => {
     return ambassadors.filter(amb => {
-      return !applications.some(app => 
-        app.status === 'approved' && 
-        (app.phone_number === amb.phone || 
-         (app.email && amb.email && app.email === amb.email))
+      return !applications.some(app =>
+        app.status === 'approved' &&
+        (app.phone_number === amb.phone ||
+          (app.email && amb.email && app.email === amb.email)),
       );
     });
   };
 
-  // Create application records for ambassadors that don't have them
   const handleCreateApplicationsForAmbassadors = async () => {
     try {
       const ambassadorsWithoutApps = getAmbassadorsWithoutApplications();
@@ -7963,23 +7021,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         created_at: amb.created_at || new Date().toISOString()
       }));
 
-      const { error: insertError } = await supabase
-        .from('ambassador_applications')
-        .insert(applicationsToCreate);
-
-      if (insertError) {
-        throw insertError;
-      }
-
-      toast({
-        title: language === 'en' ? "Applications Created" : "Candidatures Créées",
-        description: language === 'en' 
-          ? `Created ${ambassadorsWithoutApps.length} application record(s) for ambassadors.` 
-          : `${ambassadorsWithoutApps.length} candidature(s) créée(s) pour les ambassadeurs.`,
-      });
-
-      // Refresh data
-      await fetchAllData();
+      throw new Error(
+        language === 'en'
+          ? 'Bulk application creation requires a server admin API (not available from the client).'
+          : 'La création en masse de candidatures nécessite une API admin serveur (non disponible côté client).',
+      );
     } catch (error) {
       console.error('Error creating applications for ambassadors:', error);
       toast({
@@ -8017,28 +7063,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       // Delete orphaned applications
-      const orphanedIds = orphanedApps.map(app => app.id);
-      const { error: deleteError } = await supabase
-        .from('ambassador_applications')
-        .delete()
-        .in('id', orphanedIds);
-
-      if (deleteError) {
-        throw deleteError;
-      }
-
-      // Update local state
-      setApplications(prev => prev.filter(app => !orphanedIds.includes(app.id)));
-
-      toast({
-        title: language === 'en' ? "Cleanup Complete" : "Nettoyage Terminé",
-        description: language === 'en' 
-          ? `Deleted ${orphanedApps.length} orphaned approved application(s).` 
-          : `${orphanedApps.length} candidature(s) orpheline(s) supprimée(s).`,
-      });
-
-      // Refresh data
-      await fetchAllData();
+      throw new Error(
+        language === 'en'
+          ? 'Bulk application cleanup requires a server admin API (not available from the client).'
+          : 'Le nettoyage en masse des candidatures nécessite une API admin serveur (non disponible côté client).',
+      );
     } catch (error) {
       console.error('Error cleaning up orphaned applications:', error);
       toast({
@@ -8566,25 +7595,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Load contact / B2B leads / suggestions only when their tab is opened (keeps initial dashboard light).
   useEffect(() => {
     if (activeTab === "contact" && contactMessages.length === 0) {
-      void (async () => {
-        const { data, error } = await supabase
-          .from("contact_messages")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (!error && data) setContactMessages(data);
-      })();
+      void adminApi.listContactMessages().then((data) => {
+        if (data) setContactMessages(data as any[]);
+      }).catch((err) => console.error('Error fetching contact messages:', err));
     }
     if (activeTab === "consultation-inquiries" && consultationInquiries.length === 0) {
       void fetchConsultationInquiries();
     }
     if (activeTab === "suggestions" && suggestions.length === 0) {
-      void (async () => {
-        const { data, error } = await (supabase as any)
-          .from("audience_suggestions")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (!error && data) setSuggestions(data);
-      })();
+      void adminApi.listAudienceSuggestions().then((data) => {
+        if (data) setSuggestions(data as any[]);
+      }).catch((err) => console.error('Error fetching suggestions:', err));
     }
   }, [
     activeTab,
@@ -8600,10 +7621,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     const id = selectedSuggestion.id;
     const readAt = new Date().toISOString();
     (async () => {
-      const { error } = await (supabase as any).from('audience_suggestions').update({ read_at: readAt }).eq('id', id);
-      if (!error) {
+      try {
+        await adminApi.updateAudienceSuggestion(id, { read_at: readAt });
         setSuggestions(prev => prev.map(s => s.id === id ? { ...s, read_at: readAt } : s));
         setSelectedSuggestion((prev: any) => prev && prev.id === id ? { ...prev, read_at: readAt } : prev);
+      } catch {
+        // ignore mark-read failures silently
       }
     })();
   }, [selectedSuggestion?.id]);
@@ -8757,8 +7780,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (!suggestionToDelete) return;
     try {
       const id = suggestionToDelete.id;
-      const { error } = await (supabase as any).from('audience_suggestions').delete().eq('id', id);
-      if (error) throw error;
+      await adminApi.deleteAudienceSuggestion(id);
       setSuggestions(prev => prev.filter(s => s.id !== id));
       if (selectedSuggestion?.id === id) setSelectedSuggestion(null);
       closeDeleteSuggestionDialog();
@@ -8781,40 +7803,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       const messageIdToDelete = messageToDelete.id;
       
-      const { error, data } = await supabase
-        .from('contact_messages')
-        .delete()
-        .eq('id', messageIdToDelete)
-        .select();
-      
-      if (error) {
-        console.error('Delete message error:', error);
-        let errorMessage = language === 'en' ? 'Failed to delete message' : 'Échec de la suppression';
-        if (error.code === '42501' || error.message?.includes('policy') || error.message?.includes('permission')) {
-          errorMessage = language === 'en' 
-            ? 'Permission denied. Check RLS policies for "contact_messages" table.' 
-            : 'Permission refusée. Vérifiez les politiques RLS pour la table "contact_messages".';
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-        throw new Error(errorMessage);
-      }
-      
-      // Verify deletion was successful
-      if (!data || data.length === 0) {
-        // Check if message still exists
-        const { data: verifyData } = await supabase
-          .from('contact_messages')
-          .select('id')
-          .eq('id', messageIdToDelete)
-          .maybeSingle();
-        
-        if (verifyData) {
-          throw new Error(language === 'en' 
-            ? 'Failed to delete message. Check RLS policies.' 
-            : 'Échec de la suppression. Vérifiez les politiques RLS.');
-        }
-      }
+      await adminApi.deleteContactMessage(messageIdToDelete);
       
       // Update local state after successful deletion
       setContactMessages(prev => prev.filter(m => m.id !== messageIdToDelete));

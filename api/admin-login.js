@@ -203,34 +203,42 @@ export default async (req, res) => {
       return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
     }
 
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.error('Missing environment variables:', {
         hasSupabaseUrl: !!process.env.SUPABASE_URL,
-        hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
+        hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
       });
-      return res.status(500).json({
+      return res.status(isProduction ? 503 : 500).json({
         error: 'Server configuration error',
         ...(isProduction
           ? {}
           : {
               details:
-                'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.',
+                'Supabase service role not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.',
             }),
       });
     }
 
     const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
 
     const { data: admin, error: dbError } = await supabase
       .from('admins')
-      .select('*')
+      .select('id, email, name, role, password, is_active')
       .eq('email', emailNorm)
       .single();
 
     const bcrypt = await import('bcryptjs');
 
     if (dbError || !admin) {
+      await bcrypt.default.compare(String(password), DUMMY_BCRYPT_HASH);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    if (admin.is_active === false) {
       await bcrypt.default.compare(String(password), DUMMY_BCRYPT_HASH);
       return res.status(401).json({ error: 'Invalid credentials' });
     }

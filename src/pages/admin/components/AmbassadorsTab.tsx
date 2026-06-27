@@ -48,7 +48,7 @@ import {
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { formatAmbassadorLocationLabel } from "@/lib/ambassadors/extraVilles";
 import { EditAmbassadorForm } from "./EditAmbassadorForm";
-import { supabase } from "@/integrations/supabase/client";
+import { adminApi } from "@/lib/adminApi";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type {
@@ -1011,14 +1011,10 @@ export function AmbassadorsTab({
                       onClick={async () => {
                         let ambassadorAge: number | undefined;
                         let ambassadorSocialLink: string | undefined;
-                        const { data: appData } = await supabase
-                          .from("ambassador_applications")
-                          .select("age, social_link")
-                          .eq("phone_number", ambassador.phone)
-                          .eq("status", "approved")
-                          .order("created_at", { ascending: false })
-                          .limit(1)
-                          .maybeSingle();
+                        const apps = await adminApi.listAmbassadorApplications();
+                        const appData = (apps as Array<{ phone_number?: string; age?: number; social_link?: string; status?: string; created_at?: string }>)
+                          .filter((a) => a.phone_number === ambassador.phone && a.status === "approved")
+                          .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
 
                         if (appData) {
                           ambassadorAge = appData.age;

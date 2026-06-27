@@ -1,111 +1,85 @@
 /**
  * Ambassador Service
- * Handles ambassador queries and filtering
+ * Fetches active ambassadors via the public ACTIVE_AMBASSADORS API (no direct Supabase client).
  */
 
-import { supabase } from '@/integrations/supabase/client';
 import { Ambassador } from '@/types/orders';
-import { AmbassadorStatus } from '@/lib/constants/orderStatuses';
-import { buildVilleCoverageOrFilter } from '@/lib/ambassadors/extraVilles';
+import { API_ROUTES } from '@/lib/api-routes';
 
-/**
- * Fisher-Yates shuffle algorithm for randomizing array order
- */
-function shuffleArray<T>(array: T[]): T[] {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+interface ActiveAmbassadorsResponse {
+  success?: boolean;
+  data?: Ambassador[];
+}
+
+async function fetchActiveAmbassadors(city: string, ville?: string): Promise<Ambassador[]> {
+  const params = new URLSearchParams({ city });
+  if (ville) params.append('ville', ville);
+
+  const response = await fetch(`${API_ROUTES.ACTIVE_AMBASSADORS}?${params.toString()}`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  if (!response.ok) {
+    let errorMessage = 'Failed to fetch active ambassadors';
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorMessage;
+    } catch {
+      errorMessage = response.statusText || errorMessage;
+    }
+    throw new Error(errorMessage);
   }
-  return shuffled;
+
+  const result: ActiveAmbassadorsResponse | Ambassador[] = await response.json();
+  if (Array.isArray(result)) return result;
+  if (result.data) return result.data;
+  throw new Error('Invalid response format from server');
 }
 
 /**
  * Get active ambassadors filtered by city and ville
- * Used for user selection during order creation
- * Returns ambassadors in random order for fair distribution
  */
 export async function getActiveAmbassadorsByLocation(
   city: string,
-  ville?: string
+  ville?: string,
 ): Promise<Ambassador[]> {
-  let query = supabase
-    .from('ambassadors')
-    .select('id, full_name, phone, email, city, ville, status')
-    .eq('status', 'approved')
-    .eq('city', city);
-    // Removed .order('full_name') - now using random order
-  
-  if (ville) {
-    query = query.or(buildVilleCoverageOrFilter(ville));
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(`Failed to fetch active ambassadors: ${error.message}`);
-  }
-
-  const shuffled = shuffleArray(data || []);
-
-  return shuffled as Ambassador[];
+  return fetchActiveAmbassadors(city, ville);
 }
 
 /**
- * Get all active ambassadors (admin)
+ * Get all active ambassadors (admin) — uses active API without city filter when possible
  */
 export async function getAllActiveAmbassadors(): Promise<Ambassador[]> {
-  const { data, error } = await supabase
-    .from('ambassadors')
-    .select('id, full_name, phone, email, city, ville, status, created_at')
-    .eq('status', 'approved')
-    .order('full_name');
-  
-  if (error) {
-    throw new Error(`Failed to fetch active ambassadors: ${error.message}`);
+  const response = await fetch(API_ROUTES.ACTIVE_AMBASSADORS, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch active ambassadors');
   }
-  
-  return (data || []) as Ambassador[];
+  const result: ActiveAmbassadorsResponse | Ambassador[] = await response.json();
+  if (Array.isArray(result)) return result;
+  return result.data || [];
 }
 
 /**
- * Get ambassador by ID
+ * Get ambassador by ID — resolved from active ambassadors list (no direct table read)
  */
 export async function getAmbassadorById(ambassadorId: string): Promise<Ambassador | null> {
-  const { data, error } = await supabase
-    .from('ambassadors')
-    .select('*')
-    .eq('id', ambassadorId)
-    .single();
-  
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null; // Not found
-    }
-    throw new Error(`Failed to fetch ambassador: ${error.message}`);
+  const response = await fetch(API_ROUTES.ACTIVE_AMBASSADORS, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch ambassadors');
   }
-  
-  return data as Ambassador;
+  const result: ActiveAmbassadorsResponse | Ambassador[] = await response.json();
+  const list = Array.isArray(result) ? result : result.data || [];
+  return list.find((a) => a.id === ambassadorId) || null;
 }
 
 /**
  * Check if there are active ambassadors for a city/ville
  */
 export async function hasActiveAmbassadors(city: string, ville?: string): Promise<boolean> {
-  let query = supabase
-    .from('ambassadors')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'approved')
-    .eq('city', city);
-  
-  if (ville) {
-    query = query.or(buildVilleCoverageOrFilter(ville));
-  }
-  
-  if (error) {
-    throw new Error(`Failed to check active ambassadors: ${error.message}`);
-  }
-  
-  return (count || 0) > 0;
+  const list = await fetchActiveAmbassadors(city, ville);
+  return list.length > 0;
 }
-

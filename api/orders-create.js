@@ -210,32 +210,33 @@ export default async (req, res) => {
       return publicApiError(res, 429, PUBLIC_ERROR_CODES.TOO_MANY_ORDERS);
     }
 
-    // Check environment variables
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    // Check environment variables — service role required in production
+    const isProduction =
+      process.env.NODE_ENV === 'production' ||
+      process.env.VERCEL === '1' ||
+      !!process.env.VERCEL_URL;
+
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.error('❌ Missing Supabase environment variables:', {
         hasSupabaseUrl: !!process.env.SUPABASE_URL,
-        hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY
+        hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
       });
+      if (isProduction) {
+        return publicApiError(res, 503, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
+          logDetails: 'SUPABASE_SERVICE_ROLE_KEY is required in production',
+        });
+      }
       return publicApiError(res, 500, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
-        logDetails: 'Supabase not configured',
+        logDetails: 'Supabase service role not configured',
       });
     }
 
-    // Initialize Supabase client early (for audit logging)
-    const supabase = createClient(
+    const { createClient } = await import('@supabase/supabase-js');
+    const dbClient = createClient(
       process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
+      process.env.SUPABASE_SERVICE_ROLE_KEY
     );
-    let dbClient = supabase;
-    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      dbClient = createClient(
-        process.env.SUPABASE_URL,
-        process.env.SUPABASE_SERVICE_ROLE_KEY
-      );
-      console.log('✅ Using service role key for order creation (bypasses RLS)');
-    } else {
-      console.warn('⚠️ WARNING: SUPABASE_SERVICE_ROLE_KEY not set. Order creation may fail due to RLS policies.');
-    }
+    console.log('✅ Using service role key for order creation (bypasses RLS)');
 
     // Parse request body
     let bodyData;
@@ -1078,10 +1079,13 @@ export default async (req, res) => {
   } catch (error) {
     console.error('❌ Error in /api/orders/create:', error);
     try {
-      const dbClient = process.env.SUPABASE_SERVICE_ROLE_KEY
-        ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-        : createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-      await logOrderCreateFailure(dbClient, req, 500, { error: error.message });
+      if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        const dbClient = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+        await logOrderCreateFailure(dbClient, req, 500, { error: error.message });
+      }
     } catch (logErr) {
       console.error('Failed to log order_create_failed:', logErr);
     }

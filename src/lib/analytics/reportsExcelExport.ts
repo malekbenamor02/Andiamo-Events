@@ -7,7 +7,8 @@
 // admin bundle.
 import type ExcelJS from 'exceljs';
 import type { WorksheetProtection } from 'exceljs';
-import { supabase } from '@/integrations/supabase/client';
+import { adminApi } from '@/lib/adminApi';
+import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from '@/lib/api-routes';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
 import { getDateRangeFilter, getDateRangeLabel, type DateRange } from '@/hooks/useAnalytics';
 import {
@@ -337,29 +338,25 @@ function collectPassTypesFromOrders(orders: any[]): string[] {
 }
 
 async function fetchEventPassTypeNames(eventId: string): Promise<string[]> {
-  const { data, error } = await supabase.from('event_passes').select('name').eq('event_id', eventId);
-  if (error) {
-    throw new Error(supabaseErrorMessage(error));
+  const url = buildFullApiUrl(API_ROUTES.ADMIN_PASSES_FOR_EVENT(eventId), getApiBaseUrl());
+  if (!url) throw new Error('API URL not configured');
+  const response = await fetch(url, { credentials: 'include' });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || err.details || `Failed to fetch passes (${response.status})`);
   }
-  return (data || []).map((p: { name?: string }) => p.name).filter(Boolean) as string[];
+  const body = await response.json();
+  const passes = (body.passes || body.data || []) as Array<{ name?: string }>;
+  return passes.map((p) => p.name).filter(Boolean) as string[];
 }
 
 type RosterRow = { id: string; full_name: string; phone: string };
 
 async function fetchAmbassadorsByIds(orderedIds: string[]): Promise<RosterRow[]> {
   if (orderedIds.length === 0) return [];
-  const { data: amRows, error: amError } = await supabase
-    .from('ambassadors')
-    .select('id, full_name, phone')
-    .in('id', orderedIds);
-  if (amError) {
-    throw new Error(supabaseErrorMessage(amError));
-  }
+  const all = (await adminApi.listAmbassadors()) as Array<{ id: string; full_name?: string; phone?: string }>;
   const byId = new Map(
-    (amRows || []).map((a: { id: string; full_name?: string; phone?: string }) => [
-      a.id,
-      { full_name: a.full_name ?? '—', phone: a.phone ?? '—' },
-    ])
+    all.map((a) => [a.id, { full_name: a.full_name ?? '—', phone: a.phone ?? '—' }]),
   );
   return orderedIds
     .map((id) => {
@@ -374,11 +371,8 @@ async function fetchAmbassadorsByIds(orderedIds: string[]): Promise<RosterRow[]>
 }
 
 async function fetchAllAmbassadorsRoster(): Promise<RosterRow[]> {
-  const { data, error } = await supabase.from('ambassadors').select('id, full_name, phone').order('full_name');
-  if (error) {
-    throw new Error(supabaseErrorMessage(error));
-  }
-  return (data || []).map((a: { id: string; full_name?: string; phone?: string }) => ({
+  const data = (await adminApi.listAmbassadors()) as Array<{ id: string; full_name?: string; phone?: string }>;
+  return data.map((a) => ({
     id: a.id,
     full_name: a.full_name ?? '—',
     phone: a.phone ?? '—',
@@ -433,28 +427,23 @@ export type PassStockSheetRow = {
  * (same scope as Overview / Reports — non-paid stock states excluded).
  */
 async function fetchPassStockBreakdownForEvent(eventId: string): Promise<PassStockSheetRow[]> {
-  const { data: passes, error: pErr } = await supabase
-    .from('event_passes')
-    .select('id, name, release_version, is_primary, price')
-    .eq('event_id', eventId)
-    .order('release_version', { ascending: false })
-    .order('is_primary', { ascending: false })
-    .order('price', { ascending: true });
-
-  if (pErr) throw new Error(supabaseErrorMessage(pErr));
-  const list = (passes || []) as Array<{
-    id: string;
-    name: string;
-  }>;
+  const url = buildFullApiUrl(API_ROUTES.ADMIN_PASSES_FOR_EVENT(eventId), getApiBaseUrl());
+  if (!url) throw new Error('API URL not configured');
+  const passesResponse = await fetch(url, { credentials: 'include' });
+  if (!passesResponse.ok) {
+    const err = await passesResponse.json().catch(() => ({}));
+    throw new Error(err.error || err.details || `Failed to fetch passes (${passesResponse.status})`);
+  }
+  const passesBody = await passesResponse.json();
+  const list = (passesBody.passes || passesBody.data || []) as Array<{ id: string; name: string }>;
   const passIds = list.map((p) => p.id).filter(Boolean);
   if (passIds.length === 0) return [];
 
-  const { data: orderPassesRows, error: opErr } = await supabase
-    .from('order_passes')
-    .select('order_id, pass_id, quantity')
-    .in('pass_id', passIds);
-  if (opErr) throw new Error(supabaseErrorMessage(opErr));
-
+  const orderPassesRows = (await adminApi.listOrderPassesByPassIds(passIds)) as Array<{
+    order_id?: string | null;
+    pass_id?: string | null;
+    quantity?: number | null;
+  }>;
   const opRows = orderPassesRows || [];
   const orderIds = [
     ...new Set(

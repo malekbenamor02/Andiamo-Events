@@ -5,6 +5,12 @@
 import '../lib/sentry-server.js';
 import { verifyAdminAuth, hasPermission } from './_lib/admin-verify.js';
 import { handleVerifyAdmin } from './_lib/verify-admin-http.js';
+import { handleAdminDataRoutes, provisionAmbassadorForApplication } from './_lib/admin-data-routes.js';
+import {
+  resolveAmbassadorPasswordFromBody,
+  looksLikeBcryptHash,
+} from './_lib/ambassador-password-server.js';
+import { hasEffectivePermission } from './_lib/admin-authorization.mjs';
 import { applyClearAdminTokenCookie } from './_lib/clear-admin-token-cookie.js';
 import { agentDebugLog } from './_lib/agent-debug-log.js';
 import { createRequire } from 'module';
@@ -1347,6 +1353,14 @@ export default async (req, res) => {
     return handleVerifyAdmin(req, res);
   }
 
+  const adminDataHandled = await handleAdminDataRoutes(req, res, path, method, {
+    verifyAdminAuth,
+    parseBody,
+  });
+  if (adminDataHandled) {
+    return;
+  }
+
   // Career routes (public + admin) — handled by Express app from careerRoutes.cjs
   if (path.startsWith('/api/careers') || path.startsWith('/api/admin/careers') || path === '/api/career-application' || path.startsWith('/api/career-application/')) {
     try {
@@ -1701,43 +1715,69 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             valid: false
           });
         }
+
+        if (!hasEffectivePermission(authResult.permissions || [], 'applications:manage')) {
+          return res.status(403).json({ error: 'Insufficient permissions', reason: 'forbidden' });
+        }
         
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
           console.error('Missing environment variables:', {
             hasSupabaseUrl: !!process.env.SUPABASE_URL,
-            hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY
+            hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
           });
-          return res.status(500).json({ 
+          return res.status(503).json({
             error: 'Server configuration error',
-            details: 'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
+            details: 'SUPABASE_SERVICE_ROLE_KEY is required.',
           });
         }
-        
+
         const bodyData = await parseBody(req);
-        const { applicationId, status, reapply_delay_date } = bodyData;
-        
+        const { applicationId, status, reapply_delay_date, temporaryPassword, generatePassword } = bodyData;
+
+        if (bodyData.hashedPassword != null || looksLikeBcryptHash(bodyData.password)) {
+          return res.status(400).json({
+            error: 'Pre-hashed passwords are not accepted',
+            details: 'Use temporaryPassword (plaintext over HTTPS) or generatePassword: true',
+          });
+        }
+
         if (!applicationId || !status) {
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: 'Missing required fields',
-            details: 'applicationId and status are required'
+            details: 'applicationId and status are required',
           });
         }
-        
+
         if (!['approved', 'rejected'].includes(status)) {
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: 'Invalid status',
-            details: 'status must be "approved" or "rejected"'
+            details: 'status must be "approved" or "rejected"',
           });
         }
-        
+
+        let resolvedTemporaryPassword = null;
+        let passwordHash = null;
+        if (status === 'approved') {
+          try {
+            const resolved = await resolveAmbassadorPasswordFromBody({
+              password: temporaryPassword,
+              generatePassword: generatePassword === true || temporaryPassword == null,
+            });
+            passwordHash = resolved.hash;
+            resolvedTemporaryPassword = resolved.temporaryPassword;
+          } catch (pwErr) {
+            return res.status(400).json({
+              error: 'Invalid password payload',
+              details: pwErr.message,
+            });
+          }
+        }
+
         const { createClient } = await import('@supabase/supabase-js');
-        const supabaseAnon = createClient(
+        const dbForApp = createClient(
           process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
+          process.env.SUPABASE_SERVICE_ROLE_KEY
         );
-        const dbForApp = process.env.SUPABASE_SERVICE_ROLE_KEY
-          ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-          : supabaseAnon;
 
         const adminUser = authResult.admin;
         const reviewFields = {
@@ -1746,20 +1786,45 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           reviewed_by_name: (adminUser?.name && String(adminUser.name).trim()) || adminUser?.email || null,
         };
 
+        if (status === 'approved') {
+          const { data: applicationRow, error: appLoadError } = await dbForApp
+            .from('ambassador_applications')
+            .select('*')
+            .eq('id', applicationId)
+            .single();
+
+          if (appLoadError || !applicationRow) {
+            return res.status(404).json({
+              error: 'Application not found',
+              details: appLoadError?.message || `No application found with id: ${applicationId}`,
+            });
+          }
+
+          try {
+            await provisionAmbassadorForApplication(dbForApp, applicationRow, passwordHash);
+          } catch (provisionError) {
+            console.error('Error provisioning ambassador:', provisionError);
+            return res.status(500).json({
+              error: 'Failed to provision ambassador account',
+              details: provisionError.message,
+            });
+          }
+        }
+
         const updateData = { status, ...reviewFields };
         if (reapply_delay_date) {
           updateData.reapply_delay_date = reapply_delay_date;
         }
-        
+
         let result = await dbForApp
           .from('ambassador_applications')
-          .update({ 
+          .update({
             ...updateData,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
           })
           .eq('id', applicationId)
           .select();
-        
+
         if (result.error && result.error.message?.includes('updated_at')) {
           result = await dbForApp
             .from('ambassador_applications')
@@ -1787,7 +1852,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         return res.status(200).json({ 
           success: true, 
           data: result.data[0],
-          message: `Application ${status} successfully`
+          message: `Application ${status} successfully`,
+          ...(resolvedTemporaryPassword ? { temporaryPassword: resolvedTemporaryPassword } : {}),
         });
       } catch (error) {
         console.error('Admin update application error:', error);
@@ -2143,23 +2209,18 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // ============================================
     if (path === '/api/ambassadors/active' && method === 'GET') {
       try {
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(503).json({
+            error: 'Server configuration error',
+            details: 'SUPABASE_SERVICE_ROLE_KEY is required for active ambassadors after RLS hardening',
+          });
         }
 
         const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
+        const dbClient = createClient(
           process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
+          process.env.SUPABASE_SERVICE_ROLE_KEY
         );
-
-        let dbClient = supabase;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
 
         const result = await handleActiveAmbassadorsRequest(dbClient, req.query);
         if (result.status >= 500) {
@@ -2189,42 +2250,41 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           return res.status(400).json({ error: 'Invalid phone number format' });
         }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ 
-            error: 'Supabase not configured',
-            details: 'Please check environment variables: SUPABASE_URL and SUPABASE_ANON_KEY must be set'
-          });
+        if (!process.env.SUPABASE_URL) {
+          return res.status(503).json({ error: 'Supabase not configured' });
         }
 
         const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const anonKey = process.env.SUPABASE_ANON_KEY;
+        const supabaseKey = serviceRoleKey || anonKey;
+        if (!supabaseKey) {
+          return res.status(503).json({ error: 'Supabase not configured' });
+        }
+        const supabase = createClient(process.env.SUPABASE_URL, supabaseKey);
 
-        const { data: existingSubscriber, error: checkError } = await supabase
-          .from('phone_subscribers')
-          .select('id')
-          .eq('phone_number', phone_number)
-          .maybeSingle();
-
-        if (checkError && checkError.code !== 'PGRST116') {
-          console.error('Error checking for duplicate phone number:', checkError);
-          return res.status(500).json({ error: 'Failed to check phone number' });
+        if (serviceRoleKey) {
+          const { data: existingSubscriber, error: checkError } = await supabase
+            .from('phone_subscribers')
+            .select('id')
+            .eq('phone_number', phone_number)
+            .maybeSingle();
+          if (checkError && checkError.code !== 'PGRST116') {
+            console.error('Error checking for duplicate phone number:', checkError);
+            return res.status(500).json({ error: 'Failed to check phone number' });
+          }
+          if (existingSubscriber) {
+            return res.status(400).json({ error: 'Phone number already exists' });
+          }
         }
 
-        if (existingSubscriber) {
-          return res.status(400).json({ error: 'Phone number already exists' });
-        }
-
-        const { data: subscriber, error: insertError } = await supabase
-          .from('phone_subscribers')
-          .insert({
-            phone_number: phone_number,
-            language: language || 'en'
-          })
-          .select()
-          .single();
+        const insertQuery = supabase.from('phone_subscribers').insert({
+          phone_number: phone_number,
+          language: language || 'en',
+        });
+        const { data: subscriber, error: insertError } = serviceRoleKey
+          ? await insertQuery.select('id, phone_number').single()
+          : await insertQuery;
 
         if (insertError) {
           if (insertError.code === '23505' || insertError.message?.includes('unique constraint') || insertError.message?.includes('duplicate key')) {
@@ -2237,10 +2297,9 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         return res.status(200).json({ 
           success: true, 
           message: 'Phone number subscribed successfully',
-          subscriber: {
-            id: subscriber.id,
-            phone_number: subscriber.phone_number
-          }
+          ...(subscriber?.id
+            ? { subscriber: { id: subscriber.id, phone_number: subscriber.phone_number || phone_number } }
+            : {}),
         });
       } catch (error) {
         console.error('Error in phone subscription:', error);

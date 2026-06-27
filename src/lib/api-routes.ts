@@ -63,6 +63,23 @@ export const API_ROUTES = {
   
   // Application Management
   ADMIN_UPDATE_APPLICATION: '/api/admin-update-application',
+  ADMIN_DASHBOARD_BOOTSTRAP: '/api/admin/dashboard/bootstrap',
+  ADMIN_AMBASSADORS: '/api/admin/ambassadors',
+  ADMIN_AMBASSADOR: (id: string) => `/api/admin/ambassadors/${encodeURIComponent(id)}`,
+  ADMIN_AMBASSADOR_APPLICATIONS: '/api/admin/ambassador-applications',
+  ADMIN_CONTACT_MESSAGES: '/api/admin/contact-messages',
+  ADMIN_CONTACT_MESSAGE: (id: string) => `/api/admin/contact-messages/${encodeURIComponent(id)}`,
+  ADMIN_SUBSCRIBERS_PHONES: '/api/admin/subscribers/phones',
+  ADMIN_SUBSCRIBER_PHONE: (id: string) => `/api/admin/subscribers/phones/${encodeURIComponent(id)}`,
+  ADMIN_SUBSCRIBERS_NEWSLETTERS: '/api/admin/subscribers/newsletters',
+  ADMIN_SUBSCRIBER_NEWSLETTER: (id: string) =>
+    `/api/admin/subscribers/newsletters/${encodeURIComponent(id)}`,
+  ADMIN_AUDIENCE_SUGGESTIONS: '/api/admin/audience-suggestions',
+  ADMIN_AUDIENCE_SUGGESTION: (id: string) =>
+    `/api/admin/audience-suggestions/${encodeURIComponent(id)}`,
+  ADMIN_SMS_LOGS: '/api/admin/sms-logs',
+  ADMIN_SITE_LOGS: '/api/admin/site-logs',
+  ADMIN_ORDER_PASSES: '/api/admin/order-passes',
   
   // Email
   SEND_EMAIL: '/api/send-email',

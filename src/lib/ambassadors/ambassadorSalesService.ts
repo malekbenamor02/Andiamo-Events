@@ -3,9 +3,20 @@
  * Handles analytics, performance metrics, and statistics for ambassador sales
  */
 
-import { supabase } from '@/integrations/supabase/client';
-import { AmbassadorSalesOverview, AmbassadorSalesAnalytics, Order } from '@/types/orders';
+import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from '@/lib/api-routes';
+import { AmbassadorSalesOverview, AmbassadorSalesAnalytics } from '@/types/orders';
 import { PaymentMethod, OrderStatus } from '@/lib/constants/orderStatuses';
+
+async function fetchAmbassadorSalesOrders(): Promise<any[]> {
+  const url = buildFullApiUrl(`${API_ROUTES.AMBASSADOR_SALES_ORDERS}?limit=5000`, getApiBaseUrl());
+  if (!url) throw new Error('API URL not configured');
+  const response = await fetch(url, { credentials: 'include' });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || body.details || `Request failed (${response.status})`);
+  }
+  return body.data || [];
+}
 
 /**
  * Get sales overview (performance metrics)
@@ -18,20 +29,9 @@ export async function getSalesOverview(): Promise<AmbassadorSalesOverview> {
   
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   
-  // Get all ambassador cash orders
-  // CRITICAL: This service should use API endpoint instead of direct Supabase query
-  // Filtering of REMOVED_BY_ADMIN orders MUST be handled in API endpoints, not frontend
-  // TODO: Use /api/admin/ambassador-sales/overview endpoint instead
-  const { data: allOrders, error: allError } = await supabase
-    .from('orders')
-    .select('id, total_price, ambassador_id, created_at, status, ambassadors!inner(full_name)')
-    .eq('payment_method', PaymentMethod.AMBASSADOR_CASH);
-  
-  if (allError) {
-    throw new Error(`Failed to fetch orders: ${allError.message}`);
-  }
-  
-  const orders = (allOrders || []) as any[];
+  // Get all ambassador cash orders via admin API
+  const allOrdersRaw = await fetchAmbassadorSalesOrders();
+  const orders = allOrdersRaw.filter((o) => o.payment_method === PaymentMethod.AMBASSADOR_CASH);
   
   // Filter by date ranges
   const thisWeekOrders = orders.filter(o => new Date(o.created_at) >= startOfWeek);
@@ -82,7 +82,7 @@ export async function getSalesOverview(): Promise<AmbassadorSalesOverview> {
     
     const existing = ambassadorStats.get(order.ambassador_id) || {
       ambassador_id: order.ambassador_id,
-      ambassador_name: order.ambassadors?.full_name || 'Unknown',
+      ambassador_name: order.ambassador_name || order.ambassadors?.full_name || 'Unknown',
       total_orders: 0,
       total_revenue: 0
     };
@@ -114,20 +114,9 @@ export async function getSalesOverview(): Promise<AmbassadorSalesOverview> {
  * Get analytics (time series, charts data)
  */
 export async function getSalesAnalytics(): Promise<AmbassadorSalesAnalytics> {
-  // CRITICAL: This service should use API endpoint instead of direct Supabase query
-  // Filtering of REMOVED_BY_ADMIN orders MUST be handled in API endpoints, not frontend
-  // TODO: Use /api/admin/ambassador-sales/overview or create analytics endpoint
-  const { data: orders, error } = await supabase
-    .from('orders')
-    .select('id, total_price, city, status, payment_method, created_at, completed_at, ambassador_id, ambassadors!inner(full_name)')
-    .eq('payment_method', PaymentMethod.AMBASSADOR_CASH)
-    .order('created_at', { ascending: true });
-  
-  if (error) {
-    throw new Error(`Failed to fetch orders for analytics: ${error.message}`);
-  }
-  
-  const ordersList = (orders || []) as any[];
+  const ordersList = (await fetchAmbassadorSalesOrders()).filter(
+    (o) => o.payment_method === PaymentMethod.AMBASSADOR_CASH
+  ) as any[];
   
   // Orders over time (daily for last 30 days)
   const thirtyDaysAgo = new Date();
@@ -171,7 +160,7 @@ export async function getSalesAnalytics(): Promise<AmbassadorSalesAnalytics> {
     
     const existing = ambassadorPerf.get(order.ambassador_id) || {
       ambassador_id: order.ambassador_id,
-      ambassador_name: order.ambassadors?.full_name || 'Unknown',
+      ambassador_name: order.ambassador_name || order.ambassadors?.full_name || 'Unknown',
       orders: 0,
       revenue: 0
     };

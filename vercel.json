@@ -413,6 +413,66 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/dashboard/bootstrap",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/contact-messages",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/contact-messages/:id",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/subscribers/phones",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/subscribers/phones/:id",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/subscribers/newsletters",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/subscribers/newsletters/:id",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/ambassadors",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/ambassadors/:id",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/ambassador-applications",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/audience-suggestions",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/audience-suggestions/:id",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/sms-logs",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/site-logs",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/order-passes",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/ambassador-sales/orders",
       "destination": "/api/misc.js"
     },

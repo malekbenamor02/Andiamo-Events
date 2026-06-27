@@ -20,7 +20,7 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { adminApi } from "@/lib/adminApi";
 import { filterAmbassadorApplications } from "../../lib/filterApplications";
 import { exportDraftSelectionToExcel } from "../../lib/exportAmbassadorApplicationsExcel";
 import { ApplicationsListCore } from "./ApplicationsListCore";
@@ -277,24 +277,18 @@ export function ApplicationSelectionsPanel({
       } else {
         const targets = bulkPendingApps;
         let succeeded = 0;
-        const expectedStatus = bulkAction === "approve" ? "approved" : "rejected";
         for (const app of targets) {
-          if (bulkAction === "approve") await onApprove(app);
-          else await onReject(app);
-
-          const { data: statusRow } = await supabase
-            .from("ambassador_applications")
-            .select("status")
-            .eq("id", app.id)
-            .maybeSingle();
-
-          if (statusRow?.status === expectedStatus) {
+          try {
+            if (bulkAction === "approve") await onApprove(app);
+            else await onReject(app);
             succeeded += 1;
             setBulkSelectedIds((prev) => {
               const next = new Set(prev);
               next.delete(app.id);
               return next;
             });
+          } catch {
+            // onApprove/onReject toast errors; skip counting this row
           }
         }
         if (succeeded === targets.length) {

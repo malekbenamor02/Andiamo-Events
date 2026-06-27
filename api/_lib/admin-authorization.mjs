@@ -100,22 +100,25 @@ export async function verifyAdminSession(req, opts = {}) {
     }
 
     const supabaseUrl = trimEnvValue(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
-    const supabaseKey = trimEnvValue(
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-        process.env.SUPABASE_ANON_KEY ||
-        process.env.VITE_SUPABASE_ANON_KEY
-    );
+    const serviceRoleKey = trimEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-    if (!supabaseUrl || !supabaseKey) {
+    if (!supabaseUrl || !serviceRoleKey) {
+      if (isProductionEnv()) {
+        return {
+          valid: false,
+          error: 'Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required in production',
+          statusCode: 503,
+        };
+      }
       return {
         valid: false,
-        error: 'Supabase not configured',
+        error: 'Supabase service role not configured',
         statusCode: 500,
       };
     }
 
     const { createClient } = await import('@supabase/supabase-js');
-    const dbClient = createClient(supabaseUrl, supabaseKey);
+    const dbClient = createClient(supabaseUrl, serviceRoleKey);
 
     const { data: admin, error: dbError } = await dbClient
       .from('admins')
