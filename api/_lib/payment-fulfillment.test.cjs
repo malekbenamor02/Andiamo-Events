@@ -477,6 +477,20 @@ describe('clictopay confirm public safety', () => {
     const misc = read('api/misc.js');
     assert.match(misc, /handleClicToPayConfirmPayment/);
   });
+
+  it('vercel.json routes clictopay-confirm to dedicated function not misc.js', () => {
+    const vercel = read('vercel.json');
+    assert.match(vercel, /"source": "\/api\/clictopay-confirm-payment"[\s\S]*?"destination": "\/api\/clictopay-confirm-payment\.js"/);
+    assert.doesNotMatch(
+      vercel,
+      /"source": "\/api\/clictopay-confirm-payment"[\s\S]*?"destination": "\/api\/misc\.js"/
+    );
+  });
+
+  it('dedicated clictopay-confirm-payment.js exists', () => {
+    const src = read('api/clictopay-confirm-payment.js');
+    assert.match(src, /handleClicToPayConfirmPayment/);
+  });
 });
 
 describe('insertTicketsUnderLock production fallback', () => {

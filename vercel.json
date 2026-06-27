@@ -394,7 +394,7 @@
     },
     {
       "source": "/api/clictopay-confirm-payment",
-      "destination": "/api/misc.js"
+      "destination": "/api/clictopay-confirm-payment.js"
     },
     {
       "source": "/api/admin-resend-ticket-email",
@@ -868,6 +868,11 @@
     "api/clictopay-generate-payment.js": {
       "maxDuration": 30,
       "includeFiles": "api/_lib/**"
+    },
+    "api/clictopay-confirm-payment.js": {
+      "maxDuration": 60,
+      "memory": 1024,
+      "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**}"
     },
     "api/misc.js": {
       "maxDuration": 60,

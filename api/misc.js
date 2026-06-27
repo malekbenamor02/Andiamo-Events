@@ -1306,8 +1306,17 @@ async function checkSmsBalance() {
   });
 }
 
-/** Pathname only; Vercel may set req.url to an absolute URL. */
+/** Pathname only; Vercel may set req.url to rewrite destination (e.g. /api/misc.js). */
 function requestPathname(req) {
+  const invokePath =
+    req.headers?.['x-vercel-original-path'] ||
+    req.headers?.['x-invoke-path'] ||
+    req.headers?.['x-matched-path'];
+  if (invokePath && typeof invokePath === 'string') {
+    const p = invokePath.split('?')[0];
+    if (p.startsWith('/api/') && !p.endsWith('.js')) return p;
+  }
+
   const raw = String(req.url || req.path || '');
   if (!raw) return '';
   if (/^https?:\/\//i.test(raw)) {
@@ -1317,7 +1326,16 @@ function requestPathname(req) {
       return '/';
     }
   }
-  return raw.split('?')[0] || '';
+  const pathname = raw.split('?')[0] || '';
+  // Rewrite to misc.js: recover logical route from query (?route=...) if present
+  if (pathname === '/api/misc.js' || pathname === '/api/misc') {
+    const qs = raw.includes('?') ? raw.split('?')[1] : '';
+    if (qs) {
+      const route = new URLSearchParams(qs).get('route');
+      if (route) return route.startsWith('/') ? route : `/api/${route}`;
+    }
+  }
+  return pathname;
 }
 
 export default async (req, res) => {
