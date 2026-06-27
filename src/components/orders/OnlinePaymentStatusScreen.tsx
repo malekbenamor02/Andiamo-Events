@@ -4,7 +4,7 @@
  */
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { AlertCircle, ArrowLeft, Check, X } from "lucide-react";
+import { AlertCircle, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export type OnlinePaymentStatusVariant =
@@ -257,9 +257,6 @@ export function OnlinePaymentStatusScreen({
                 }
                 onClick={onPrimaryAction}
               >
-                {variant === "success" && (
-                  <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
-                )}
                 {primaryActionLabel}
               </Button>
               {secondaryActionLabel && onSecondaryAction && (

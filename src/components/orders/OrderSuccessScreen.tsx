@@ -3,14 +3,14 @@
  */
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, Check, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export interface OrderSuccessScreenProps {
   eventName: string;
   totalPrice: number;
   message: string;
-  onBackToEvents: () => void;
+  onBuyAgain: () => void;
   language?: "en" | "fr";
 }
 
@@ -20,13 +20,13 @@ function getCopy(language: "en" | "fr") {
         title: "Order submitted",
         thankYou: "Thank you for your order",
         close: "Close",
-        backToEvents: "Back to events",
+        buyAgain: "Buy again",
       }
     : {
         title: "Commande envoyée",
         thankYou: "Merci pour votre commande",
         close: "Fermer",
-        backToEvents: "Retour aux événements",
+        buyAgain: "Acheter à nouveau",
       };
 }
 
@@ -34,7 +34,7 @@ export function OrderSuccessScreen({
   eventName,
   totalPrice,
   message,
-  onBackToEvents,
+  onBuyAgain,
   language = "en",
 }: OrderSuccessScreenProps) {
   const reducedMotion = useReducedMotion();
@@ -49,7 +49,6 @@ export function OrderSuccessScreen({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: reducedMotion ? 0 : 0.2 }}
-        onClick={onBackToEvents}
         role="dialog"
         aria-modal="true"
         aria-labelledby="pass-order-success-title"
@@ -74,7 +73,7 @@ export function OrderSuccessScreen({
             variant="ghost"
             size="icon"
             className="absolute right-3 top-3 h-8 w-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={onBackToEvents}
+            onClick={onBuyAgain}
             aria-label={copy.close}
           >
             <X className="h-4 w-4" aria-hidden />
@@ -156,10 +155,9 @@ export function OrderSuccessScreen({
             <Button
               type="button"
               className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
-              onClick={onBackToEvents}
+              onClick={onBuyAgain}
             >
-              <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
-              {copy.backToEvents}
+              {copy.buyAgain}
             </Button>
           </motion.div>
         </motion.div>

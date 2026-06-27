@@ -1660,6 +1660,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     !promoBlocksSubmit &&
     !(checkoutPromoDraft.trim() && promoPreview.status === 'loading');
 
+  const purchasePath = eventSlug
+    ? `/${eventSlug}`
+    : event?.id || eventId
+      ? `/pass-purchase?eventId=${encodeURIComponent(event?.id || eventId!)}`
+      : '/pass-purchase';
+
   // Success overlay after ambassador cash order
   if (submitted) {
     return (
@@ -1667,13 +1673,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         eventName={event.name}
         totalPrice={totalPrice}
         message={t[language].successMessageAmbassador}
-        onBackToEvents={() => navigate("/events")}
+        onBuyAgain={() => {
+          setSubmitted(false);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
         language={language}
       />
     );
   }
 
-  const purchasePath = eventSlug ? `/${eventSlug}` : '/pass-purchase';
   const purchaseTitle = event ? `Buy Tickets – ${event.name} | Andiamo Events` : 'Buy Tickets | Andiamo Events';
   const purchaseDescription = event
     ? (event.description?.slice(0, 155) || `Get tickets for ${event.name} – ${event.venue}, ${event.city}.`)

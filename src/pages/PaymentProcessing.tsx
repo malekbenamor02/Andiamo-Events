@@ -78,7 +78,6 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
     unknownTitle: 'Payment not confirmed',
     unknownMessage:
       'We could not reach the bank to confirm your payment. If you see a debit on your card, please wait for an email or SMS confirmation, or contact our support.',
-    backToEvents: 'Back to events',
     buyAgain: 'Buy again',
     goBack: 'Go back',
     contactSupport: 'Contact support',
@@ -105,8 +104,7 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
     unknownTitle: 'Paiement non confirmé',
     unknownMessage:
       'Nous n\'avons pas pu joindre la banque pour confirmer votre paiement. Si vous voyez un débit sur votre carte, veuillez attendre un email ou un SMS de confirmation, ou contacter notre support.',
-    backToEvents: 'Retour aux événements',
-    buyAgain: 'Réessayer',
+    buyAgain: 'Acheter à nouveau',
     goBack: 'Retour',
     contactSupport: 'Contacter le support',
     close: 'Fermer',
@@ -302,6 +300,8 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
             : undefined;
 
   const buyAgainPath = getPaymentReturnPath();
+  const isTerminalOutcome =
+    statusVariant === 'success' || statusVariant === 'failed';
 
   return (
     <div className="min-h-screen bg-gradient-dark">
@@ -312,21 +312,17 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
         message={statusMessage}
         closeLabel={t.close}
         onClose={() =>
-          statusVariant === 'failed' ? navigate(buyAgainPath) : navigate('/events')
+          isTerminalOutcome ? navigate(buyAgainPath) : navigate('/contact')
         }
         primaryActionLabel={
           statusVariant === 'unknown' || state === 'success_pending' || state === 'success_email_pending'
             ? t.contactSupport
-            : statusVariant === 'failed'
-              ? t.buyAgain
-              : t.backToEvents
+            : t.buyAgain
         }
         onPrimaryAction={() =>
           statusVariant === 'unknown' || state === 'success_pending' || state === 'success_email_pending'
             ? navigate('/contact')
-            : statusVariant === 'failed'
-              ? navigate(buyAgainPath)
-              : navigate('/events')
+            : navigate(buyAgainPath)
         }
       />
     </div>
