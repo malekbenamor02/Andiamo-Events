@@ -16,6 +16,11 @@ const { ensureSupabaseServerEnv } = requireFromRoot(
 );
 ensureSupabaseServerEnv();
 
+const { ensureTicketEmailRuntimeDepsAreTraceable } = requireFromRoot(
+  nodePath.join(__dirname, '_lib', 'ticket-email-bundle-hints.cjs')
+);
+ensureTicketEmailRuntimeDepsAreTraceable();
+
 const { handleClicToPayConfirmPayment } = requireFromRoot(
   nodePath.join(__dirname, '_lib', 'clictopay-confirm-payment.cjs')
 );

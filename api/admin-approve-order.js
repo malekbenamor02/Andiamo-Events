@@ -17,6 +17,11 @@ const { buildTicketQrApiUrl } = requireCjs(path.join(__dirname, '_lib/ticket-qr-
 const { prepareTicketsByPassTypeForEmail, mergeEmailAttachments } = requireCjs(path.join(__dirname, '_lib/ticket-qr-email.cjs'));
 const { randomUuid } = requireCjs(path.join(__dirname, '_lib/random-uuid.cjs'));
 
+const { ensureTicketEmailRuntimeDepsAreTraceable } = requireCjs(
+  path.join(__dirname, '_lib/ticket-email-bundle-hints.cjs')
+);
+ensureTicketEmailRuntimeDepsAreTraceable();
+
 // Helper function to format event time
 function formatEventTime(eventDate) {
   if (!eventDate) return null;

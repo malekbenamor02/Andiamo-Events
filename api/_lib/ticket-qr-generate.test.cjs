@@ -20,24 +20,24 @@ const {
 
 const { prepareTicketsByPassTypeForEmail } = require('./ticket-qr-email.cjs');
 const {
-  QRCODE_VERCEL_NODE_MODULES,
   QRCODE_PROGRAMMATIC_RUNTIME_PACKAGES,
   programmaticRuntimePackagesFromLockfile,
   QR_GENERATING_VERCEL_FUNCTIONS,
   TICKET_EMAIL_VERCEL_INCLUDE_FILES,
   MISC_TICKET_EMAIL_VERCEL_INCLUDE_FILES,
-  REQUIRED_TICKET_EMAIL_RUNTIME_GLOBS,
-  TICKET_EMAIL_VERCEL_NODE_MODULES,
-  ticketEmailNodeModuleGlobsFromLockfile,
-  assertIncludeFilesCoversTicketEmailRuntime,
+  VERCEL_INCLUDE_FILES_MAX_LENGTH,
+  assertAllIncludeFilesWithinSchemaLimit,
+  assertShortTicketEmailIncludeFiles,
+  includeFilesForFunction,
 } = require('./qrcode-runtime-deps.cjs');
 
-function includeFilesForFunction(vercelJson, functionPath) {
-  const block = new RegExp(
-    `"${functionPath.replace(/\//g, '\\/')}"[\\s\\S]*?"includeFiles":\\s*"([^"]+)"`
-  ).exec(vercelJson);
-  assert.ok(block, `includeFiles block not found for ${functionPath}`);
-  return block[1];
+const {
+  TICKET_EMAIL_BUNDLE_HINT_PACKAGES,
+  ensureTicketEmailRuntimeDepsAreTraceable,
+} = require('./ticket-email-bundle-hints.cjs');
+
+function readVercelJson() {
+  return read('vercel.json');
 }
 
 describe('ticket-qr-generate.cjs', () => {
@@ -107,53 +107,56 @@ describe('ClicToPay confirm QR bundling', () => {
     assert.deepEqual(fromLock.sort(), [...QRCODE_PROGRAMMATIC_RUNTIME_PACKAGES].sort());
   });
 
-  it('vercel.json QR-generating functions include full qrcode runtime tree', () => {
-    const vercel = read('vercel.json');
-    for (const fn of QR_GENERATING_VERCEL_FUNCTIONS) {
-      const includeFiles = includeFilesForFunction(vercel, fn);
-      for (const glob of QRCODE_VERCEL_NODE_MODULES) {
-        assert.match(
-          includeFiles,
-          new RegExp(glob.replace(/\//g, '\\/').replace(/\*\*/g, '\\*\\*')),
-          `${fn} missing ${glob}`
-        );
-      }
+  it('vercel.json includeFiles values respect 256-char schema limit', () => {
+    const vercel = readVercelJson();
+    assertAllIncludeFilesWithinSchemaLimit(vercel);
+    for (const value of vercel.match(/"includeFiles":\s*"([^"]+)"/g) || []) {
+      const inner = value.match(/"([^"]+)"$/)[1];
+      assert.ok(
+        inner.length <= VERCEL_INCLUDE_FILES_MAX_LENGTH,
+        `includeFiles length ${inner.length} exceeds ${VERCEL_INCLUDE_FILES_MAX_LENGTH}`
+      );
     }
   });
 
-  it('vercel.json ticket-email functions match lockfile-derived bundle list', () => {
-    const vercel = read('vercel.json');
-    const expectedGlobs = ticketEmailNodeModuleGlobsFromLockfile();
-    assert.deepEqual(TICKET_EMAIL_VERCEL_NODE_MODULES, expectedGlobs);
+  it('vercel.json ticket-email functions use short includeFiles + chromium glob', () => {
+    const vercel = readVercelJson();
 
     const confirm = includeFilesForFunction(vercel, 'api/clictopay-confirm-payment.js');
     assert.equal(confirm, TICKET_EMAIL_VERCEL_INCLUDE_FILES);
+    assertShortTicketEmailIncludeFiles(confirm);
 
     const misc = includeFilesForFunction(vercel, 'api/misc.js');
     assert.equal(misc, MISC_TICKET_EMAIL_VERCEL_INCLUDE_FILES);
+    assertShortTicketEmailIncludeFiles(misc);
 
     for (const fn of [
       'api/admin-approve-order.js',
       'api/admin-pos.js',
       'api/clictopay-confirm-payment.js',
+      'api/misc.js',
     ]) {
-      assertIncludeFilesCoversTicketEmailRuntime(includeFilesForFunction(vercel, fn));
+      assertShortTicketEmailIncludeFiles(includeFilesForFunction(vercel, fn));
     }
-    assertIncludeFilesCoversTicketEmailRuntime(includeFilesForFunction(vercel, 'api/misc.js'));
   });
 
-  it('vercel.json includes required QR/PDF/SMTP runtime packages', () => {
-    const vercel = read('vercel.json');
-    for (const fn of QR_GENERATING_VERCEL_FUNCTIONS) {
-      const includeFiles = includeFilesForFunction(vercel, fn);
-      for (const glob of REQUIRED_TICKET_EMAIL_RUNTIME_GLOBS) {
-        assert.match(
-          includeFiles,
-          new RegExp(glob.replace(/\//g, '\\/').replace(/\*\*/g, '\\*\\*')),
-          `${fn} missing ${glob}`
-        );
-      }
+  it('ticket-email-bundle-hints.cjs statically references runtime packages', () => {
+    const src = read('api/_lib/ticket-email-bundle-hints.cjs');
+    for (const pkg of TICKET_EMAIL_BUNDLE_HINT_PACKAGES) {
+      assert.match(src, new RegExp(`require\\(['"]${pkg.replace('/', '\\/')}['"]\\)`));
     }
+  });
+
+  it('QR/PDF/email API entrypoints call ensureTicketEmailRuntimeDepsAreTraceable', () => {
+    for (const rel of QR_GENERATING_VERCEL_FUNCTIONS) {
+      const src = read(rel);
+      assert.match(src, /ticket-email-bundle-hints\.cjs/);
+      assert.match(src, /ensureTicketEmailRuntimeDepsAreTraceable\(\)/);
+    }
+  });
+
+  it('ensureTicketEmailRuntimeDepsAreTraceable loads without MODULE_NOT_FOUND', () => {
+    ensureTicketEmailRuntimeDepsAreTraceable();
   });
 
   it('ticket email runtime smoke: nodemailer, chromium, follow-redirects load', () => {

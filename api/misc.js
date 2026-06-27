@@ -27,6 +27,11 @@ const { ensureSupabaseServerEnv } = requireFromRoot(
 );
 ensureSupabaseServerEnv();
 
+const { ensureTicketEmailRuntimeDepsAreTraceable } = requireFromRoot(
+  nodePath.join(__dirname, '_lib', 'ticket-email-bundle-hints.cjs')
+);
+ensureTicketEmailRuntimeDepsAreTraceable();
+
 const { fetchAmbassadorSocialLinkFromApplications } = requireFromRoot(
   nodePath.join(__dirname, '_lib', 'ambassador-social-link.cjs')
 );

@@ -3,21 +3,8 @@
 const { readFileSync } = require('fs');
 const { resolve } = require('path');
 
-/**
- * Lockfile-aware Vercel includeFiles for ticket email: inline QR, PDF (Chromium), SMTP attachments.
- * Hoisted npm deps are not copied when only the parent package glob is listed.
- */
-
-const TICKET_EMAIL_ROOT_PACKAGES = [
-  'qrcode',
-  '@sparticuz/chromium',
-  'puppeteer-core',
-  'pdf-lib',
-  'nodemailer',
-];
-
-/** CLI-only; excluded from serverless bundles. */
-const TICKET_EMAIL_EXCLUDED_PACKAGES = new Set(['yargs']);
+/** Vercel `functions.*.includeFiles` max length (schema validation). */
+const VERCEL_INCLUDE_FILES_MAX_LENGTH = 256;
 
 const QR_GENERATING_VERCEL_FUNCTIONS = [
   'api/clictopay-confirm-payment.js',
@@ -34,84 +21,17 @@ const MISC_EXTRA_VERCEL_INCLUDES = [
   'node_modules/bcryptjs/**',
 ];
 
-function lockfilePackagePath(packageName) {
-  if (packageName.startsWith('@')) {
-    const [scope, pkg] = packageName.split('/');
-    return `node_modules/${scope}/${pkg}`;
-  }
-  return `node_modules/${packageName}`;
-}
+/** Short includeFiles: local _lib + Chromium binary assets (not reliably file-traced). */
+const TICKET_EMAIL_CHROMIUM_GLOB = 'node_modules/@sparticuz/chromium/**';
 
-function resolveLockfileDepPath(lock, parentPath, depName) {
-  const nested = `${parentPath}/node_modules/${depName}`;
-  if (lock.packages && lock.packages[nested]) return nested;
-  return lockfilePackagePath(depName);
-}
+const TICKET_EMAIL_VERCEL_INCLUDE_FILES = `{api/_lib/**,${TICKET_EMAIL_CHROMIUM_GLOB}}`;
 
-function collectTransitivePackagePaths(lock, rootPackageNames, exclude = TICKET_EMAIL_EXCLUDED_PACKAGES) {
-  const visited = new Set();
-  const queue = rootPackageNames.map(lockfilePackagePath);
+const MISC_TICKET_EMAIL_VERCEL_INCLUDE_FILES = `{api/_lib/**,${MISC_EXTRA_VERCEL_INCLUDES.join(
+  ','
+)},${TICKET_EMAIL_CHROMIUM_GLOB}}`;
 
-  while (queue.length) {
-    const pkgPath = queue.shift();
-    if (!pkgPath || visited.has(pkgPath)) continue;
-    const pkg = lock.packages && lock.packages[pkgPath];
-    if (!pkg) continue;
-    visited.add(pkgPath);
-
-    const deps = pkg.dependencies || {};
-    for (const depName of Object.keys(deps)) {
-      if (exclude.has(depName)) continue;
-      queue.push(resolveLockfileDepPath(lock, pkgPath, depName));
-    }
-  }
-
-  return [...visited].sort();
-}
-
-function minimalIncludeGlobs(packagePaths) {
-  const sorted = [...packagePaths].sort((a, b) => a.length - b.length);
-  const kept = [];
-  for (const pkgPath of sorted) {
-    if (kept.some((parent) => pkgPath.startsWith(`${parent}/`))) continue;
-    kept.push(pkgPath);
-  }
-  return kept.map((pkgPath) => `${pkgPath}/**`);
-}
-
-function loadLockfile(lockfilePath) {
-  const lockPath = lockfilePath || resolve(__dirname, '../../package-lock.json');
-  return JSON.parse(readFileSync(lockPath, 'utf8'));
-}
-
-function ticketEmailNodeModuleGlobsFromLockfile(lockfilePath) {
-  const lock = loadLockfile(lockfilePath);
-  const paths = collectTransitivePackagePaths(lock, TICKET_EMAIL_ROOT_PACKAGES);
-  return minimalIncludeGlobs(paths);
-}
-
-function buildBraceIncludeFiles(parts) {
-  const unique = [...new Set(parts.filter(Boolean))];
-  return `{${unique.join(',')}}`;
-}
-
-const TICKET_EMAIL_VERCEL_NODE_MODULES = ticketEmailNodeModuleGlobsFromLockfile();
-
-const TICKET_EMAIL_VERCEL_INCLUDE_FILES = buildBraceIncludeFiles([
-  'api/_lib/**',
-  ...TICKET_EMAIL_VERCEL_NODE_MODULES,
-]);
-
-const MISC_TICKET_EMAIL_VERCEL_INCLUDE_FILES = buildBraceIncludeFiles([
-  'api/_lib/**',
-  ...MISC_EXTRA_VERCEL_INCLUDES,
-  ...TICKET_EMAIL_VERCEL_NODE_MODULES,
-]);
-
-/** @deprecated use TICKET_EMAIL_VERCEL_NODE_MODULES filtered for qrcode tree */
 const QRCODE_PROGRAMMATIC_RUNTIME_PACKAGES = ['dijkstrajs', 'pngjs'];
 
-/** @deprecated use TICKET_EMAIL_VERCEL_NODE_MODULES */
 const QRCODE_VERCEL_NODE_MODULES = [
   'node_modules/qrcode/**',
   ...QRCODE_PROGRAMMATIC_RUNTIME_PACKAGES.map((name) => `node_modules/${name}/**`),
@@ -120,16 +40,10 @@ const QRCODE_VERCEL_NODE_MODULES = [
 /** @deprecated use TICKET_EMAIL_VERCEL_INCLUDE_FILES */
 const QR_PDF_EMAIL_VERCEL_INCLUDE_FILES = TICKET_EMAIL_VERCEL_INCLUDE_FILES;
 
-const REQUIRED_TICKET_EMAIL_RUNTIME_GLOBS = [
-  'node_modules/qrcode/**',
-  'node_modules/dijkstrajs/**',
-  'node_modules/pngjs/**',
-  'node_modules/pdf-lib/**',
-  'node_modules/puppeteer-core/**',
-  'node_modules/@sparticuz/chromium/**',
-  'node_modules/follow-redirects/**',
-  'node_modules/nodemailer/**',
-];
+function loadLockfile(lockfilePath) {
+  const lockPath = lockfilePath || resolve(__dirname, '../../package-lock.json');
+  return JSON.parse(readFileSync(lockPath, 'utf8'));
+}
 
 function getQrcodeRuntimeDepNamesFromLockfile(lockfilePath) {
   const lock = loadLockfile(lockfilePath);
@@ -145,41 +59,60 @@ function programmaticRuntimePackagesFromLockfile(lockfilePath) {
   return all.filter((name) => name !== 'yargs');
 }
 
-function assertIncludeFilesCoversQrcodeRuntime(includeFiles) {
-  const missing = QRCODE_VERCEL_NODE_MODULES.filter((glob) => !String(includeFiles).includes(glob));
-  if (missing.length) {
-    throw new Error(`includeFiles missing qrcode runtime globs: ${missing.join(', ')}`);
+function parseIncludeFilesFromVercelJson(vercelJson) {
+  const results = [];
+  const re = /"includeFiles":\s*"([^"]+)"/g;
+  let match;
+  while ((match = re.exec(vercelJson)) !== null) {
+    results.push(match[1]);
+  }
+  return results;
+}
+
+function assertAllIncludeFilesWithinSchemaLimit(vercelJson) {
+  const values = parseIncludeFilesFromVercelJson(vercelJson);
+  for (const value of values) {
+    if (value.length > VERCEL_INCLUDE_FILES_MAX_LENGTH) {
+      throw new Error(
+        `includeFiles exceeds ${VERCEL_INCLUDE_FILES_MAX_LENGTH} chars (${value.length}): ${value.slice(0, 80)}…`
+      );
+    }
   }
 }
 
-function assertIncludeFilesCoversTicketEmailRuntime(includeFiles) {
-  const missing = REQUIRED_TICKET_EMAIL_RUNTIME_GLOBS.filter(
-    (glob) => !String(includeFiles).includes(glob)
-  );
-  if (missing.length) {
-    throw new Error(`includeFiles missing ticket email runtime globs: ${missing.join(', ')}`);
+function assertShortTicketEmailIncludeFiles(includeFiles) {
+  if (!String(includeFiles).includes('api/_lib/**')) {
+    throw new Error('includeFiles missing api/_lib/**');
   }
+  if (!String(includeFiles).includes(TICKET_EMAIL_CHROMIUM_GLOB)) {
+    throw new Error(`includeFiles missing ${TICKET_EMAIL_CHROMIUM_GLOB}`);
+  }
+}
+
+function includeFilesForFunction(vercelJson, functionPath) {
+  const block = new RegExp(
+    `"${functionPath.replace(/\//g, '\\/')}"[\\s\\S]*?"includeFiles":\\s*"([^"]+)"`
+  ).exec(vercelJson);
+  if (!block) {
+    throw new Error(`includeFiles block not found for ${functionPath}`);
+  }
+  return block[1];
 }
 
 module.exports = {
-  TICKET_EMAIL_ROOT_PACKAGES,
-  TICKET_EMAIL_EXCLUDED_PACKAGES,
-  TICKET_EMAIL_VERCEL_NODE_MODULES,
-  TICKET_EMAIL_VERCEL_INCLUDE_FILES,
-  MISC_EXTRA_VERCEL_INCLUDES,
-  MISC_TICKET_EMAIL_VERCEL_INCLUDE_FILES,
+  VERCEL_INCLUDE_FILES_MAX_LENGTH,
   QR_GENERATING_VERCEL_FUNCTIONS,
-  REQUIRED_TICKET_EMAIL_RUNTIME_GLOBS,
+  MISC_EXTRA_VERCEL_INCLUDES,
+  TICKET_EMAIL_CHROMIUM_GLOB,
+  TICKET_EMAIL_VERCEL_INCLUDE_FILES,
+  MISC_TICKET_EMAIL_VERCEL_INCLUDE_FILES,
   QRCODE_PROGRAMMATIC_RUNTIME_PACKAGES,
   QRCODE_VERCEL_NODE_MODULES,
   QR_PDF_EMAIL_VERCEL_INCLUDE_FILES,
-  lockfilePackagePath,
-  collectTransitivePackagePaths,
-  minimalIncludeGlobs,
-  ticketEmailNodeModuleGlobsFromLockfile,
-  buildBraceIncludeFiles,
   getQrcodeRuntimeDepNamesFromLockfile,
   programmaticRuntimePackagesFromLockfile,
-  assertIncludeFilesCoversQrcodeRuntime,
-  assertIncludeFilesCoversTicketEmailRuntime,
+  parseIncludeFilesFromVercelJson,
+  assertAllIncludeFilesWithinSchemaLimit,
+  assertShortTicketEmailIncludeFiles,
+  includeFilesForFunction,
 };

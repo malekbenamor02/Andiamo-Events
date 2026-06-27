@@ -18,6 +18,11 @@ const { buildOnlineTicketEmailHtml } = requireCjs(path.join(__dirname, '_lib/onl
 const { prepareTicketsByPassTypeForEmail, mergeEmailAttachments } = requireCjs(path.join(__dirname, '_lib/ticket-qr-email.cjs'));
 const { randomUuid } = requireCjs(path.join(__dirname, '_lib/random-uuid.cjs'));
 
+const { ensureTicketEmailRuntimeDepsAreTraceable } = requireCjs(
+  path.join(__dirname, '_lib/ticket-email-bundle-hints.cjs')
+);
+ensureTicketEmailRuntimeDepsAreTraceable();
+
 /** PostgREST may return `events` as [{…}]; PDF builder needs one row + poster URL when embed is missing. */
 async function ensureOrderEventsForPdf(sb, order) {
   if (!order || typeof order !== 'object') return;

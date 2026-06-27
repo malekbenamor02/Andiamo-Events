@@ -290,3 +290,51 @@ node scripts/recover-paid-order-fulfillment.mjs --batch-underfulfilled --since 2
 ```
 
 Recovery script reuses existing tickets (`forceEmail: true`); does not duplicate tickets or re-charge.
+
+---
+
+## Follow-up: Vercel includeFiles schema limit
+
+### Root cause
+
+The lockfile-derived 65-glob `includeFiles` string (~1776 chars) fixed missing modules in theory but **failed Vercel schema validation**: each `functions.*.includeFiles` value must be **≤ 256 characters**. Build blocked before deploy.
+
+### Why 65-glob includeFiles failed
+
+Vercel validates `vercel.json` at build time. Listing every hoisted transitive dependency as explicit globs is not scalable under the 256-char cap.
+
+### New approach: static bundle hints + short includeFiles
+
+1. **`api/_lib/ticket-email-bundle-hints.cjs`** — static `require()` of `qrcode`, `dijkstrajs`, `pngjs`, `pdf-lib`, `puppeteer-core`, `@sparticuz/chromium`, `follow-redirects`, `nodemailer` so Node File Trace pulls the runtime tree into the function bundle.
+
+2. **API entrypoints** (`clictopay-confirm-payment.js`, `admin-approve-order.js`, `admin-pos.js`, `misc.js`) call `ensureTicketEmailRuntimeDepsAreTraceable()` at cold start.
+
+3. **Short `includeFiles`** (under 256 chars):
+   - Confirm / approve / POS: `{api/_lib/**,node_modules/@sparticuz/chromium/**}`
+   - Misc: `{api/_lib/**,academyRoutes.cjs,shared/admin/**,node_modules/multer/**,node_modules/sharp/**,node_modules/bcryptjs/**,node_modules/@sparticuz/chromium/**}`
+
+Chromium binaries are kept in `includeFiles` because file tracing does not reliably include them.
+
+### Files changed
+
+- `api/_lib/ticket-email-bundle-hints.cjs` (new)
+- `api/_lib/qrcode-runtime-deps.cjs` — schema-limit helpers, short includeFiles constants
+- `vercel.json` — reverted to short patterns
+- `api/clictopay-confirm-payment.js`, `api/admin-approve-order.js`, `api/admin-pos.js`, `api/misc.js` — bundle hint calls
+- `api/_lib/ticket-qr-generate.test.cjs` — 256-char assertions, bundle hint tests
+
+### Tests
+
+`npm run test:payment-fulfillment` and `npm run build` (run after commit).
+
+### Post-deploy validation
+
+One controlled online payment only:
+
+1. Order → `PAID`, correct ticket count
+2. Email with inline QR + PDF attachment (QR in PDF)
+3. No missing-module errors (`qrcode`, `dijkstrajs`, `pngjs`, `follow-redirects`, `nodemailer`, `puppeteer-core`, `pdf-lib`, `@sparticuz/chromium`)
+4. No duplicate tickets
+5. `safeInsertEmailDeliveryLog` succeeds or logs structured non-blocking details
+
+Then resend #755282; do not bulk resend before validation passes.
