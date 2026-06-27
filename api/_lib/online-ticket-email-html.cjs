@@ -38,7 +38,7 @@ function formatEventTime(dateString) {
  * @param {number} opts.totalAmount
  * @param {number} [opts.feeAmount]
  * @param {number} [opts.subtotalAmount]
- * @param {Map<string, { qr_code_url: string, secure_token: string }[]>} opts.ticketsByPassType - passType -> tickets
+ * @param {Map<string, { qr_image_cid?: string, secure_token?: string, id?: string }[]>} opts.ticketsByPassType - passType -> tickets (CID from prepareTicketsByPassTypeForEmail)
  * @param {{ code?: string, discount_amount?: number } | null} [opts.promoSnapshot]
  */
 function buildOnlineTicketEmailHtml(opts) {
@@ -99,17 +99,16 @@ function buildOnlineTicketEmailHtml(opts) {
       ? (ticketsByPassType instanceof Map ? Array.from(ticketsByPassType.entries()) : ticketsByPassType).map((entry) => {
           const [passType, passTickets] = Array.isArray(entry) ? entry : [entry.passType, entry.tickets];
           const list = (passTickets || [])
-            .filter((t) => t && t.qr_code_url)
+            .filter((t) => t && t.qr_image_cid)
             .map(
               (ticket, index) => `
             <div style="margin: 20px 0; padding: 20px; background: #252525; border-radius: 8px; text-align: center; border: 1px solid rgba(255, 255, 255, 0.1);">
               <h4 style="margin: 0 0 15px 0; color: #E21836; font-size: 16px; font-weight: 600;">${escapeHtml(passType)} - Ticket ${index + 1}</h4>
-              <img src="${escapeHtml(ticket.qr_code_url)}" alt="QR Code for ${escapeHtml(passType)}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid rgba(226, 24, 54, 0.3); display: block; margin: 0 auto;" />
-              <p style="margin: 10px 0 0 0; font-size: 12px; color: #A8A8A8; font-family: 'Courier New', monospace;">Token: ${escapeHtml((ticket.secure_token || '').substring(0, 8))}...</p>
+              <img src="cid:${escapeHtml(ticket.qr_image_cid)}" alt="QR Code for ${escapeHtml(passType)}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid rgba(226, 24, 54, 0.3); display: block; margin: 0 auto;" />
             </div>`
             )
             .join('');
-          const count = (passTickets || []).filter((t) => t && t.qr_code_url).length;
+          const count = (passTickets || []).filter((t) => t && t.qr_image_cid).length;
           return `
           <div style="margin: 30px 0;">
             <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">${escapeHtml(passType)} Tickets (${count})</h3>

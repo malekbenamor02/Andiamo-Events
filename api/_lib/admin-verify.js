@@ -23,6 +23,7 @@ export async function verifyAdminAuth(req) {
     mobileTabs: result.mobileTabs,
     sessionExpiresAt: result.sessionExpiresAt,
     sessionTimeRemaining: result.sessionTimeRemaining,
+    requiresPasswordChange: result.requiresPasswordChange,
   };
 }
 

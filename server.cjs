@@ -59,6 +59,7 @@ const {
   handleAmbassadorLogin,
   handleAmbassadorMe,
   handleAmbassadorLogout,
+  handleAmbassadorEvents,
   handleAmbassadorOrders,
   handleAmbassadorPerformance,
   handleAmbassadorUpdatePassword,
@@ -5248,6 +5249,11 @@ app.put('/api/admin/payment-options/:type', requireAdminAuth, requireAdminPermis
 // POST /api/ambassador/cancel-order - Cancel order by ambassador
 app.post('/api/ambassador/cancel-order', async (req, res) => {
   return handleAmbassadorCancelOrder(req, res, ambassadorExpressDeps);
+});
+
+// GET /api/ambassador/events - Dashboard event list (includes presale; service role)
+app.get('/api/ambassador/events', async (req, res) => {
+  return handleAmbassadorEvents(req, res);
 });
 
 // GET /api/ambassador/orders - Get ambassador's orders (excludes REMOVED_BY_ADMIN)

@@ -13,6 +13,7 @@ const { sendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/transac
 const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/can-send-transactional-email.cjs'));
 const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./_lib/render-premium-ticket-pdf.cjs');
 const { buildTicketQrApiUrl } = requireCjs(path.join(__dirname, '_lib/ticket-qr-url.cjs'));
+const { prepareTicketsByPassTypeForEmail, mergeEmailAttachments } = requireCjs(path.join(__dirname, '_lib/ticket-qr-email.cjs'));
 
 // Helper function to format event time
 function formatEventTime(eventDate) {
@@ -586,24 +587,28 @@ export default async (req, res) => {
           price: p.price,
         }));
         
-        // Build tickets HTML for email
-        const ticketsHtml = Array.from(ticketsByPassType.entries())
+        // Build tickets HTML for email (CID inline attachments — not stored qr_code_url)
+        const { ticketsByPassType: enrichedByPass, qrAttachments } =
+          await prepareTicketsByPassTypeForEmail(ticketsByPassType);
+
+        const ticketsHtml = Array.from(enrichedByPass.entries())
           .map(([passType, passTickets]) => {
             const ticketsList = passTickets
+              .filter((ticket) => ticket && ticket.qr_image_cid)
               .map((ticket, index) => {
                 return `
                   <div style="margin: 20px 0; padding: 20px; background: #E8E8E8; border-radius: 8px; text-align: center; border: 1px solid rgba(0, 0, 0, 0.1);">
                     <h4 style="margin: 0 0 15px 0; color: #E21836; font-size: 16px; font-weight: 600;">${passType} - Ticket ${index + 1}</h4>
-                    <img src="${ticket.qr_code_url}" alt="QR Code for ${passType}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid rgba(226, 24, 54, 0.3); display: block; margin: 0 auto;" />
-                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #666666; font-family: 'Courier New', monospace;">Token: ${ticket.secure_token.substring(0, 8)}...</p>
+                    <img src="cid:${ticket.qr_image_cid}" alt="QR Code for ${passType}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid rgba(226, 24, 54, 0.3); display: block; margin: 0 auto;" />
                   </div>
                 `;
               })
               .join('');
             
+            const count = passTickets.filter((t) => t && t.qr_image_cid).length;
             return `
               <div style="margin: 30px 0;">
-                <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">${passType} Tickets (${passTickets.length})</h3>
+                <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">${passType} Tickets (${count})</h3>
                 ${ticketsList}
               </div>
             `;
@@ -767,7 +772,8 @@ export default async (req, res) => {
               subject: 'Your Digital Tickets Are Ready - Andiamo Events',
               html: emailHtml,
             };
-            if (premiumPdf) mailOpts.attachments = [premiumPdf];
+            if (premiumPdf) mailOpts.attachments = mergeEmailAttachments(qrAttachments, premiumPdf);
+            else if (qrAttachments.length) mailOpts.attachments = qrAttachments;
             await sendTransactionalEmail({ getEmailTransporter }, mailOpts);
             
             // Update tickets to DELIVERED

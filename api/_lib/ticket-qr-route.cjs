@@ -91,6 +91,7 @@ async function handleTicketQrRequest(req, res, db) {
     const png = await generateTicketQrPngBuffer(secureToken);
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     return res.status(200).send(png);
   } catch (err) {

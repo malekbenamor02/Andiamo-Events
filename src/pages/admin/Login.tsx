@@ -313,6 +313,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
             },
             sessionExpiresAt,
             sessionTimeRemaining: Math.max(0, Math.floor((sessionExpiresAt - Date.now()) / 1000)),
+            requiresPasswordChange: !!data.requiresPasswordChange,
           });
         }
 
@@ -321,6 +322,12 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         } catch {
           /* ignore */
         }
+
+        if (data.requiresPasswordChange) {
+          navigate('/admin/change-password', { replace: true, state: { fromLogin: true } });
+          return;
+        }
+
         navigate('/admin', { replace: true, state: { fromLogin: true } });
       } else {
         // Login failed

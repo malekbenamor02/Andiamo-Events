@@ -13,7 +13,8 @@ async function adminOrdersFetch(path: string, init?: RequestInit) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(body.error || body.details || `Request failed (${response.status})`);
+    const msg = [body.error, body.details].filter(Boolean).join(': ') || `Request failed (${response.status})`;
+    throw new Error(msg);
   }
   return body;
 }

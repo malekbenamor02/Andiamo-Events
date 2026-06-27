@@ -188,6 +188,97 @@ async function handleAmbassadorLogout(req, res) {
   }
 }
 
+const AMBASSADOR_EVENT_COLUMNS =
+  'id, name, date, event_type, event_status, presale_enabled, venue, city, is_test';
+
+const ADMIN_DASHBOARD_EVENT_LOOKBACK_DAYS = 30;
+
+function isProductionRuntime() {
+  return (
+    process.env.NODE_ENV === 'production' ||
+    process.env.VERCEL === '1' ||
+    !!process.env.VERCEL_URL
+  );
+}
+
+function requestAllowsTestEvents(req) {
+  if (!isProductionRuntime()) return true;
+  try {
+    const origin = String((req.headers && req.headers.origin) || '').toLowerCase();
+    const referer = String((req.headers && req.headers.referer) || '').toLowerCase();
+    return (
+      origin.includes('localhost') ||
+      origin.includes('127.0.0.1') ||
+      referer.includes('localhost') ||
+      referer.includes('127.0.0.1')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isPassPurchaseWindowClosed(eventStatus) {
+  return eventStatus === 'completed' || eventStatus === 'cancelled';
+}
+
+function isEventOnAmbassadorDashboardSelector(event, now) {
+  if (!event || event.event_type === 'gallery') return false;
+  if (event.event_status === 'cancelled') return false;
+  if (!isPassPurchaseWindowClosed(event.event_status)) return true;
+  const start = new Date(event.date);
+  if (isNaN(start.getTime())) return false;
+  const cutoff = now.getTime() - ADMIN_DASHBOARD_EVENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+  return start.getTime() >= cutoff;
+}
+
+function pickSafeAmbassadorEvent(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    date: row.date,
+    event_type: row.event_type,
+    event_status: row.event_status,
+    presale_enabled: row.presale_enabled,
+    venue: row.venue,
+    city: row.city,
+  };
+}
+
+async function handleAmbassadorEvents(req, res) {
+  try {
+    if (req.method !== 'GET') {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    const db = getAmbassadorDb();
+    const auth = await requireAmbassadorAuth(req, res, db);
+    if (!auth) return null;
+
+    const { data: rows, error } = await db
+      .from('events')
+      .select(AMBASSADOR_EVENT_COLUMNS)
+      .neq('event_status', 'cancelled')
+      .neq('event_type', 'gallery')
+      .order('date', { ascending: true });
+
+    if (error) {
+      return res.status(500).json({ error: 'Failed to fetch events', details: error.message });
+    }
+
+    const allowTest = requestAllowsTestEvents(req);
+    const now = new Date();
+    const events = (rows || [])
+      .filter((e) => allowTest || !e.is_test)
+      .filter((e) => isEventOnAmbassadorDashboardSelector(e, now))
+      .map(pickSafeAmbassadorEvent);
+
+    return res.status(200).json({ events });
+  } catch (error) {
+    console.error('Error in /api/ambassador/events:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+}
+
 async function handleAmbassadorOrders(req, res) {
   try {
     const db = getAmbassadorDb();
@@ -553,6 +644,7 @@ module.exports = {
   handleAmbassadorLogin,
   handleAmbassadorMe,
   handleAmbassadorLogout,
+  handleAmbassadorEvents,
   handleAmbassadorOrders,
   handleAmbassadorPerformance,
   handleAmbassadorUpdatePassword,

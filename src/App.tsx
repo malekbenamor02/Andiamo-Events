@@ -57,6 +57,7 @@ import ScrollToTop from "./components/layout/ScrollToTop";
 const Auth = lazyWithChunkRecovery(() => import("./pages/ambassador/Auth"));
 const AdminLogin = lazyWithChunkRecovery(() => import("./pages/admin/Login"));
 const AdminDashboard = lazyWithChunkRecovery(() => import("./pages/admin/Dashboard"));
+const AdminChangePassword = lazyWithChunkRecovery(() => import("./pages/admin/ChangePassword"));
 import ProtectedAdminRoute from "./components/auth/ProtectedAdminRoute";
 const AmbassadorDashboard = lazyWithChunkRecovery(() => import("./pages/ambassador/Dashboard"));
 import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute";
@@ -231,6 +232,14 @@ const AppContent = ({
                 }
               />
               <Route path="/admin/login" element={<AdminLogin language={language} />} />
+              <Route
+                path="/admin/change-password"
+                element={
+                  <ProtectedAdminRoute language={language} allowPasswordChangeRequired>
+                    <AdminChangePassword language={language} />
+                  </ProtectedAdminRoute>
+                }
+              />
               <Route
                 path="/admin"
                 element={

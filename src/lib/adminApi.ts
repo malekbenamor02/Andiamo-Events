@@ -13,7 +13,8 @@ async function adminFetch(path: string, init?: RequestInit) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(body.error || body.details || `Request failed (${response.status})`);
+    const msg = [body.error, body.details].filter(Boolean).join(': ') || `Request failed (${response.status})`;
+    throw new Error(msg);
   }
   return body;
 }
@@ -149,4 +150,49 @@ export const adminApi = {
       (r: { data?: unknown[] }) => r.data || []
     );
   },
+
+  listApplicationSelections: (includeArchived = false) =>
+    adminFetch(
+      `${API_ROUTES.ADMIN_APPLICATION_SELECTIONS}?include_archived=${includeArchived ? '1' : '0'}`,
+    ).then((r: { data?: unknown[] }) => r.data || []),
+
+  createApplicationSelection: (name: string) =>
+    adminFetch(API_ROUTES.ADMIN_APPLICATION_SELECTIONS, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }).then((r: { data: unknown }) => r.data),
+
+  archiveApplicationSelection: (id: string) =>
+    adminFetch(API_ROUTES.ADMIN_APPLICATION_SELECTION(id), {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'archived' }),
+    }).then((r: { data: unknown }) => r.data),
+
+  listApplicationSelectionItems: (selectionId: string) =>
+    adminFetch(
+      `${API_ROUTES.ADMIN_APPLICATION_SELECTION_ITEMS}?selection_id=${encodeURIComponent(selectionId)}`,
+    ).then((r: { data?: unknown[] }) => r.data || []),
+
+  addApplicationsToSelection: (selectionId: string, applicationIds: string[]) =>
+    adminFetch(API_ROUTES.ADMIN_APPLICATION_SELECTION_ITEMS, {
+      method: 'POST',
+      body: JSON.stringify({ selection_id: selectionId, application_ids: applicationIds }),
+    }).then((r: { data?: unknown[]; added?: number; skipped?: number }) => r),
+
+  removeApplicationFromSelection: (selectionId: string, applicationId: string) =>
+    adminFetch(API_ROUTES.ADMIN_APPLICATION_SELECTION_ITEM(applicationId, selectionId), {
+      method: 'DELETE',
+    }),
+
+  removeApplicationsFromSelection: (selectionId: string, applicationIds: string[]) =>
+    adminFetch(API_ROUTES.ADMIN_APPLICATION_SELECTION_ITEMS_REMOVE, {
+      method: 'POST',
+      body: JSON.stringify({ selection_id: selectionId, application_ids: applicationIds }),
+    }).then((r: { removed?: number }) => r.removed ?? applicationIds.length),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    adminFetch(API_ROUTES.ADMIN_CHANGE_PASSWORD, {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
 };

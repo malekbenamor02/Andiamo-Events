@@ -36,6 +36,24 @@ export const PHONE_SUBSCRIBER_UPDATE_FIELDS = ['import_label'];
 export const NEWSLETTER_SUBSCRIBER_UPDATE_FIELDS = ['import_label'];
 export const AUDIENCE_SUGGESTION_UPDATE_FIELDS = ['read_at'];
 
+export const APPLICATION_SELECTION_WRITABLE_FIELDS = ['name', 'status'];
+export const APPLICATION_SELECTION_ITEM_WRITABLE_FIELDS = ['selection_id', 'application_id'];
+export const APPLICATION_SELECTION_ITEM_BULK_FIELDS = ['selection_id', 'application_ids'];
+export const APPLICATION_SELECTION_ITEM_REMOVE_BULK_FIELDS = ['selection_id', 'application_ids'];
+
+export const SITE_LOG_CLIENT_FIELDS = [
+  'log_type',
+  'category',
+  'message',
+  'details',
+  'user_type',
+  'page_url',
+  'request_method',
+  'request_path',
+  'response_status',
+  'error_stack',
+];
+
 function jsonAuthFailure(res, authResult) {
   return res.status(authResult.statusCode || 401).json({
     error: authResult.error,
@@ -85,10 +103,18 @@ export function requireAdminPermission(authResult, permissionKey) {
   return hasEffectivePermission(perms, permissionKey);
 }
 
-export async function requireAdmin(req, res, verifyAdminAuth, permissionKey) {
+export async function requireAdmin(req, res, verifyAdminAuth, permissionKey, opts = {}) {
   const authResult = await verifyAdminAuth(req);
   if (!authResult.valid) {
     jsonAuthFailure(res, authResult);
+    return null;
+  }
+  if (authResult.requiresPasswordChange && !opts.skipPasswordChangeGate) {
+    res.status(403).json({
+      error: 'Password change required',
+      reason: 'password_change_required',
+      requiresPasswordChange: true,
+    });
     return null;
   }
   if (permissionKey && !requireAdminPermission(authResult, permissionKey)) {

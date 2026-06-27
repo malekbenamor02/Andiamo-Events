@@ -197,9 +197,7 @@ export function NewOrdersTab({
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
               <Package className="h-5 w-5 text-muted-foreground" />
             </div>
-            <p className="font-medium text-foreground">
-              {language === "en" ? "No new orders" : "Aucune nouvelle commande"}
-            </p>
+            <p className="font-medium text-foreground">{t.noAssignedOrders}</p>
             <p className="mt-1 text-sm text-muted-foreground">
               {language === "en"
                 ? "New orders will appear here."

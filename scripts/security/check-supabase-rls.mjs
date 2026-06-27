@@ -68,6 +68,13 @@ const PRIVATE_TABLES = [
 /** Public read tables that may legitimately use USING (true) for SELECT */
 const PUBLIC_READ_EXCEPTIONS = new Set(['site_content', 'sponsors', 'team_members', 'payment_options']);
 
+/** Narrow INSERT-only policies on public subscription/contact forms */
+const ALLOWED_INSERT_ONLY_POLICIES = new Set([
+  'contact_messages|contact_messages_anon_insert',
+  'newsletter_subscribers|newsletter_subscribers_anon_insert',
+  'phone_subscribers|phone_subscribers_anon_insert',
+]);
+
 const inconclusivePrivateTables = [];
 let failed = false;
 
@@ -143,7 +150,11 @@ async function auditPoliciesWithServiceRole() {
     console.log('OK  policy audit: RLS enabled on all sensitive tables');
   }
 
-  const badPermissive = permissive.filter((p) => !PUBLIC_READ_EXCEPTIONS.has(p.tablename));
+  const badPermissive = permissive.filter(
+    (p) =>
+      !PUBLIC_READ_EXCEPTIONS.has(p.tablename) &&
+      !ALLOWED_INSERT_ONLY_POLICIES.has(`${p.tablename}|${p.policyname}`),
+  );
   if (badPermissive.length > 0) {
     for (const p of badPermissive) {
       fail(`permissive policy ${p.tablename}.${p.policyname} (${p.cmd})`);

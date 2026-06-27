@@ -170,11 +170,20 @@ async function sendViaBrevoApi(mailOptions, apiKeyOverride) {
 
   if (Array.isArray(mailOptions.attachments) && mailOptions.attachments.length) {
     const attachment = [];
+    const inlineImage = [];
     for (const att of mailOptions.attachments) {
+      if (att.cid) {
+        const b = attachmentToBrevo(att);
+        if (b) {
+          inlineImage.push({ name: att.cid, content: b.content });
+        }
+        continue;
+      }
       const b = attachmentToBrevo(att);
       if (b) attachment.push(b);
     }
     if (attachment.length) body.attachment = attachment;
+    if (inlineImage.length) body.inlineImage = inlineImage;
   }
 
   return postJson(BREVO_API_URL, apiKey, body);

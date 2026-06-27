@@ -437,11 +437,7 @@ export function ApplicationSelectionsPanel({
     if (!name) return;
     setCreating(true);
     try {
-      const created = await createSelection({
-        name,
-        createdByAdminId: currentAdminId,
-        createdByName: adminDisplayName,
-      });
+      const created = await createSelection({ name });
       setNewSelectionName("");
       setIsCreateOpen(false);
       setSelectedSelectionId(created.id);

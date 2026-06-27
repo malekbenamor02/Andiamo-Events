@@ -1,0 +1,65 @@
+﻿ api/_lib/admin-authorization.mjs                   |  15 +-
+ api/_lib/admin-data-route-helpers.js               |  28 ++-
+ api/_lib/admin-data-routes.js                      | 244 +++++++++++++++++++++
+ api/_lib/admin-verify.js                           |   1 +
+ api/_lib/r2-media.cjs                              |  37 ++--
+ api/_lib/render-premium-ticket-pdf.cjs             |  20 +-
+ api/_lib/verify-admin-http.js                      |   1 +
+ api/admin-approve-order.js                         |  32 +--
+ api/admin-login.js                                 |  10 +-
+ api/admin-pos.js                                   |  10 +-
+ api/media.js                                       |  10 +-
+ api/misc.js                                        | 140 ++++++------
+ careerRoutes.cjs                                   |  14 +-
+ package.json                                       |   1 +
+ scripts/security/check-supabase-rls.mjs            |  13 +-
+ server.cjs                                         |  39 +---
+ src/App.tsx                                        |   9 +
+ src/components/auth/ProtectedAdminRoute.tsx        |  26 ++-
+ src/lib/admin-verify-cache.ts                      |   2 +
+ src/lib/adminApi.ts                                |  48 +++-
+ src/lib/adminOrdersApi.ts                          |   3 +-
+ src/lib/api-routes.ts                              |  18 ++
+ src/lib/career/api.ts                              |  32 +++
+ src/lib/favicon.ts                                 |  46 ++--
+ src/lib/logger.ts                                  |  55 ++---
+ src/lib/upload.ts                                  |  93 +++-----
+ src/pages/Careers.tsx                              |   8 +-
+ src/pages/PassPurchase.tsx                         |  83 +++----
+ src/pages/admin/Dashboard.tsx                      |   1 -
+ src/pages/admin/Login.tsx                          |   7 +
+ src/pages/admin/components/ApplicationsTab.tsx     |   8 +-
+ src/pages/admin/components/CareerTab.tsx           |  20 +-
+ .../applications/ApplicationSelectionsPanel.tsx    |   6 +-
+ src/pages/admin/hooks/useApplicationSelections.ts  | 189 ++++------------
+ vercel.json                                        |  48 ++++
+ 35 files changed, 833 insertions(+), 484 deletions(-)
+
+--- Storage remediation scoped (tracked modifications only) ---
+
+ api/_lib/r2-media.cjs                    |  37 ++++----
+ api/_lib/render-premium-ticket-pdf.cjs   |  20 ++++-
+ api/admin-approve-order.js               |  32 ++-----
+ api/admin-pos.js                         |  10 +--
+ api/media.js                             |  10 +--
+ api/misc.js                              | 140 +++++++++++++++++--------------
+ careerRoutes.cjs                         |  14 +++-
+ package.json                             |   1 +
+ server.cjs                               |  39 ++-------
+ src/lib/career/api.ts                    |  32 +++++++
+ src/lib/favicon.ts                       |  46 +++++-----
+ src/lib/upload.ts                        |  93 +++++++-------------
+ src/pages/Careers.tsx                    |   8 +-
+ src/pages/admin/components/CareerTab.tsx |  20 ++++-
+ vercel.json                              |  48 +++++++++++
+ 15 files changed, 305 insertions(+), 245 deletions(-)
+
+--- New untracked storage files (not in diff stat) ---
+api/_lib/ticket-qr-url.cjs
+api/_lib/ticket-qr-generate.cjs
+api/_lib/ticket-qr-route.cjs
+api/_lib/career-document-storage.cjs
+api/_lib/register-storage-security-routes.cjs
+src/lib/adminMediaUpload.ts
+scripts/security/check-supabase-storage.mjs
+supabase/migrations/20260627140000_fix_storage_bucket_security.sql

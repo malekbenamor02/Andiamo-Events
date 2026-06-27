@@ -49,6 +49,7 @@ export async function handleVerifyAdmin(req, res) {
       mobileTabs: authResult.mobileTabs,
       sessionExpiresAt: authResult.sessionExpiresAt,
       sessionTimeRemaining: authResult.sessionTimeRemaining,
+      requiresPasswordChange: !!authResult.requiresPasswordChange,
     });
   } catch (e) {
     console.error('handleVerifyAdmin:', e);

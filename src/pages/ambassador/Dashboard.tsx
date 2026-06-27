@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -134,7 +133,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     status: "Status",
     assignedAt: "Assigned At",
     actions: "Actions",
-    noAssignedOrders: "No assigned orders",
+    noAssignedOrders: "No orders for this event.",
     noCompletedOrders: "No completed orders yet",
     event: "Event",
     selectEvent: "Select event",
@@ -182,7 +181,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     suspended: "Account Paused",
     suspendedMessage: "Your ambassador account has been temporarily paused. Please contact support for more information.",
     suspendedTitle: "Account Temporarily Paused",
-    noUpcomingEvents: "No upcoming events"
+    noUpcomingEvents: "No active ambassador events available."
   } : {
     title: "Tableau de Bord Ambassadeur",
     welcome: "Bienvenue",
@@ -206,12 +205,12 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     status: "Statut",
     assignedAt: "Assigné Le",
     actions: "Actions",
-    noAssignedOrders: "Aucune commande assignée",
+    noAssignedOrders: "Aucune commande pour cet événement.",
     noCompletedOrders: "Aucune commande terminée",
     event: "Événement",
     selectEvent: "Sélectionner un événement",
     filterByEvent: "Filtrer par événement",
-    noUpcomingEvents: "Aucun événement à venir",
+    noUpcomingEvents: "Aucun événement actif disponible pour les ambassadeurs",
     save: "Enregistrer",
     cancelOrder: "Annuler la Commande",
     cancelReason: "Raison d'Annulation",
@@ -490,27 +489,50 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     let cancelled = false;
     setEventsFetchState("idle");
     (async () => {
-      const { data, error } = await supabase
-        .from("events")
-        .select("id,name,date,event_type,event_status,is_test")
-        .order("date", { ascending: true });
-      if (cancelled) return;
-      const rows = error ? [] : data || [];
-      const filtered = filterAmbassadorDashboardEvents(rows, {
-        showTest: isLocalhostClient(),
-      });
-      setFilterableEvents(filtered);
-      setSelectedEventFilter((prev) => {
-        if (filtered.length === 0) return "";
-        if (prev && filtered.some((e) => e.id === prev)) return prev;
-        return filtered[0].id;
-      });
-      setEventsFetchState("loaded");
+      try {
+        const res = await fetch(
+          `${getApiBaseUrl()}${API_ROUTES.AMBASSADOR_EVENTS}`,
+          { credentials: "include" }
+        );
+        if (cancelled) return;
+        if (res.status === 401) {
+          navigate("/ambassador/auth");
+          return;
+        }
+        const body = await res.json().catch(() => ({}));
+        type FilterableEvent = {
+          id: string;
+          name: string;
+          date: string;
+          event_type?: string | null;
+          event_status?: string | null;
+          is_test?: boolean | null;
+        };
+        const rows: FilterableEvent[] =
+          res.ok && Array.isArray(body.events) ? body.events : [];
+        const filtered = filterAmbassadorDashboardEvents(rows, {
+          showTest: isLocalhostClient(),
+        });
+        setFilterableEvents(filtered);
+        setSelectedEventFilter((prev) => {
+          if (filtered.length === 0) return "";
+          if (prev && filtered.some((e) => e.id === prev)) return prev;
+          return filtered[0].id;
+        });
+        setEventsFetchState("loaded");
+      } catch (error) {
+        console.error("Error fetching ambassador events:", error);
+        if (!cancelled) {
+          setFilterableEvents([]);
+          setSelectedEventFilter("");
+          setEventsFetchState("loaded");
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [ambassador?.id, ambassador?.status]);
+  }, [ambassador?.id, ambassador?.status, navigate]);
 
   useEffect(() => {
     if (!ambassador?.id || ambassador.status === "suspended") return;

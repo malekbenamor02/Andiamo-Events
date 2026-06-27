@@ -1,5 +1,20 @@
-import { supabase } from "@/integrations/supabase/client";
 import { sanitizeObject, sanitizeString } from "./sanitize";
+import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "./api-routes";
+
+async function postClientSiteLog(payload: Record<string, unknown>): Promise<void> {
+  const url = buildFullApiUrl(API_ROUTES.SITE_LOGS, getApiBaseUrl());
+  if (!url) return;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Non-blocking client logging
+  }
+}
 
 export type LogType = 'info' | 'warning' | 'error' | 'success' | 'action';
 export type LogCategory = 
@@ -51,9 +66,6 @@ export const logActivity = async (
       errorStack
     } = options;
 
-    // Get user agent and other browser info
-    const userAgent = typeof window !== 'undefined' ? window.navigator.userAgent : undefined;
-
     // Try to get IP (may not always be available client-side)
     let ipAddress: string | undefined;
     try {
@@ -73,28 +85,19 @@ export const logActivity = async (
     const sanitizedRequestPath = requestPath ? sanitizeString(requestPath) : undefined;
     const sanitizedErrorStack = errorStack ? sanitizeString(errorStack) : undefined;
     
-    // Insert log into database (all sensitive data sanitized)
-    const { error } = await supabase
-      .from('site_logs')
-      .insert({
-        log_type: logType,
-        category,
-        message: sanitizedMessage,
-        details: sanitizedDetails,
-        user_type: userType,
-        ip_address: ipAddress,
-        user_agent: userAgent,
-        page_url: sanitizedPageUrl,
-        request_method: requestMethod,
-        request_path: sanitizedRequestPath,
-        response_status: responseStatus,
-        error_stack: sanitizedErrorStack
-      });
-
-    if (error) {
-      // Don't throw error to avoid infinite loops - just log to console
-      console.error('Failed to log activity:', error);
-    }
+    // Insert log via server API (site_logs RLS deny-all for browser Supabase)
+    await postClientSiteLog({
+      log_type: logType,
+      category,
+      message: sanitizedMessage,
+      details: sanitizedDetails,
+      user_type: userType,
+      page_url: sanitizedPageUrl,
+      request_method: requestMethod,
+      request_path: sanitizedRequestPath,
+      response_status: responseStatus,
+      error_stack: sanitizedErrorStack,
+    });
   } catch (error) {
     // Silently fail logging to prevent logging errors from breaking the app
     console.error('Error in logActivity:', error);

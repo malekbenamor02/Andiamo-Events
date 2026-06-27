@@ -13,6 +13,8 @@ const { sendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/transac
 const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/can-send-transactional-email.cjs'));
 const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./_lib/render-premium-ticket-pdf.cjs');
 const { uploadTicketQrToR2OrSupabase, buildTicketQrApiUrl } = requireCjs(path.join(__dirname, '_lib/r2-media.cjs'));
+const { buildOnlineTicketEmailHtml } = requireCjs(path.join(__dirname, '_lib/online-ticket-email-html.cjs'));
+const { prepareTicketsByPassTypeForEmail, mergeEmailAttachments } = requireCjs(path.join(__dirname, '_lib/ticket-qr-email.cjs'));
 
 /** PostgREST may return `events` as [{…}]; PDF builder needs one row + poster URL when embed is missing. */
 async function ensureOrderEventsForPdf(sb, order) {
@@ -37,6 +39,35 @@ function normalizeTicketPdfAttachment(att) {
     contentType: att.contentType,
     content: Buffer.from(att.content),
   };
+}
+
+async function buildPosTicketsReadyEmail(order, orderId, orderPasses, tickets) {
+  const ticketsByPass = new Map();
+  (tickets || []).forEach((t) => {
+    const p = orderPasses.find((x) => x.id === t.order_pass_id);
+    if (p) {
+      if (!ticketsByPass.has(p.pass_type)) ticketsByPass.set(p.pass_type, []);
+      ticketsByPass.get(p.pass_type).push(t);
+    }
+  });
+  const { ticketsByPassType, qrAttachments } = await prepareTicketsByPassTypeForEmail(ticketsByPass);
+  const passes = orderPasses.map((p) => ({
+    passType: p.pass_type,
+    quantity: p.quantity,
+    price: p.price,
+  }));
+  const html = buildOnlineTicketEmailHtml({
+    customerName: order.user_name || 'Valued Customer',
+    orderNumber: order.order_number,
+    orderId,
+    eventName: order.events?.name || 'Event',
+    eventTime: order.events?.date,
+    venueName: order.events?.venue || 'Venue to be announced',
+    passes,
+    totalAmount: order.total_price || 0,
+    ticketsByPassType,
+  });
+  return { html, qrAttachments };
 }
 
 async function getSupabase() {
@@ -458,19 +489,7 @@ async function ordersResendTickets(sb, id, auth, req, res) {
   if (!orderPasses || orderPasses.length === 0) return res.status(400).json({ error: 'No passes' });
   const { data: tickets } = await sb.from('tickets').select('id, order_pass_id, secure_token, qr_code_url').eq('order_id', id);
   if (!tickets || tickets.length === 0) return res.status(400).json({ error: 'No tickets generated for this order' });
-  const ticketsByPass = new Map();
-  tickets.forEach(t => {
-    const p = orderPasses.find(x => x.id === t.order_pass_id);
-    if (p) { if (!ticketsByPass.has(p.pass_type)) ticketsByPass.set(p.pass_type, []); ticketsByPass.get(p.pass_type).push(t); }
-  });
-  const ticketsHtml = Array.from(ticketsByPass.entries()).map(([pt, arr]) => {
-    const list = arr.map((t, i) => `<div style="margin:20px 0;padding:20px;background:#252525;border-radius:8px;text-align:center;border:1px solid rgba(255,255,255,0.1)"><h4 style="margin:0 0 15px 0;color:#E21836;font-size:16px;font-weight:600">${(pt || 'Pass').replace(/</g, '&lt;')} - Ticket ${i + 1}</h4><img src="${t.qr_code_url || ''}" alt="QR" style="max-width:250px;height:auto;border-radius:8px;border:2px solid rgba(226,24,54,0.3);display:block;margin:0 auto" /><p style="margin:10px 0 0 0;font-size:12px;color:#A8A8A8;font-family:'Courier New',monospace">Token: ${(t.secure_token || '').substring(0, 8)}...</p></div>`).join('');
-    return `<div style="margin:30px 0"><h3 style="color:#E21836;margin-bottom:15px;font-size:18px;font-weight:600">${(pt || 'Pass').replace(/</g, '&lt;')} Tickets (${arr.length})</h3>${list}</div>`;
-  }).join('');
-  const passesSummaryHtml = orderPasses.map(p => `<tr style="border-bottom:1px solid rgba(255,255,255,0.1)"><td style="padding:12px 0;color:#E8E8E8;font-size:15px">${(p.pass_type || '').replace(/</g, '&lt;')}</td><td style="padding:12px 0;color:#E8E8E8;font-size:15px;text-align:center">${p.quantity}</td><td style="padding:12px 0;color:#E8E8E8;font-size:15px;text-align:right">${(p.price || 0).toFixed(2)} TND</td></tr>`).join('');
-  const orderNum = order.order_number != null ? `#${order.order_number}` : id.substring(0, 8).toUpperCase();
-  const eventTime = order.events?.date ? new Date(order.events.date).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' }) : 'TBA';
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>Your Digital Tickets - Andiamo Events</title><style>${transactionalEmailDarkStylesCss()}</style></head><body>${emailLogoHeaderHtml()}<div class="email-wrapper"><div class="content-card"><div class="title-section"><h1 class="title">Your Tickets Are Ready</h1><p class="subtitle">Order Confirmation - Andiamo Events</p></div><p class="greeting">Dear <strong>${(order.user_name || 'Valued Customer').replace(/</g, '&lt;')}</strong>,</p><p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are shown below.</p><div class="order-info-block"><div class="info-row"><div class="info-label">Order Number</div><div class="info-value">${orderNum}</div></div><div class="info-row"><div class="info-label">Event</div><div style="font-size:18px;color:#E21836;font-weight:600">${(order.events?.name || 'Event').replace(/</g, '&lt;')}</div></div><div class="info-row"><div class="info-label">Event Time</div><div style="font-size:18px;color:#E21836;font-weight:600">${(eventTime || 'TBA').replace(/</g, '&lt;')}</div></div><div class="info-row"><div class="info-label">Venue</div><div style="font-size:18px;color:#E21836;font-weight:600">${(order.events?.venue || 'Venue to be announced').replace(/</g, '&lt;')}</div></div></div><div class="order-info-block"><h3 style="color:#E21836;margin-bottom:20px;font-size:18px;font-weight:600">Passes Purchased</h3><table class="passes-table"><thead><tr><th>Pass Type</th><th style="text-align:center">Quantity</th><th style="text-align:right">Price</th></tr></thead><tbody>${passesSummaryHtml}<tr class="total-row"><td colspan="2" style="text-align:right;padding-right:20px"><strong>Total Amount Paid:</strong></td><td style="text-align:right"><strong>${(order.total_price || 0).toFixed(2)} TND</strong></td></tr></tbody></table></div><div class="tickets-section"><h3 style="color:#E21836;margin-bottom:20px;font-size:18px;font-weight:600">Your Digital Tickets</h3><p class="message" style="margin-bottom:25px">Please present these QR codes at the event entrance. Each ticket has a unique QR code for verification.</p>${ticketsHtml}</div><div class="support-section"><p class="support-text">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a> or in our Instagram page <a href="https://www.instagram.com/andiamo.events/" target="_blank" class="support-email">@andiamo.events</a> or contact with <a href="tel:28070128" class="support-email">28070128</a>.</p></div><div class="closing-section"><p class="slogan">We Create Memories</p><p class="signature">Best regards,<br>The Andiamo Events Team</p></div></div></div><div class="footer"><p class="footer-text">Developed by <span style="color:#E21836!important">Malek Ben Amor</span></p><div class="footer-links"><a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a><span style="color:#999999">•</span><a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a></div></div></body></html>`;
+  const { html, qrAttachments } = await buildPosTicketsReadyEmail(order, id, orderPasses, tickets);
   if (!canSendTransactionalEmail()) return res.status(500).json({ error: 'Email not configured' });
   try {
     await ensureOrderEventsForPdf(sb, order);
@@ -501,7 +520,8 @@ async function ordersResendTickets(sb, id, auth, req, res) {
       subject: 'Your Digital Tickets Are Ready - Andiamo Events',
       html,
     };
-    if (premiumPdfPosResend) mailPosResend.attachments = [premiumPdfPosResend];
+    if (premiumPdfPosResend) mailPosResend.attachments = mergeEmailAttachments(qrAttachments, premiumPdfPosResend);
+    else if (qrAttachments.length) mailPosResend.attachments = qrAttachments;
     await sendTransactionalEmail({ getEmailTransporter }, mailPosResend);
     await posAuditLog(sb, { action: 'resend_pos_order_email', performed_by_type: 'admin', performed_by_id: auth.admin.id, performed_by_email: auth.admin.email, pos_outlet_id: order.pos_outlet_id, target_type: 'order', target_id: id, details: { type: 'tickets' }, req });
     return res.status(200).json({ success: true });
@@ -622,28 +642,8 @@ async function ordersApprove(sb, id, auth, req, res) {
     }
   }
 
-  // Email (same structure as ambassador "Your Tickets Are Ready" – admin-approve-order)
-  const passesSummary = orderPasses.map(p => ({ passType: p.pass_type, quantity: p.quantity, price: p.price }));
-  const ticketsByPass = new Map();
-  tickets.forEach(t => {
-    const p = orderPasses.find(x => x.id === t.order_pass_id);
-    if (p) {
-      if (!ticketsByPass.has(p.pass_type)) ticketsByPass.set(p.pass_type, []);
-      ticketsByPass.get(p.pass_type).push(t);
-    }
-  });
-  const ticketsHtml = Array.from(ticketsByPass.entries()).map(([pt, arr]) => {
-    const list = arr.map((t, i) =>
-      `<div style="margin:20px 0;padding:20px;background:#252525;border-radius:8px;text-align:center;border:1px solid rgba(255,255,255,0.1)"><h4 style="margin:0 0 15px 0;color:#E21836;font-size:16px;font-weight:600">${(pt || 'Pass').replace(/</g, '&lt;')} - Ticket ${i + 1}</h4><img src="${t.qr_code_url || ''}" alt="QR" style="max-width:250px;height:auto;border-radius:8px;border:2px solid rgba(226,24,54,0.3);display:block;margin:0 auto" /><p style="margin:10px 0 0 0;font-size:12px;color:#A8A8A8;font-family:'Courier New',monospace">Token: ${(t.secure_token || '').substring(0, 8)}...</p></div>`
-    ).join('');
-    return `<div style="margin:30px 0"><h3 style="color:#E21836;margin-bottom:15px;font-size:18px;font-weight:600">${(pt || 'Pass').replace(/</g, '&lt;')} Tickets (${arr.length})</h3>${list}</div>`;
-  }).join('');
-  const passesSummaryHtml = passesSummary.map(p =>
-    `<tr style="border-bottom:1px solid rgba(255,255,255,0.1)"><td style="padding:12px 0;color:#E8E8E8;font-size:15px">${(p.passType || '').replace(/</g, '&lt;')}</td><td style="padding:12px 0;color:#E8E8E8;font-size:15px;text-align:center">${p.quantity}</td><td style="padding:12px 0;color:#E8E8E8;font-size:15px;text-align:right">${(p.price || 0).toFixed(2)} TND</td></tr>`
-  ).join('');
-  const orderNum = order.order_number != null ? `#${order.order_number}` : id.substring(0, 8).toUpperCase();
-  const eventTime = order.events?.date ? new Date(order.events.date).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' }) : 'TBA';
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>Your Digital Tickets - Andiamo Events</title><style>${transactionalEmailDarkStylesCss()}</style></head><body>${emailLogoHeaderHtml()}<div class="email-wrapper"><div class="content-card"><div class="title-section"><h1 class="title">Your Tickets Are Ready</h1><p class="subtitle">Order Confirmation - Andiamo Events</p></div><p class="greeting">Dear <strong>${(order.user_name || 'Valued Customer').replace(/</g, '&lt;')}</strong>,</p><p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are shown below.</p><div class="order-info-block"><div class="info-row"><div class="info-label">Order Number</div><div class="info-value">${orderNum}</div></div><div class="info-row"><div class="info-label">Event</div><div style="font-size:18px;color:#E21836;font-weight:600">${(order.events?.name || 'Event').replace(/</g, '&lt;')}</div></div><div class="info-row"><div class="info-label">Event Time</div><div style="font-size:18px;color:#E21836;font-weight:600">${(eventTime || 'TBA').replace(/</g, '&lt;')}</div></div><div class="info-row"><div class="info-label">Venue</div><div style="font-size:18px;color:#E21836;font-weight:600">${(order.events?.venue || 'Venue to be announced').replace(/</g, '&lt;')}</div></div></div><div class="order-info-block"><h3 style="color:#E21836;margin-bottom:20px;font-size:18px;font-weight:600">Passes Purchased</h3><table class="passes-table"><thead><tr><th>Pass Type</th><th style="text-align:center">Quantity</th><th style="text-align:right">Price</th></tr></thead><tbody>${passesSummaryHtml}<tr class="total-row"><td colspan="2" style="text-align:right;padding-right:20px"><strong>Total Amount Paid:</strong></td><td style="text-align:right"><strong>${(order.total_price || 0).toFixed(2)} TND</strong></td></tr></tbody></table></div><div class="tickets-section"><h3 style="color:#E21836;margin-bottom:20px;font-size:18px;font-weight:600">Your Digital Tickets</h3><p class="message" style="margin-bottom:25px">Please present these QR codes at the event entrance. Each ticket has a unique QR code for verification.</p>${ticketsHtml}</div><div class="support-section"><p class="support-text">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a> or in our Instagram page <a href="https://www.instagram.com/andiamo.events/" target="_blank" class="support-email">@andiamo.events</a> or contact with <a href="tel:28070128" class="support-email">28070128</a>.</p></div><div class="closing-section"><p class="slogan">We Create Memories</p><p class="signature">Best regards,<br>The Andiamo Events Team</p></div></div></div><div class="footer"><p class="footer-text">Developed by <span style="color:#E21836!important">Malek Ben Amor</span></p><div class="footer-links"><a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a><span style="color:#999999">•</span><a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a></div></div></body></html>`;
+  // Email with CID-embedded QR codes (same template as online ticket delivery)
+  const { html, qrAttachments } = await buildPosTicketsReadyEmail(order, id, orderPasses, tickets);
 
   if (order.user_email && canSendTransactionalEmail()) {
     try {
@@ -675,7 +675,8 @@ async function ordersApprove(sb, id, auth, req, res) {
         subject: 'Your Digital Tickets Are Ready - Andiamo Events',
         html,
       };
-      if (premiumPdfPosApprove) mailPosApprove.attachments = [premiumPdfPosApprove];
+      if (premiumPdfPosApprove) mailPosApprove.attachments = mergeEmailAttachments(qrAttachments, premiumPdfPosApprove);
+      else if (qrAttachments.length) mailPosApprove.attachments = qrAttachments;
       await sendTransactionalEmail({ getEmailTransporter }, mailPosApprove);
       await sb.from('tickets').update({ status: 'DELIVERED', email_delivery_status: 'sent', delivered_at: new Date().toISOString() }).in('id', tickets.map(t => t.id));
     } catch (er) { console.warn('POS approve email:', er); }

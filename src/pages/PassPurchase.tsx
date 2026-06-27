@@ -8,9 +8,9 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
-import { getApiBaseUrl, API_ROUTES } from '@/lib/api-routes';
+import { getApiBaseUrl, API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
 import { formatDateDMY, isPassPurchaseWindowClosed } from '@/lib/date-utils';
-import { cn, generateSlug, findEventByPublicUrlSlug, normalizeCommonEmailTypos } from '@/lib/utils';
+import { cn, generateSlug, normalizeCommonEmailTypos } from '@/lib/utils';
 import { isLocalhostClient } from '@/lib/localhost';
 import { computeOnlinePaymentFeesDisplay } from '@/lib/onlinePaymentFee';
 import { savePaymentReturnPath } from '@/lib/orders/paymentReturnPath';
@@ -699,63 +699,50 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       const isLocal = isLocalhostClient();
 
       let eventData: any = null;
-      let eventError: any = null;
       let resolvedEventId: string | null = null;
 
-      // Fetch event by slug or eventId
+      // Fetch event via server API (presale events are hidden from anon Supabase RLS)
       if (eventSlug) {
         const normalizedSlug = decodeURIComponent(eventSlug).toLowerCase().trim();
-        // Prefer DB `slug` column; then same fallbacks as UpcomingEvent / GalleryEvent (name slug, event-{id})
-        const { data: byDbSlug, error: slugColError } = await supabase
-          .from('events')
-          .select('*')
-          .eq('slug', normalizedSlug)
-          .maybeSingle();
-
-        if (slugColError) {
-          eventError = slugColError;
-        } else if (byDbSlug) {
-          eventData = byDbSlug;
-          resolvedEventId = byDbSlug.id;
-        } else {
-          const { data: allRows, error: allErr } = await supabase.from('events').select('*');
-          if (allErr) {
-            eventError = allErr;
-          } else {
-            const pool = isLocal ? allRows || [] : (allRows || []).filter((ev: { is_test?: boolean }) => !ev.is_test);
-            const found = findEventByPublicUrlSlug(pool, normalizedSlug);
-            if (found) {
-              eventData = found;
-              resolvedEventId = found.id;
-            }
-          }
-        }
-      } else if (eventId) {
-        // Legacy URL: fetch by eventId
-        const { data, error } = await supabase
-          .from('events')
-          .select('*')
-          .eq('id', eventId)
-          .single();
-        
-        eventData = data;
-        eventError = error;
-        resolvedEventId = eventId;
-      } else {
-        setEvent(null);
-        setLoading(false);
-        return;
-      }
-
-      if (eventError) {
-        // Handle specific error cases
-        if (eventError.code === 'PGRST116') {
-          // Event not found
+        const url = buildFullApiUrl(API_ROUTES.EVENT_BY_SLUG(normalizedSlug), getApiBaseUrl());
+        if (!url) {
           setEvent(null);
           setLoading(false);
           return;
         }
-        throw eventError;
+        const res = await fetch(url, { credentials: 'same-origin' });
+        if (res.status === 404) {
+          eventData = null;
+        } else if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || `Failed to load event (${res.status})`);
+        } else {
+          const json = await res.json();
+          eventData = json.data ?? null;
+          resolvedEventId = eventData?.id ?? null;
+        }
+      } else if (eventId) {
+        const url = buildFullApiUrl(API_ROUTES.EVENT_BY_ID(eventId), getApiBaseUrl());
+        if (!url) {
+          setEvent(null);
+          setLoading(false);
+          return;
+        }
+        const res = await fetch(url, { credentials: 'same-origin' });
+        if (res.status === 404) {
+          eventData = null;
+        } else if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || `Failed to load event (${res.status})`);
+        } else {
+          const json = await res.json();
+          eventData = json.data ?? null;
+          resolvedEventId = eventId;
+        }
+      } else {
+        setEvent(null);
+        setLoading(false);
+        return;
       }
 
       // Check if event exists

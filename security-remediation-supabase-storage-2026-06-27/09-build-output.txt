@@ -1,0 +1,139 @@
+﻿
+> vite_react_shadcn_ts@0.0.0 build
+> vite build && npx vite-node scripts/prerender-academy-routes.ts
+
+node.exe : NODE_ENV=production is not supported in the .env file. Only NODE_ENV=development is supported to create a 
+development build of your project. If you need to set process.env.NODE_ENV, you can set it in the Vite config instead.
+Au caractère C:\Program Files\nodejs\npm.ps1:29 : 3
++   & $NODE_EXE $NPM_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (NODE_ENV=produc...config instead.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+vite v5.4.10 building for production...
+transforming...
+Browserslist: browsers data (caniuse-lite) is 20 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+warn - The class `duration-[280ms]` is ambiguous and matches multiple utilities.
+warn - If this is content and not a class, replace it with `duration-&lsqb;280ms&rsqb;` to silence this warning.
+
+warn - The class `ease-[cubic-bezier(0.22,1,0.36,1)]` is ambiguous and matches multiple utilities.
+warn - If this is content and not a class, replace it with `ease-&lsqb;cubic-bezier(0.22,1,0.36,1)&rsqb;` to silence 
+this warning.
+
+warn - The class `ease-[cubic-bezier(0.32,0.72,0,1)]` is ambiguous and matches multiple utilities.
+warn - If this is content and not a class, replace it with `ease-&lsqb;cubic-bezier(0.32,0.72,0,1)&rsqb;` to silence 
+this warning.
+Ô£ô 4488 modules transformed.
+rendering chunks...
+dist/assets/worker-BAOIWoxA.js       2.53 kB
+dist/index.html                      5.38 kB
+dist/assets/D7VZX-aa.js            114.49 kB
+dist/assets/Cbz6om2n.wasm       32,129.11 kB
+dist/assets/xA82qcbx.css           184.38 kB
+dist/assets/COaQmmwN.js              0.02 kB
+dist/assets/CrTOrHFO.js              0.08 kB
+dist/assets/DJX5gc4m.js              0.09 kB
+dist/assets/p-75IRQN.js              0.24 kB
+dist/assets/DEyiJ2iN.js              0.37 kB
+dist/assets/I2qWkLcn.js              0.41 kB
+dist/assets/B50Lbc_R.js              0.42 kB
+dist/assets/Ck4tqVkV.js              0.54 kB
+dist/assets/ofs0GuAr.js              0.64 kB
+dist/assets/CYPlAtUx.js              0.64 kB
+dist/assets/BFSwOcMU.js              0.73 kB
+dist/assets/CAvpIsAx.js              0.73 kB
+dist/assets/CmBwvTOm.js              0.84 kB
+dist/assets/DmUGJW1s.js              0.96 kB
+dist/assets/Bvtij7J7.js              1.08 kB
+dist/assets/DBLomAUl.js              1.21 kB
+dist/assets/B2i2qCxw.js              1.53 kB
+dist/assets/DSGf8Hc_.js              1.72 kB
+dist/assets/CSjkC_H6.js              1.74 kB
+dist/assets/DwQ1UjEE.js              1.99 kB
+dist/assets/C5XES4NU.js              2.00 kB
+dist/assets/C_lx9lN1.js              2.26 kB
+dist/assets/DDWfb_ql.js              2.26 kB
+dist/assets/DzMYhDGQ.js              2.45 kB
+dist/assets/DlhISh8v.js              2.89 kB
+dist/assets/CLX2W2h2.js              3.10 kB
+dist/assets/BkTHpfm3.js              3.38 kB
+dist/assets/Axjpk-qz.js              3.47 kB
+dist/assets/BXAmv_HR.js              3.49 kB
+dist/assets/BR4LXDJs.js              3.76 kB
+dist/assets/8M2QloIw.js              3.96 kB
+dist/assets/CsNCqxAy.js              3.98 kB
+dist/assets/PEO4wwDx.js              4.32 kB
+dist/assets/BIzdq2nN.js              4.45 kB
+dist/assets/B1nYeuX9.js              4.50 kB
+dist/assets/DRtlsNyd.js              4.60 kB
+dist/assets/CIzmiKnb.js              4.61 kB
+dist/assets/C6WfzWWg.js              4.68 kB
+dist/assets/6OmkQWXd.js              5.70 kB
+dist/assets/DKWARn4M.js              5.95 kB
+dist/assets/COkUWm5u.js              6.16 kB
+dist/assets/SB2xys9V.js              6.43 kB
+dist/assets/Bz0Nex1c.js              6.61 kB
+dist/assets/B3orpvmP.js              7.90 kB
+dist/assets/6LSljWKf.js              8.32 kB
+dist/assets/WXSg9djW.js              9.09 kB
+dist/assets/Bvasi0YQ.js              9.33 kB
+dist/assets/B-p7DiIp.js              9.34 kB
+dist/assets/DgHaiZa1.js              9.40 kB
+dist/assets/Bb0hnUXj.js              9.85 kB
+dist/assets/DdG_IpYN.js              9.97 kB
+dist/assets/BOdSi96l.js             10.18 kB
+dist/assets/xqfFXBJO.js             10.64 kB
+dist/assets/BRIVcKCS.js             10.90 kB
+dist/assets/DDVgLOSQ.js             11.13 kB
+dist/assets/HTxqGFay.js             12.80 kB
+dist/assets/SSQtnQHo.js             14.22 kB
+dist/assets/BtVmCMF0.js             14.65 kB
+dist/assets/DAs30R3y.js             15.88 kB
+dist/assets/DTWiCouc.js             17.28 kB
+dist/assets/BRYUJzr0.js             20.88 kB
+dist/assets/BBe1f3LG.js             21.07 kB
+dist/assets/Dm91iK9i.js             21.13 kB
+dist/assets/Cn66wCjG.js             22.12 kB
+dist/assets/Dzf4vqHu.js             24.48 kB
+dist/assets/BhXYCJd5.js             26.83 kB
+dist/assets/BLOPh8qW.js             26.85 kB
+dist/assets/l0YlBAal.js             29.93 kB
+dist/assets/BHTaq3br.js             35.03 kB
+dist/assets/C1wQtcXR.js             35.36 kB
+dist/assets/6Ib-lQx2.js             37.78 kB
+dist/assets/wRD4VnK9.js             44.02 kB
+dist/assets/DNQQN6Do.js             46.78 kB
+dist/assets/xX385yFE.js             48.12 kB
+dist/assets/Cg_Cs1Pk.js             49.83 kB
+dist/assets/PPV0KGsq.js             50.38 kB
+dist/assets/CzExqSGj.js             51.52 kB
+dist/assets/Btx_-boZ.js             56.68 kB
+dist/assets/CA7Nxu6u.js             61.93 kB
+dist/assets/X5Cni_mF.js             63.53 kB
+dist/assets/q3cDBVCG.js             73.33 kB
+dist/assets/B8RG8yn9.js             90.09 kB
+dist/assets/vqy_YiWG.js            106.43 kB
+dist/assets/3yPsc51j.js            107.92 kB
+dist/assets/D1ys7qaJ.js            127.94 kB
+dist/assets/DHkRZtYq.js            131.68 kB
+dist/assets/ayvbYMjG.js            162.95 kB
+dist/assets/BQlBh7sq.js            262.69 kB
+dist/assets/DA1Q-mQP.js            298.23 kB
+dist/assets/BUeF1RWf.js            370.66 kB
+dist/assets/DbsCscBf.js            393.12 kB
+dist/assets/DXoVVhY5.js            420.46 kB
+dist/assets/tAb2TiGw.js            937.14 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: 
+https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+Ô£ô built in 13.48s
+[prerender-academy] wrote academy/index.html
+[prerender-academy] wrote academy/register/index.html
+[prerender-academy] wrote academy/terms/index.html
+[prerender-academy] done

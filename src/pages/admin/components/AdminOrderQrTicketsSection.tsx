@@ -15,7 +15,9 @@ export type AdminOrderQrTicketsTheme = "default" | "pos";
 interface QrTicketRow {
   id: string;
   pass_type: string | null;
-  qr_code_url: string | null;
+  /** Backend-computed URL from secure_token — not legacy Storage URL */
+  qr_display_url: string | null;
+  qr_code_url?: string | null;
   scan_status: string | null;
   generation_status: string | null;
   generated_at: string | null;
@@ -191,17 +193,17 @@ export function AdminOrderQrTicketsSection({
                       </Badge>
                     )}
                   </div>
-                  {t.qr_code_url ? (
+                  {t.qr_display_url ? (
                     <div className="flex justify-center pt-1">
                       <img
-                        src={t.qr_code_url}
+                        src={t.qr_display_url}
                         alt=""
                         className="max-w-[200px] w-full h-auto rounded-md border border-border/50"
                       />
                     </div>
                   ) : (
                     <p className={cn("text-xs text-center py-2", isPos ? "text-[#888]" : "text-muted-foreground")}>
-                      {language === "en" ? "No QR image URL" : "Pas d'URL d'image QR"}
+                      {language === "en" ? "QR unavailable (missing secure token)" : "QR indisponible (jeton sécurisé manquant)"}
                     </p>
                   )}
                 </div>

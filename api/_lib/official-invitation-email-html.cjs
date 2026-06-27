@@ -27,11 +27,12 @@ function createOfficialInvitationEmailHTML(data) {
   const eventDate = formatDate(data.event?.date);
   const eventTime = formatTime(data.event?.date);
   const qrCodesHtml = data.qrCodes.map((qr, index) => {
+    const cid = qr.qr_image_cid;
+    if (!cid) return '';
     if (data.qrCodes.length === 1) {
-      return `<img src="${qr.qr_code_url}" alt="Invitation QR Code" style="max-width: 300px; height: auto; display: block; margin: 0 auto 20px; border-radius: 8px;" />`;
-    } else {
-      return `<div style="margin: 10px; padding: 20px; background: #181818; border: 2px solid #E21836; border-radius: 12px; display: inline-block;"><p style="margin: 0 0 15px 0; color: #E21836; font-size: 14px; font-weight: 600;">QR Code ${index + 1}</p><img src="${qr.qr_code_url}" alt="Invitation QR Code ${index + 1}" style="max-width: 250px; height: auto; display: block; margin: 0 auto; border-radius: 8px;" /></div>`;
+      return `<img src="cid:${cid}" alt="Invitation QR Code" style="max-width: 300px; height: auto; display: block; margin: 0 auto 20px; border-radius: 8px;" />`;
     }
+    return `<div style="margin: 10px; padding: 20px; background: #181818; border: 2px solid #E21836; border-radius: 12px; display: inline-block;"><p style="margin: 0 0 15px 0; color: #E21836; font-size: 14px; font-weight: 600;">QR Code ${index + 1}</p><img src="cid:${cid}" alt="Invitation QR Code ${index + 1}" style="max-width: 250px; height: auto; display: block; margin: 0 auto; border-radius: 8px;" /></div>`;
   }).join('');
   const qrCodeSectionTitle = data.qrCodes.length > 1 ? `Your QR Codes (${data.qrCodes.length})` : "Your QR Code";
   const qrCodeInstruction = data.qrCodes.length > 1 ? "Scan any of these QR codes at the entrance to access your assigned zone" : "Scan this QR code at the entrance to access your assigned zone";

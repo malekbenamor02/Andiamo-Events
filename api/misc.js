@@ -57,6 +57,7 @@ const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot
 );
 
 const { uploadTicketQrToR2OrSupabase, buildTicketQrApiUrl, resolveTicketQrUrl } = requireFromRoot(nodePath.join(__dirname, '_lib', 'r2-media.cjs'));
+const { prepareTicketsByPassTypeForEmail, prepareQrCodesForInvitationEmail, mergeEmailAttachments } = requireFromRoot(nodePath.join(__dirname, '_lib', 'ticket-qr-email.cjs'));
 const { sendTransactionalEmail } = requireFromRoot(nodePath.join(__dirname, '_lib', 'transactional-email.cjs'));
 const { canSendTransactionalEmail } = requireFromRoot(nodePath.join(__dirname, '_lib', 'can-send-transactional-email.cjs'));
 const { processConfirmedTicketPurchaseTracking } = requireFromRoot(nodePath.join(__dirname, '_lib', 'meta', 'ticket-purchase-tracking.cjs'));
@@ -69,6 +70,7 @@ const {
   handleAmbassadorLogin,
   handleAmbassadorMe,
   handleAmbassadorLogout,
+  handleAmbassadorEvents,
   handleAmbassadorOrders,
   handleAmbassadorPerformance,
   handleAmbassadorUpdatePassword,
@@ -3982,6 +3984,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                       pass: process.env.EMAIL_PASS,
                     },
                   });
+                const { ticketsByPassType: enrichedTicketsMap, qrAttachments } =
+                  await prepareTicketsByPassTypeForEmail(ticketsByPassType);
                 const emailHtml = getBuildOnlineTicketEmailHtml()({
                   customerName: fullOrder.user_name,
                   orderNumber: fullOrder.order_number,
@@ -3993,7 +3997,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                   totalAmount: totalAmountFirst,
                   feeAmount: feeAmountFirst,
                   subtotalAmount: subtotalAmountFirst,
-                  ticketsByPassType,
+                  ticketsByPassType: enrichedTicketsMap,
                 });
                 // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
                 // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
@@ -4015,7 +4019,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                   subject: 'Your Digital Tickets Are Ready - Andiamo Events',
                   html: emailHtml,
                 };
-                if (premiumPdf) mailOpts.attachments = [premiumPdf];
+                if (premiumPdf) mailOpts.attachments = mergeEmailAttachments(qrAttachments, premiumPdf);
+                else if (qrAttachments.length) mailOpts.attachments = qrAttachments;
                 await sendTransactionalEmail({ getEmailTransporter }, mailOpts);
                 
                 // Update tickets to DELIVERED
@@ -4484,6 +4489,8 @@ We Create Memories`;
                     secure: false,
                     auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
                   });
+                const { ticketsByPassType: enrichedCtpMap, qrAttachments: qrAttachmentsCtp } =
+                  await prepareTicketsByPassTypeForEmail(ticketsByPassType);
                 const emailHtml = getBuildOnlineTicketEmailHtml()({
                   customerName: fullOrder.user_name,
                   orderNumber: fullOrder.order_number,
@@ -4495,7 +4502,7 @@ We Create Memories`;
                   totalAmount,
                   feeAmount,
                   subtotalAmount,
-                  ticketsByPassType,
+                  ticketsByPassType: enrichedCtpMap,
                 });
                 let premiumPdfCtp = null;
                 try {
@@ -4515,7 +4522,8 @@ We Create Memories`;
                   subject: 'Your Digital Tickets Are Ready - Andiamo Events',
                   html: emailHtml,
                 };
-                if (premiumPdfCtp) mailOptsCtp.attachments = [premiumPdfCtp];
+                if (premiumPdfCtp) mailOptsCtp.attachments = mergeEmailAttachments(qrAttachmentsCtp, premiumPdfCtp);
+                else if (qrAttachmentsCtp.length) mailOptsCtp.attachments = qrAttachmentsCtp;
                 await sendTransactionalEmail({ getEmailTransporter }, mailOptsCtp);
                 await dbClient.from('tickets').update({ status: 'DELIVERED', email_delivery_status: 'sent', delivered_at: new Date().toISOString() }).in('id', tickets.map(t => t.id));
                 await dbClient.from('email_delivery_logs').insert({ order_id: orderId, email_type: 'ticket_delivery', recipient_email: fullOrder.user_email, recipient_name: fullOrder.user_name, subject: 'Your Digital Tickets Are Ready - Andiamo Events', status: 'sent', sent_at: new Date().toISOString() });
@@ -4950,7 +4958,7 @@ Billets envoyés par email. We Create Memories`;
 
         const { data: qrRows, error: qrErr } = await dbClient
           .from('qr_tickets')
-          .select('id, qr_code_url, pass_type, ticket_status, generated_at')
+          .select('id, secure_token, qr_code_url, pass_type, ticket_status, generated_at')
           .eq('order_id', orderId)
           .order('generated_at', { ascending: true });
 
@@ -4964,6 +4972,8 @@ Billets envoyés par email. We Create Memories`;
           tickets = qrRows.map((r) => ({
             id: r.id,
             pass_type: r.pass_type || null,
+            secure_token: r.secure_token || null,
+            qr_display_url: resolveTicketQrUrl(r.secure_token),
             qr_code_url: r.qr_code_url || null,
             scan_status: r.ticket_status || null,
             generation_status: null,
@@ -4972,7 +4982,7 @@ Billets envoyés par email. We Create Memories`;
         } else {
           const { data: ticketRows, error: tErr } = await dbClient
             .from('tickets')
-            .select('id, qr_code_url, status, generated_at, order_passes(pass_type)')
+            .select('id, secure_token, qr_code_url, status, generated_at, order_passes(pass_type)')
             .eq('order_id', orderId)
             .order('generated_at', { ascending: true });
 
@@ -4991,6 +5001,8 @@ Billets envoyés par email. We Create Memories`;
             return {
               id: t.id,
               pass_type: passType || null,
+              secure_token: t.secure_token || null,
+              qr_display_url: resolveTicketQrUrl(t.secure_token),
               qr_code_url: t.qr_code_url || null,
               scan_status: null,
               generation_status: t.status || null,
@@ -5257,7 +5269,7 @@ Billets envoyés par email. We Create Memories`;
         
         const legacyTicketCount = Math.max(
           1,
-          tickets.filter((t) => t && t.qr_code_url).length || tickets.length
+          tickets.filter((t) => t && t.secure_token).length || tickets.length
         );
         const passes =
           orderPasses && orderPasses.length > 0
@@ -5286,31 +5298,9 @@ Billets envoyés par email. We Create Memories`;
           }
         });
         
-        // Build tickets HTML grouped by pass type
-        const ticketsHtml = Array.from(ticketsByPassType.entries())
-          .map(([passType, passTickets]) => {
-            const ticketsList = passTickets
-              .filter(ticket => ticket.qr_code_url)
-              .map((ticket, index) => {
-                return `
-                  <div style="margin: 20px 0; padding: 20px; background: #E8E8E8; border-radius: 8px; text-align: center; border: 1px solid rgba(0, 0, 0, 0.1);">
-                    <h4 style="margin: 0 0 15px 0; color: #E21836; font-size: 16px; font-weight: 600;">${passType} - Ticket ${index + 1}</h4>
-                    <img src="${ticket.qr_code_url}" alt="QR Code for ${passType}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid rgba(226, 24, 54, 0.3); display: block; margin: 0 auto;" />
-                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #666666; font-family: 'Courier New', monospace;">Token: ${ticket.secure_token.substring(0, 8)}...</p>
-                  </div>
-                `;
-              })
-              .join('');
-            
-            return `
-              <div style="margin: 30px 0;">
-                <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">${passType} Tickets (${passTickets.filter(t => t.qr_code_url).length})</h3>
-                ${ticketsList}
-              </div>
-            `;
-          })
-          .join('');
-        
+        const { ticketsByPassType: enrichedResendMap, qrAttachments: qrAttachmentsResend } =
+          await prepareTicketsByPassTypeForEmail(ticketsByPassType);
+
         // Build passes summary
         const passesSummary = passes.map(p => ({
           passType: p.pass_type,
@@ -5332,7 +5322,7 @@ Billets envoyés par email. We Create Memories`;
           totalAmount: totalAmountResend,
           feeAmount: feeAmountResend,
           subtotalAmount: subtotalAmountResend,
-          ticketsByPassType,
+          ticketsByPassType: enrichedResendMap,
         });
         
         // Step 7: Send email
@@ -5374,7 +5364,7 @@ Billets envoyés par email. We Create Memories`;
               };
             }
             if (!premiumPdfResend) {
-              const withQr = (tickets || []).filter((t) => t && t.qr_code_url).length;
+              const withQr = (tickets || []).filter((t) => t && t.secure_token).length;
               console.warn('[admin-resend-ticket-email] No PDF attachment (build returned null)', {
                 orderId,
                 tickets: tickets?.length,
@@ -5389,7 +5379,8 @@ Billets envoyés par email. We Create Memories`;
               subject: 'Your Digital Tickets Are Ready - Andiamo Events',
               html: emailHtml,
             };
-            if (premiumPdfResend) mailOptsResend.attachments = [premiumPdfResend];
+            if (premiumPdfResend) mailOptsResend.attachments = mergeEmailAttachments(qrAttachmentsResend, premiumPdfResend);
+            else if (qrAttachmentsResend.length) mailOptsResend.attachments = qrAttachmentsResend;
             await sendTransactionalEmail({ getEmailTransporter }, mailOptsResend);
             
             emailSent = true;
@@ -5892,6 +5883,12 @@ Billets envoyés par email. We Create Memories`;
           details: error.message || null
         });
       }
+    }
+
+    // /api/ambassador/events (GET)
+    // ============================================
+    if (path === '/api/ambassador/events' && method === 'GET') {
+      return handleAmbassadorEvents(req, res);
     }
 
     // /api/ambassador/orders (GET)
@@ -7151,6 +7148,11 @@ Billets envoyés par email. We Create Memories`;
           });
         }
         
+        const { qrCodes: enrichedInvQr, qrAttachments: invQrAttachments } =
+          await prepareQrCodesForInvitationEmail(
+            qrCodes.map((q, i) => ({ ...q, id: q.id || `inv-create-${i}` }))
+          );
+
         // Send email
         const emailConfig = getCreateOfficialInvitationEmailHTML()({
           guestName: guest_name.trim(),
@@ -7166,7 +7168,7 @@ Billets envoyés par email. We Create Memories`;
           invitationNumber: invitation.invitation_number,
           zoneName: passType.name,
           zoneDescription: passType.description || '',
-          qrCodes: qrCodes
+          qrCodes: enrichedInvQr
         });
         
         let emailSent = false;
@@ -7203,7 +7205,8 @@ Billets envoyés par email. We Create Memories`;
             subject: emailConfig.subject,
             html: emailConfig.html,
           };
-          if (invPdfCreate) mailInvCreate.attachments = [invPdfCreate];
+          if (invPdfCreate) mailInvCreate.attachments = mergeEmailAttachments(invQrAttachments, invPdfCreate);
+          else if (invQrAttachments.length) mailInvCreate.attachments = invQrAttachments;
 
           await sendTransactionalEmail({ getEmailTransporter }, mailInvCreate);
 
@@ -7318,10 +7321,15 @@ Billets envoyés par email. We Create Memories`;
           .eq('invitation_id', id)
           .order('generated_at', { ascending: true });
         
+        const qrTicketsWithDisplay = (qrTickets || []).map((qt) => ({
+          ...qt,
+          qr_display_url: resolveTicketQrUrl(qt.secure_token),
+        }));
+
         return res.json({
           success: true,
           invitation,
-          qr_tickets: qrTickets || []
+          qr_tickets: qrTicketsWithDisplay
         });
         
       } catch (error) {
@@ -7388,7 +7396,7 @@ Billets envoyés par email. We Create Memories`;
         
         const { data: qrTickets, error: qrError } = await dbClient
           .from('qr_tickets')
-          .select('secure_token, qr_code_url')
+          .select('id, secure_token, qr_code_url')
           .eq('invitation_id', id);
         
         if (qrError || !qrTickets || qrTickets.length === 0) {
@@ -7397,6 +7405,15 @@ Billets envoyés par email. We Create Memories`;
           });
         }
         
+        const { qrCodes: enrichedResendInvQr, qrAttachments: invResendQrAttachments } =
+          await prepareQrCodesForInvitationEmail(
+            qrTickets.map((qt) => ({
+              id: qt.id,
+              secure_token: qt.secure_token,
+              qr_code_url: qt.qr_code_url,
+            }))
+          );
+
         const emailConfig = getCreateOfficialInvitationEmailHTML({
           guestName: invitation.recipient_name,
           guestPhone: invitation.recipient_phone,
@@ -7411,10 +7428,7 @@ Billets envoyés par email. We Create Memories`;
           invitationNumber: invitation.invitation_number,
           zoneName: invitation.zone_name,
           zoneDescription: invitation.zone_description,
-          qrCodes: qrTickets.map(qt => ({
-            secure_token: qt.secure_token,
-            qr_code_url: qt.qr_code_url
-          }))
+          qrCodes: enrichedResendInvQr
         });
         
         let emailSent = false;
@@ -7441,10 +7455,7 @@ Billets envoyés par email. We Create Memories`;
               guestName: invitation.recipient_name,
               invitationNumber: invitation.invitation_number,
               passTypeName: invitation.pass_type,
-              qrCodes: qrTickets.map((qt) => ({
-                secure_token: qt.secure_token,
-                qr_code_url: qt.qr_code_url,
-              })),
+              qrCodes: enrichedResendInvQr,
             });
           } catch (pdfErr) {
             console.warn('Invitation premium PDF skipped (resend):', pdfErr && pdfErr.message);
@@ -7455,7 +7466,8 @@ Billets envoyés par email. We Create Memories`;
             subject: emailConfig.subject,
             html: emailConfig.html,
           };
-          if (invPdfResend) mailInvResend.attachments = [invPdfResend];
+          if (invPdfResend) mailInvResend.attachments = mergeEmailAttachments(invResendQrAttachments, invPdfResend);
+          else if (invResendQrAttachments.length) mailInvResend.attachments = invResendQrAttachments;
 
           await sendTransactionalEmail({ getEmailTransporter }, mailInvResend);
 

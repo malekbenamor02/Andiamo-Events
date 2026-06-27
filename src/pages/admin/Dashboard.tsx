@@ -6431,7 +6431,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       await adminApi.updateAmbassador(ambassador.id, {
         status: newStatus,
-        updated_at: new Date().toISOString(),
       });
 
       setApplications(prev => prev.map(app => {

@@ -320,7 +320,6 @@ async function tryBuildPremiumTicketsPdfAttachment(params) {
 
   const ticketRows = [];
   const { generateTicketQrDataUrl } = require('./ticket-qr-generate.cjs');
-  const { resolveTicketQrUrl } = require('./ticket-qr-url.cjs');
   for (const t of tickets) {
     if (!t) continue;
     let qrData = null;
@@ -330,11 +329,6 @@ async function tryBuildPremiumTicketsPdfAttachment(params) {
       } catch (_) {
         qrData = null;
       }
-    }
-    if (!qrData && t.qr_code_url) {
-      const resolved = resolveTicketQrUrl(t.secure_token, t.qr_code_url) || t.qr_code_url;
-      const qrResolved = toAbsolutePublicUrl(resolved) || resolved;
-      qrData = (await fetchUrlAsDataUrl(qrResolved)) || qrResolved;
     }
     if (!qrData) continue;
     const pass = t.order_pass_id ? passById.get(t.order_pass_id) : null;
@@ -399,7 +393,7 @@ async function tryBuildPremiumTicketsPdfAttachmentInvitation(params) {
     },
     event,
     tickets: qrCodes.map((q) => ({
-      qr_code_url: q.qr_code_url,
+      secure_token: q.secure_token,
       order_pass_id: '__inv_pdf__',
     })),
     orderPasses: [{ id: '__inv_pdf__', pass_type: passTypeName || 'Invitation' }],

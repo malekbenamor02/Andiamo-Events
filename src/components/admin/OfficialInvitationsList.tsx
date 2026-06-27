@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
+import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from '@/lib/api-routes';
 import Loader from '@/components/ui/Loader';
 import { 
   Mail, 
@@ -786,13 +786,25 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
                     {language === 'en' ? 'QR Codes' : 'Codes QR'} ({qrTickets.length})
                   </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    {qrTickets.map((qr, index) => (
+                    {qrTickets.map((qr, index) => {
+                      const qrSrc =
+                        qr.qr_display_url ||
+                        (qr.secure_token
+                          ? buildFullApiUrl(API_ROUTES.TICKET_QR(qr.secure_token), getApiBaseUrl())
+                          : null);
+                      return (
                       <div key={qr.id} className="border rounded-lg p-4 text-center">
+                        {qrSrc ? (
                         <img 
-                          src={qr.qr_code_url} 
+                          src={qrSrc} 
                           alt={`QR Code ${index + 1}`}
                           className="w-full max-w-[200px] mx-auto mb-2"
                         />
+                        ) : (
+                          <p className="text-xs text-muted-foreground py-4">
+                            {language === 'en' ? 'QR unavailable' : 'QR indisponible'}
+                          </p>
+                        )}
                         <p className="text-xs text-muted-foreground font-mono">
                           {qr.secure_token.substring(0, 8)}...
                         </p>
@@ -803,7 +815,7 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
                           {qr.ticket_status}
                         </Badge>
                       </div>
-                    ))}
+                    );})}
                   </div>
                 </div>
               )}

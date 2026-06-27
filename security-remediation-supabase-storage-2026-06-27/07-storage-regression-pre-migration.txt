@@ -1,0 +1,20 @@
+﻿
+> vite_react_shadcn_ts@0.0.0 security:storage
+> node scripts/security/check-supabase-storage.mjs
+
+PASS tickets_public_get: status 400
+PASS career_public_get: status 400
+PASS anon_upload_tickets: 400
+FAIL anon_upload_career-documents: 200
+FAIL anon_upload_images: 200
+FAIL anon_upload_hero-images: 200
+FAIL anon_delete_images: 200
+PASS anon_delete_hero_images: 400
+PASS anon_list_images: 200 (review policy if objects returned)
+PASS code_getPublicUrl_ticket_flows: ok
+PASS code_getPublicUrl_career_flows: ok
+PASS code_client_career_bucket: ok
+PASS code_service_role_frontend: ok
+
+--- Summary ---
+PASS: 9  FAIL: 4

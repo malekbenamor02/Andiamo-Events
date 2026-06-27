@@ -227,7 +227,7 @@ export default async (req, res) => {
 
     const { data: admin, error: dbError } = await supabase
       .from('admins')
-      .select('id, email, name, role, password, is_active')
+      .select('id, email, name, role, password, is_active, session_version, requires_password_change')
       .eq('email', emailNorm)
       .single();
 
@@ -259,7 +259,12 @@ export default async (req, res) => {
     }
 
     const token = jwt.default.sign(
-      { id: admin.id, email: admin.email, role: admin.role },
+      {
+        id: admin.id,
+        email: admin.email,
+        role: admin.role,
+        session_version: admin.session_version ?? 1,
+      },
       jwtSecret,
       { expiresIn: '5h' }
     );
@@ -288,6 +293,7 @@ export default async (req, res) => {
         name: admin.name,
         role: admin.role,
       },
+      requiresPasswordChange: !!admin.requires_password_change,
     });
   } catch (error) {
     console.error('Admin login error:', error);

@@ -141,8 +141,6 @@ export function ApplicationsTab(props: ApplicationsTabProps) {
     const result = await addApplicationsToSelection({
       selectionId,
       applicationIds: addToDraftIds,
-      addedByAdminId: currentAdminId,
-      addedByName: adminDisplayName,
     });
 
     const { added, skipped } = result;
@@ -171,11 +169,7 @@ export function ApplicationsTab(props: ApplicationsTabProps) {
   };
 
   const handleCreateSelectionFromPicker = async (name: string) => {
-    return createSelection({
-      name,
-      createdByAdminId: currentAdminId,
-      createdByName: adminDisplayName,
-    });
+    return createSelection({ name });
   };
 
   const bulkToolbar =

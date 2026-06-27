@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import { API_ROUTES } from '@/lib/api-routes';
 import { getApiBaseUrl } from '@/lib/api-routes';
@@ -9,6 +9,8 @@ import { ADMIN_SESSION_PENDING_KEY, writeAdminVerifyCache } from "@/lib/admin-ve
 interface ProtectedAdminRouteProps {
   children: React.ReactNode;
   language: 'en' | 'fr';
+  /** Allow access while forced password reset is pending (change-password page only). */
+  allowPasswordChangeRequired?: boolean;
 }
 
 const clearAdminSessionPending = () => {
@@ -19,11 +21,17 @@ const clearAdminSessionPending = () => {
   }
 };
 
-const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) => {
+const ProtectedAdminRoute = ({
+  children,
+  language,
+  allowPasswordChangeRequired = false,
+}: ProtectedAdminRouteProps) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
   const [loading, setLoading] = useState(true);
   const cancelled = useRef(false);
   const isMobile = useIsMobile();
+  const location = useLocation();
 
   useEffect(() => {
     cancelled.current = false;
@@ -74,6 +82,7 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
             const admin = data.admin as
               | { id: string; email: string; name: string; role: string }
               | undefined;
+            const mustChange = !!data.requiresPasswordChange;
             if (admin?.id) {
               writeAdminVerifyCache({
                 admin,
@@ -82,8 +91,10 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
                 mobileTabs: Array.isArray(data.mobileTabs) ? data.mobileTabs : undefined,
                 sessionExpiresAt: data.sessionExpiresAt as number | undefined,
                 sessionTimeRemaining: data.sessionTimeRemaining as number | null | undefined,
+                requiresPasswordChange: mustChange,
               });
             }
+            setRequiresPasswordChange(mustChange);
             setIsAuthenticated(true);
             clearAdminSessionPending();
             return;
@@ -109,6 +120,7 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
               const admin = data.admin as
                 | { id: string; email: string; name: string; role: string }
                 | undefined;
+              const mustChange = !!data.requiresPasswordChange;
               if (admin?.id) {
                 writeAdminVerifyCache({
                   admin,
@@ -116,8 +128,10 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
                   allowedTabs: Array.isArray(data.allowedTabs) ? data.allowedTabs : undefined,
                   sessionExpiresAt: data.sessionExpiresAt as number | undefined,
                   sessionTimeRemaining: data.sessionTimeRemaining as number | null | undefined,
+                  requiresPasswordChange: mustChange,
                 });
               }
+              setRequiresPasswordChange(mustChange);
               setIsAuthenticated(true);
               return;
             }
@@ -146,6 +160,14 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
 
   if (!isAuthenticated) {
     return <Navigate to="/admin/login" replace />;
+  }
+
+  if (requiresPasswordChange && !allowPasswordChangeRequired) {
+    return <Navigate to="/admin/change-password" replace state={{ from: location.pathname }} />;
+  }
+
+  if (!requiresPasswordChange && allowPasswordChangeRequired) {
+    return <Navigate to="/admin" replace />;
   }
 
   return <>{children}</>;

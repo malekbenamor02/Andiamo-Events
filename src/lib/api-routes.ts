@@ -30,6 +30,9 @@ export const API_ROUTES = {
   ADMIN_EVENT: (id: string) => `/api/admin/events/${id}`,
 
   PRESALE_REDEEM: '/api/presale/redeem',
+  /** Resolve event by public URL slug (includes presale; server-side, not blocked by RLS). */
+  EVENT_BY_SLUG: (slug: string) => `/api/events/by-slug/${encodeURIComponent(slug)}`,
+  EVENT_BY_ID: (eventId: string) => `/api/events/by-id/${encodeURIComponent(eventId)}`,
   /** Server truth for whether pass purchase requires presale code (matches DB used by /api/passes). */
   PRESALE_REQUIRED: '/api/presale/required',
   PRESALE_SESSION: '/api/presale/session',
@@ -80,6 +83,15 @@ export const API_ROUTES = {
   ADMIN_SMS_LOGS: '/api/admin/sms-logs',
   ADMIN_SITE_LOGS: '/api/admin/site-logs',
   ADMIN_ORDER_PASSES: '/api/admin/order-passes',
+  ADMIN_APPLICATION_SELECTIONS: '/api/admin/application-selections',
+  ADMIN_APPLICATION_SELECTION: (id: string) =>
+    `/api/admin/application-selections/${encodeURIComponent(id)}`,
+  ADMIN_APPLICATION_SELECTION_ITEMS: '/api/admin/application-selection-items',
+  ADMIN_APPLICATION_SELECTION_ITEM: (applicationId: string, selectionId: string) =>
+    `/api/admin/application-selection-items/${encodeURIComponent(applicationId)}?selection_id=${encodeURIComponent(selectionId)}`,
+  ADMIN_APPLICATION_SELECTION_ITEMS_REMOVE: '/api/admin/application-selection-items/remove',
+  ADMIN_CHANGE_PASSWORD: '/api/admin/change-password',
+  SITE_LOGS: '/api/site-logs',
   
   // Email
   SEND_EMAIL: '/api/send-email',
@@ -122,6 +134,7 @@ export const API_ROUTES = {
   AMBASSADOR_LOGIN: '/api/ambassador-login',
   AMBASSADOR_LOGOUT: '/api/ambassador-logout',
   AMBASSADOR_ME: '/api/ambassador/me',
+  AMBASSADOR_EVENTS: '/api/ambassador/events',
   AMBASSADOR_APPLICATION: '/api/ambassador-application',
   AMBASSADOR_UPDATE_PASSWORD: '/api/ambassador-update-password',
   AMBASSADOR_ORDERS: '/api/ambassador/orders',
@@ -289,6 +302,12 @@ export const API_ROUTES = {
   CAREERS_GENDER_OPTIONS: '/api/careers/gender-options',
   CAREER_APPLICATION_SUBMIT: '/api/career-application',
   CAREER_APPLICATION_CHECK_DUPLICATE: '/api/career-application/check-duplicate',
+  CAREERS_UPLOAD_DOCUMENT: '/api/careers/upload-document',
+  CAREERS_ADMIN_APPLICATION_DOCUMENT_URL: (id: string, field: string) =>
+    `/api/admin/careers/applications/${encodeURIComponent(id)}/document-url?field=${encodeURIComponent(field)}`,
+  ADMIN_MEDIA_UPLOAD: '/api/admin/media/upload',
+  ADMIN_MEDIA_DELETE: '/api/admin/media/delete',
+  TICKET_QR: (secureToken: string) => `/api/tickets/qr/${encodeURIComponent(secureToken)}`,
   CAREERS_ADMIN_SETTINGS: '/api/admin/careers/settings',
   CAREERS_ADMIN_CITY_OPTIONS: '/api/admin/careers/city-options',
   CAREERS_ADMIN_GENDER_OPTIONS: '/api/admin/careers/gender-options',

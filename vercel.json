@@ -553,6 +553,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/ambassador/events",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/ambassador/orders",
       "destination": "/api/misc.js"
     },

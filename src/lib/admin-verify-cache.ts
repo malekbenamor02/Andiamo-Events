@@ -20,6 +20,7 @@ export type AdminVerifyCachePayload = {
   mobileTabs?: string[];
   sessionExpiresAt?: number | null;
   sessionTimeRemaining?: number | null;
+  requiresPasswordChange?: boolean;
 };
 
 export function writeAdminVerifyCache(
@@ -34,6 +35,7 @@ export function writeAdminVerifyCache(
       mobileTabs: payload.mobileTabs,
       sessionExpiresAt: payload.sessionExpiresAt,
       sessionTimeRemaining: payload.sessionTimeRemaining,
+      requiresPasswordChange: payload.requiresPasswordChange,
     };
     sessionStorage.setItem(ADMIN_VERIFY_CACHE_KEY, JSON.stringify(entry));
   } catch {

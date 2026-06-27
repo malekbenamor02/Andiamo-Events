@@ -10,6 +10,10 @@ import {
   requireAdmin,
   buildAmbassadorWritePayload,
   jsonBadRequest,
+  APPLICATION_SELECTION_WRITABLE_FIELDS,
+  APPLICATION_SELECTION_ITEM_BULK_FIELDS,
+  APPLICATION_SELECTION_ITEM_REMOVE_BULK_FIELDS,
+  SITE_LOG_CLIENT_FIELDS,
 } from './admin-data-route-helpers.js';
 
 function matchId(path, prefix) {
@@ -377,6 +381,246 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
       .in('pass_id', passIds);
     if (error) return res.status(500).json({ error: error.message });
     return res.status(200).json({ data: data || [] });
+  }
+
+  const SELECTION_COLS =
+    'id, name, status, created_at, updated_at, created_by_admin_id, created_by_name';
+  const ITEM_COLS = 'id, selection_id, application_id, added_at, added_by_admin_id, added_by_name';
+
+  if (path === '/api/admin/application-selections' && method === 'GET') {
+    const ctx = await requireAdmin(req, res, verifyAdminAuth, PERM.APPLICATIONS);
+    if (!ctx) return true;
+    const includeArchived =
+      new URL(req.url, 'http://local').searchParams.get('include_archived') === '1';
+    let query = ctx.db
+      .from('ambassador_application_selections')
+      .select(`${SELECTION_COLS}, ambassador_application_selection_items(count)`)
+      .order('created_at', { ascending: false });
+    if (!includeArchived) {
+      query = query.eq('status', 'draft');
+    }
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    const mapped = (data || []).map((row) => {
+      const rawItems = row.ambassador_application_selection_items;
+      let item_count = 0;
+      if (Array.isArray(rawItems) && rawItems[0] && typeof rawItems[0] === 'object') {
+        item_count = rawItems[0].count ?? 0;
+      } else if (rawItems && typeof rawItems === 'object' && 'count' in rawItems) {
+        item_count = rawItems.count ?? 0;
+      }
+      const { ambassador_application_selection_items: _items, ...rest } = row;
+      return { ...rest, item_count };
+    });
+    return res.status(200).json({ data: mapped });
+  }
+
+  if (path === '/api/admin/application-selections' && method === 'POST') {
+    const ctx = await requireAdmin(req, res, verifyAdminAuth, PERM.APPLICATIONS);
+    if (!ctx) return true;
+    const body = await parseBody(req);
+    if (rejectUnexpectedFields(res, body, ['name'])) return true;
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!name) return jsonBadRequest(res, 'name is required');
+    const { data, error } = await ctx.db
+      .from('ambassador_application_selections')
+      .insert({
+        name,
+        status: 'draft',
+        created_by_admin_id: ctx.auth.admin?.id ?? null,
+        created_by_name: ctx.auth.admin?.name ?? null,
+      })
+      .select(SELECTION_COLS)
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(201).json({ data: { ...data, item_count: 0 } });
+  }
+
+  const selectionId = matchId(path, '/api/admin/application-selections/');
+  if (selectionId && method === 'PATCH') {
+    const ctx = await requireAdmin(req, res, verifyAdminAuth, PERM.APPLICATIONS);
+    if (!ctx) return true;
+    const body = await parseBody(req);
+    if (rejectUnexpectedFields(res, body, APPLICATION_SELECTION_WRITABLE_FIELDS)) return true;
+    const patch = pickAllowedFields(body, APPLICATION_SELECTION_WRITABLE_FIELDS);
+    if (patch.name != null) patch.name = String(patch.name).trim();
+    if (patch.status != null && !['draft', 'archived'].includes(patch.status)) {
+      return jsonBadRequest(res, 'status must be draft or archived');
+    }
+    if (Object.keys(patch).length === 0) {
+      return jsonBadRequest(res, 'No valid fields to update');
+    }
+    const { data, error } = await ctx.db
+      .from('ambassador_application_selections')
+      .update(patch)
+      .eq('id', selectionId)
+      .select(SELECTION_COLS)
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(200).json({ data });
+  }
+
+  if (path === '/api/admin/application-selection-items' && method === 'GET') {
+    const ctx = await requireAdmin(req, res, verifyAdminAuth, PERM.APPLICATIONS);
+    if (!ctx) return true;
+    const selectionIdParam = new URL(req.url, 'http://local').searchParams.get('selection_id');
+    if (!selectionIdParam) {
+      return res.status(400).json({ error: 'selection_id query parameter is required' });
+    }
+    const { data, error } = await ctx.db
+      .from('ambassador_application_selection_items')
+      .select(ITEM_COLS)
+      .eq('selection_id', selectionIdParam)
+      .order('added_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(200).json({ data: data || [] });
+  }
+
+  if (path === '/api/admin/application-selection-items' && method === 'POST') {
+    const ctx = await requireAdmin(req, res, verifyAdminAuth, PERM.APPLICATIONS);
+    if (!ctx) return true;
+    const body = await parseBody(req);
+    if (rejectUnexpectedFields(res, body, APPLICATION_SELECTION_ITEM_BULK_FIELDS)) return true;
+    const selection_id = body.selection_id;
+    const application_ids = Array.isArray(body.application_ids) ? body.application_ids : [];
+    if (!selection_id || application_ids.length === 0) {
+      return jsonBadRequest(res, 'selection_id and application_ids are required');
+    }
+
+    const { data: existingRows, error: existingError } = await ctx.db
+      .from('ambassador_application_selection_items')
+      .select('application_id')
+      .eq('selection_id', selection_id)
+      .in('application_id', application_ids);
+    if (existingError) return res.status(500).json({ error: existingError.message });
+
+    const existingIds = new Set((existingRows || []).map((r) => r.application_id));
+    const newIds = application_ids.filter((id) => !existingIds.has(id));
+    const skipped = application_ids.length - newIds.length;
+
+    if (newIds.length === 0) {
+      return res.status(200).json({ data: [], added: 0, skipped });
+    }
+
+    const rows = newIds.map((application_id) => ({
+      selection_id,
+      application_id,
+      added_by_admin_id: ctx.auth.admin?.id ?? null,
+      added_by_name: ctx.auth.admin?.name ?? null,
+    }));
+
+    const { data, error } = await ctx.db
+      .from('ambassador_application_selection_items')
+      .insert(rows)
+      .select(ITEM_COLS);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(201).json({ data: data || [], added: (data || []).length, skipped });
+  }
+
+  if (path === '/api/admin/application-selection-items/remove' && method === 'POST') {
+    const ctx = await requireAdmin(req, res, verifyAdminAuth, PERM.APPLICATIONS);
+    if (!ctx) return true;
+    const body = await parseBody(req);
+    if (rejectUnexpectedFields(res, body, APPLICATION_SELECTION_ITEM_REMOVE_BULK_FIELDS)) return true;
+    const selection_id = body.selection_id;
+    const application_ids = Array.isArray(body.application_ids) ? body.application_ids : [];
+    if (!selection_id || application_ids.length === 0) {
+      return jsonBadRequest(res, 'selection_id and application_ids are required');
+    }
+    const { error } = await ctx.db
+      .from('ambassador_application_selection_items')
+      .delete()
+      .eq('selection_id', selection_id)
+      .in('application_id', application_ids);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(200).json({ success: true, removed: application_ids.length });
+  }
+
+  const selectionItemAppId = (() => {
+    const m = path.match(/^\/api\/admin\/application-selection-items\/([^/]+)$/);
+    return m ? m[1] : null;
+  })();
+  if (selectionItemAppId && method === 'DELETE') {
+    const ctx = await requireAdmin(req, res, verifyAdminAuth, PERM.APPLICATIONS);
+    if (!ctx) return true;
+    const selection_id = new URL(req.url, 'http://local').searchParams.get('selection_id');
+    if (!selection_id) {
+      return res.status(400).json({ error: 'selection_id query parameter is required' });
+    }
+    const { error } = await ctx.db
+      .from('ambassador_application_selection_items')
+      .delete()
+      .eq('selection_id', selection_id)
+      .eq('application_id', selectionItemAppId);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(200).json({ success: true });
+  }
+
+  if (path === '/api/admin/change-password' && method === 'POST') {
+    const ctx = await requireAdmin(req, res, verifyAdminAuth, null, { skipPasswordChangeGate: true });
+    if (!ctx) return true;
+    const body = await parseBody(req);
+    if (rejectUnexpectedFields(res, body, ['currentPassword', 'newPassword'])) return true;
+    const currentPassword = body.currentPassword;
+    const newPassword = body.newPassword;
+    if (!currentPassword || !newPassword || String(newPassword).length < 8) {
+      return jsonBadRequest(res, 'currentPassword and newPassword (min 8 chars) are required');
+    }
+    const { data: adminRow, error: loadError } = await ctx.db
+      .from('admins')
+      .select('id, password, session_version')
+      .eq('id', ctx.auth.admin.id)
+      .single();
+    if (loadError || !adminRow) {
+      return res.status(401).json({ error: 'Admin not found' });
+    }
+    const bcrypt = (await import('bcryptjs')).default;
+    const ok = await bcrypt.compare(String(currentPassword), adminRow.password);
+    if (!ok) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    const hashed = await bcrypt.hash(String(newPassword), 10);
+    const nextVersion = (adminRow.session_version ?? 1) + 1;
+    const { error: updateError } = await ctx.db
+      .from('admins')
+      .update({
+        password: hashed,
+        requires_password_change: false,
+        session_version: nextVersion,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', ctx.auth.admin.id);
+    if (updateError) return res.status(500).json({ error: updateError.message });
+
+    const jwt = await import('jsonwebtoken');
+    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
+    const token = jwt.default.sign(
+      {
+        id: ctx.auth.admin.id,
+        email: ctx.auth.admin.email,
+        role: ctx.auth.admin.role,
+        session_version: nextVersion,
+      },
+      jwtSecret,
+      { expiresIn: '5h' },
+    );
+    const isProduction =
+      process.env.NODE_ENV === 'production' ||
+      process.env.VERCEL === '1' ||
+      !!process.env.VERCEL_URL;
+    const cookieParts = [
+      `adminToken=${token}`,
+      'HttpOnly',
+      'Path=/',
+      'Max-Age=18000',
+      isProduction ? 'Secure' : '',
+      'SameSite=Lax',
+    ].filter(Boolean);
+    if (isProduction && process.env.COOKIE_DOMAIN) {
+      cookieParts.push(`Domain=${process.env.COOKIE_DOMAIN}`);
+    }
+    res.setHeader('Set-Cookie', cookieParts.join('; '));
+    return res.status(200).json({ success: true, requiresPasswordChange: false });
   }
 
   return false;

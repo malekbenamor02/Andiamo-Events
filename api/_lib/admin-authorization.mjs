@@ -122,7 +122,7 @@ export async function verifyAdminSession(req, opts = {}) {
 
     const { data: admin, error: dbError } = await dbClient
       .from('admins')
-      .select('id, email, name, role, is_active')
+      .select('id, email, name, role, is_active, session_version, requires_password_change')
       .eq('id', decoded.id)
       .eq('email', decoded.email)
       .eq('is_active', true)
@@ -132,6 +132,18 @@ export async function verifyAdminSession(req, opts = {}) {
       return {
         valid: false,
         error: 'Admin not found or inactive',
+        statusCode: 401,
+      };
+    }
+
+    const tokenSessionVersion =
+      decoded.session_version != null ? Number(decoded.session_version) : 0;
+    const adminSessionVersion = admin.session_version != null ? Number(admin.session_version) : 1;
+    if (tokenSessionVersion !== adminSessionVersion) {
+      return {
+        valid: false,
+        error: 'Session invalidated',
+        reason: 'session_version_mismatch',
         statusCode: 401,
       };
     }
@@ -181,6 +193,7 @@ export async function verifyAdminSession(req, opts = {}) {
       mobileTabs: effective.mobileTabs,
       sessionExpiresAt: tokenExpiration,
       sessionTimeRemaining: timeRemaining,
+      requiresPasswordChange: !!admin.requires_password_change,
       /** JWT exp for legacy handlers */
       exp: decoded.exp,
     };
