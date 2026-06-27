@@ -1,5 +1,6 @@
 /**
- * Super admin only: loads QR ticket images and per-ticket scan/generation status from GET /api/admin/order-qr-tickets.
+ * Super admin only: server-generated QR previews from GET /api/admin/order-qr-tickets.
+ * Tokens and public QR URLs are never exposed to the client.
  */
 
 import React, { useEffect, useState } from "react";
@@ -14,10 +15,10 @@ export type AdminOrderQrTicketsTheme = "default" | "pos";
 
 interface QrTicketRow {
   id: string;
+  label?: string | null;
   pass_type: string | null;
-  /** Backend-computed URL from secure_token — not legacy Storage URL */
-  qr_display_url: string | null;
-  qr_code_url?: string | null;
+  qr_preview_data_url: string | null;
+  qr_preview_available?: boolean;
   scan_status: string | null;
   generation_status: string | null;
   generated_at: string | null;
@@ -32,8 +33,10 @@ interface OrderQrTicketsResponse {
     source?: string | null;
   };
   tickets?: QrTicketRow[];
+  total_count?: number;
+  truncated?: boolean;
+  preview_limit?: number;
   error?: string;
-  details?: string;
 }
 
 function statusBadgeClass(status: string | null | undefined, theme: AdminOrderQrTicketsTheme): string {
@@ -52,6 +55,14 @@ function statusBadgeClass(status: string | null | undefined, theme: AdminOrderQr
     return theme === "pos" ? "bg-red-900/50 text-red-200 border-red-700/50" : "bg-red-600 text-white border-red-700";
   }
   return theme === "pos" ? "bg-[#333] text-[#E0E0E0] border-[#444]" : "bg-secondary text-secondary-foreground";
+}
+
+function safeLoadError(language: "en" | "fr"): string {
+  return language === "en" ? "Could not load ticket QR previews" : "Impossible de charger les aperçus QR";
+}
+
+function previewUnavailableMessage(language: "en" | "fr"): string {
+  return language === "en" ? "QR preview unavailable" : "Aperçu QR indisponible";
 }
 
 export interface AdminOrderQrTicketsSectionProps {
@@ -73,11 +84,13 @@ export function AdminOrderQrTicketsSection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<OrderQrTicketsResponse | null>(null);
+  const [failedQrIds, setFailedQrIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!open || !orderId || !isSuperAdmin) {
       setPayload(null);
       setError(null);
+      setFailedQrIds(new Set());
       setLoading(false);
       return;
     }
@@ -85,10 +98,11 @@ export function AdminOrderQrTicketsSection({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setFailedQrIds(new Set());
 
     const url = buildFullApiUrl(API_ROUTES.ADMIN_ORDER_QR_TICKETS(orderId), getApiBaseUrl());
     if (!url) {
-      setError(language === "en" ? "Invalid API URL" : "URL API invalide");
+      setError(safeLoadError(language));
       setLoading(false);
       return;
     }
@@ -97,19 +111,17 @@ export function AdminOrderQrTicketsSection({
       .then(async (res) => {
         const data = (await res.json().catch(() => ({}))) as OrderQrTicketsResponse;
         if (!res.ok) {
-          const msg =
-            data.details || data.error || (language === "en" ? "Failed to load QR tickets" : "Échec du chargement des QR");
-          throw new Error(msg);
+          throw new Error(safeLoadError(language));
         }
         return data;
       })
       .then((data) => {
         if (!cancelled) setPayload(data);
       })
-      .catch((e: Error) => {
+      .catch(() => {
         if (!cancelled) {
           setPayload(null);
-          setError(e.message || (language === "en" ? "Failed to load" : "Échec du chargement"));
+          setError(safeLoadError(language));
         }
       })
       .finally(() => {
@@ -164,6 +176,14 @@ export function AdminOrderQrTicketsSection({
           <p className={cn("text-sm", isPos ? "text-red-300" : "text-destructive")}>{error}</p>
         )}
 
+        {!loading && !error && payload?.truncated && (
+          <p className={cn("text-xs", isPos ? "text-[#B0B0B0]" : "text-muted-foreground")}>
+            {language === "en"
+              ? `Showing first ${payload.preview_limit ?? ""} of ${payload.total_count ?? ""} tickets.`
+              : `Affichage des ${payload.preview_limit ?? ""} premiers billets sur ${payload.total_count ?? ""}.`}
+          </p>
+        )}
+
         {!loading && !error && payload && Array.isArray(payload.tickets) && payload.tickets.length === 0 && (
           <p className={cn("text-sm", isPos ? "text-[#B0B0B0]" : "text-muted-foreground")}>{emptyMsg}</p>
         )}
@@ -173,15 +193,23 @@ export function AdminOrderQrTicketsSection({
             {payload.tickets.map((t, idx) => {
               const primaryStatus = t.scan_status || t.generation_status;
               const secondaryLabel = t.scan_status ? scanLabel : genLabel;
+              const rowKey = t.id || String(idx);
+              const qrFailed = failedQrIds.has(rowKey);
+              const hasPreview = Boolean(t.qr_preview_data_url) && t.qr_preview_available !== false;
               return (
                 <div
-                  key={t.id || idx}
+                  key={rowKey}
                   className={cn(
                     "rounded-lg border p-3 space-y-2",
                     isPos ? "border-[#2A2A2A] bg-[#1F1F1F]" : "border-border bg-background/40"
                   )}
                 >
                   <div className="flex flex-wrap items-center gap-2">
+                    {t.label && (
+                      <span className={cn("text-xs font-medium", isPos ? "text-[#E0E0E0]" : "text-foreground")}>
+                        {t.label}
+                      </span>
+                    )}
                     {t.pass_type && (
                       <Badge variant="secondary" className={cn(isPos && "bg-[#333] text-[#F5F5F5]")}>
                         {t.pass_type}
@@ -193,17 +221,24 @@ export function AdminOrderQrTicketsSection({
                       </Badge>
                     )}
                   </div>
-                  {t.qr_display_url ? (
+                  {hasPreview && !qrFailed ? (
                     <div className="flex justify-center pt-1">
                       <img
-                        src={t.qr_display_url}
-                        alt=""
-                        className="max-w-[200px] w-full h-auto rounded-md border border-border/50"
+                        src={t.qr_preview_data_url!}
+                        alt={language === "en" ? "Ticket QR code" : "Code QR du billet"}
+                        className="max-w-[200px] w-full h-auto rounded-md border border-border/50 bg-white p-1"
+                        onError={() => {
+                          setFailedQrIds((prev) => new Set(prev).add(rowKey));
+                        }}
                       />
                     </div>
                   ) : (
                     <p className={cn("text-xs text-center py-2", isPos ? "text-[#888]" : "text-muted-foreground")}>
-                      {language === "en" ? "QR unavailable (missing secure token)" : "QR indisponible (jeton sécurisé manquant)"}
+                      {qrFailed
+                        ? language === "en"
+                          ? "QR preview could not be displayed"
+                          : "Impossible d'afficher l'aperçu QR"
+                        : previewUnavailableMessage(language)}
                     </p>
                   )}
                 </div>

@@ -68,6 +68,9 @@ const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot
 );
 
 const { uploadTicketQrToR2OrSupabase, buildTicketQrApiUrl, resolveTicketQrUrl } = requireFromRoot(nodePath.join(__dirname, '_lib', 'r2-media.cjs'));
+const { loadAdminOrderQrTicketPreviews } = requireFromRoot(
+  nodePath.join(__dirname, '_lib', 'admin-order-qr-tickets.cjs')
+);
 const { prepareTicketsByPassTypeForEmail, prepareQrCodesForInvitationEmail, mergeEmailAttachments } = requireFromRoot(nodePath.join(__dirname, '_lib', 'ticket-qr-email.cjs'));
 const { sendTransactionalEmail } = requireFromRoot(nodePath.join(__dirname, '_lib', 'transactional-email.cjs'));
 const { canSendTransactionalEmail } = requireFromRoot(nodePath.join(__dirname, '_lib', 'can-send-transactional-email.cjs'));
@@ -1451,6 +1454,10 @@ export default async (req, res) => {
   if (storageSecurityPath) {
     try {
       const app = await getStorageSecurityApp();
+      const queryString = req.url && req.url.includes('?') ? req.url.split('?')[1] : '';
+      const logicalUrl = queryString ? `${path}?${queryString}` : path;
+      const previousUrl = req.url;
+      req.url = logicalUrl;
       await new Promise((resolve) => {
         const onFinish = () => resolve();
         res.on('finish', onFinish);
@@ -1463,6 +1470,7 @@ export default async (req, res) => {
           resolve();
         });
       });
+      req.url = previousUrl;
       return;
     } catch (err) {
       console.error('Storage security app error:', err);
@@ -4406,59 +4414,9 @@ We Create Memories`;
           return res.status(404).json({ error: 'Order not found' });
         }
 
-        const { data: qrRows, error: qrErr } = await dbClient
-          .from('qr_tickets')
-          .select('id, secure_token, qr_code_url, pass_type, ticket_status, generated_at')
-          .eq('order_id', orderId)
-          .order('generated_at', { ascending: true });
-
-        if (qrErr) {
-          console.error('order-qr-tickets qr_tickets:', qrErr);
-          return res.status(500).json({ error: 'Failed to load QR tickets', details: qrErr.message });
-        }
-
-        let tickets = [];
-        if (qrRows && qrRows.length > 0) {
-          tickets = qrRows.map((r) => ({
-            id: r.id,
-            pass_type: r.pass_type || null,
-            secure_token: r.secure_token || null,
-            qr_display_url: resolveTicketQrUrl(r.secure_token),
-            qr_code_url: r.qr_code_url || null,
-            scan_status: r.ticket_status || null,
-            generation_status: null,
-            generated_at: r.generated_at || null
-          }));
-        } else {
-          const { data: ticketRows, error: tErr } = await dbClient
-            .from('tickets')
-            .select('id, secure_token, qr_code_url, status, generated_at, order_passes(pass_type)')
-            .eq('order_id', orderId)
-            .order('generated_at', { ascending: true });
-
-          if (tErr) {
-            console.error('order-qr-tickets tickets:', tErr);
-            return res.status(500).json({ error: 'Failed to load tickets', details: tErr.message });
-          }
-
-          tickets = (ticketRows || []).map((t) => {
-            const op = t.order_passes;
-            const passType = op == null
-              ? null
-              : Array.isArray(op)
-                ? op[0]?.pass_type
-                : op.pass_type;
-            return {
-              id: t.id,
-              pass_type: passType || null,
-              secure_token: t.secure_token || null,
-              qr_display_url: resolveTicketQrUrl(t.secure_token),
-              qr_code_url: t.qr_code_url || null,
-              scan_status: null,
-              generation_status: t.status || null,
-              generated_at: t.generated_at || null
-            };
-          });
+        const previewResult = await loadAdminOrderQrTicketPreviews(dbClient, orderId);
+        if (previewResult.error) {
+          return res.status(500).json({ error: previewResult.error });
         }
 
         return res.status(200).json({
@@ -4467,15 +4425,17 @@ We Create Memories`;
             id: order.id,
             status: order.status,
             payment_status: order.payment_status,
-            source: order.source
+            source: order.source,
           },
-          tickets
+          tickets: previewResult.tickets,
+          total_count: previewResult.total_count,
+          truncated: previewResult.truncated,
+          preview_limit: previewResult.preview_limit,
         });
       } catch (error) {
         console.error('Error in /api/admin/order-qr-tickets:', error);
         return res.status(500).json({
           error: 'Internal server error',
-          details: error.message
         });
       }
     }
