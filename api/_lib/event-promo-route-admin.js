@@ -2,7 +2,6 @@
  * Admin event promo codes API (paths under /api/admin/event-promo/codes)
  */
 import '../../lib/sentry-server.js';
-import { createClient } from '@supabase/supabase-js';
 import { verifyAdminAuth, hasPermission } from './admin-verify.js';
 import { normalizeEventPromoCode, EVENT_PROMO_CODE_MAX_LEN } from './event-promo-code.js';
 import { validateEventPromoPassDiscounts } from './event-promo-discount.js';
@@ -12,6 +11,9 @@ import {
   hashEventPromoCode,
   requireEventPromoPepperOr503,
 } from './event-promo-hash.js';
+import { createAdminDbClient } from './service-role-client.js';
+import { writeAdminMutationAudit } from './admin-mutation-audit.js';
+
 function getPathname(req) {
   const raw = String(req.url || req.path || '');
   if (!raw) return '';
@@ -25,11 +27,8 @@ function getPathname(req) {
   return raw.split('?')[0] || '';
 }
 
-function makeDb() {
-  const s = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-  return process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-    : s;
+async function makeDb(res) {
+  return createAdminDbClient(res);
 }
 
 function requireSuperAdmin(auth, res) {
@@ -141,7 +140,8 @@ export async function handleEventPromoAdminCodes(req, res) {
 
     const path = getPathname(req);
     const method = req.method;
-    const db = makeDb();
+    const db = await makeDb(res);
+    if (!db) return;
 
     if (method === 'GET' && path === '/api/admin/event-promo/codes') {
       const eventId = getQueryParam(req, 'eventId');
@@ -245,6 +245,14 @@ export async function handleEventPromoAdminCodes(req, res) {
         if (scopeErr) return res.status(500).json({ error: scopeErr });
       }
 
+      await writeAdminMutationAudit(db, {
+        admin: auth.admin,
+        action: 'event_promo.code.created',
+        targetType: 'event_promo_code',
+        targetId: data.id,
+        details: { eventId, label },
+      });
+
       return res.status(201).json({ success: true, promoCode: mapAdminPromoRow(data) });
     }
 
@@ -309,6 +317,14 @@ export async function handleEventPromoAdminCodes(req, res) {
         await db.from('event_promo_code_pass_discounts').delete().eq('promo_code_id', codeId);
       }
 
+      await writeAdminMutationAudit(db, {
+        admin: auth.admin,
+        action: 'event_promo.code.discounts_updated',
+        targetType: 'event_promo_code',
+        targetId: codeId,
+        details: { discount_mode },
+      });
+
       return res.status(200).json({ success: true });
     }
 
@@ -348,6 +364,13 @@ export async function handleEventPromoAdminCodes(req, res) {
         .single();
       if (error) return res.status(400).json({ error: error.message });
       const enriched = await attachPassDiscountsToCodes(db, [data]);
+      await writeAdminMutationAudit(db, {
+        admin: auth.admin,
+        action: 'event_promo.code.updated',
+        targetType: 'event_promo_code',
+        targetId: codeId,
+        details: { fields: Object.keys(update) },
+      });
       return res.status(200).json({ success: true, promoCode: mapAdminPromoRow(enriched[0]) });
     }
 
@@ -363,6 +386,13 @@ export async function handleEventPromoAdminCodes(req, res) {
         .eq('id', codeId)
         .is('revoked_at', null);
       if (error) return res.status(400).json({ error: error.message });
+      await writeAdminMutationAudit(db, {
+        admin: auth.admin,
+        action: 'event_promo.code.revoked',
+        targetType: 'event_promo_code',
+        targetId: codeId,
+        details: {},
+      });
       return res.status(200).json({ success: true });
     }
 

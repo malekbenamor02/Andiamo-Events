@@ -1,7 +1,8 @@
 // Admin Approve Order endpoint for Vercel
 // This endpoint approves orders in PENDING_ADMIN_APPROVAL status
-// CRITICAL: Inlined authAdminMiddleware to avoid separate function
 
+import { verifyAdminAuth } from './_lib/admin-verify.js';
+import { createAdminDbClient } from './_lib/service-role-client.js';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -32,136 +33,6 @@ function formatEventTime(eventDate) {
     return `${dayName} · ${day} ${monthName} ${year} · ${hours}:${minutes}`;
   } catch (e) {
     return null;
-  }
-}
-
-// Inlined verifyAdminAuth function
-async function verifyAdminAuth(req) {
-  try {
-    // Get token from cookie
-    const cookies = req.headers.cookie || '';
-    const cookieMatch = cookies.match(/adminToken=([^;]+)/);
-    const token = cookieMatch ? cookieMatch[1] : null;
-    
-    if (!token) {
-      return {
-        valid: false,
-        error: 'No authentication token provided',
-        statusCode: 401
-      };
-    }
-    
-    // Verify JWT signature and expiration
-    const jwt = await import('jsonwebtoken');
-    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
-    
-    const isProduction = process.env.NODE_ENV === 'production' || 
-                         process.env.VERCEL === '1' || 
-                         !!process.env.VERCEL_URL;
-    
-    if (!jwtSecret || jwtSecret === 'fallback-secret-dev-only') {
-      if (isProduction) {
-        return {
-          valid: false,
-          error: 'Server configuration error: JWT_SECRET not set',
-          statusCode: 500
-        };
-      }
-    }
-    
-    let decoded;
-    try {
-      decoded = jwt.default.verify(token, jwtSecret);
-    } catch (jwtError) {
-      return {
-        valid: false,
-        error: 'Invalid or expired token',
-        reason: jwtError.name === 'TokenExpiredError' 
-          ? 'Token expired - session ended' 
-          : jwtError.message,
-        statusCode: 401
-      };
-    }
-    
-    if (!decoded.id || !decoded.email || !decoded.role) {
-      return {
-        valid: false,
-        error: 'Invalid token payload',
-        statusCode: 401
-      };
-    }
-    
-    if (decoded.role !== 'admin' && decoded.role !== 'super_admin') {
-      return {
-        valid: false,
-        error: 'Invalid admin role',
-        statusCode: 403
-      };
-    }
-    
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-      return {
-        valid: false,
-        error: 'Supabase not configured',
-        statusCode: 500
-      };
-    }
-    
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
-    );
-    
-    const { data: admin, error: dbError } = await supabase
-      .from('admins')
-      .select('id, email, name, role, is_active')
-      .eq('id', decoded.id)
-      .eq('email', decoded.email)
-      .eq('is_active', true)
-      .single();
-    
-    if (dbError || !admin) {
-      return {
-        valid: false,
-        error: 'Admin not found or inactive',
-        statusCode: 401
-      };
-    }
-    
-    if (admin.role !== decoded.role) {
-      return {
-        valid: false,
-        error: 'Admin role mismatch',
-        statusCode: 401
-      };
-    }
-    
-    const tokenExpiration = decoded.exp ? decoded.exp * 1000 : null;
-    const timeRemaining = tokenExpiration 
-      ? Math.max(0, Math.floor((tokenExpiration - Date.now()) / 1000)) 
-      : 0;
-    
-    return {
-      valid: true,
-      admin: {
-        id: admin.id,
-        email: admin.email,
-        name: admin.name,
-        role: admin.role
-      },
-      sessionExpiresAt: tokenExpiration,
-      sessionTimeRemaining: timeRemaining
-    };
-    
-  } catch (error) {
-    console.error('Auth middleware error:', error);
-    return {
-      valid: false,
-      error: 'Authentication error',
-      details: error.message,
-      statusCode: 500
-    };
   }
 }
 
@@ -206,18 +77,6 @@ export default async (req, res) => {
       });
     }
     
-    // Check environment variables
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-      console.error('Missing environment variables:', {
-        hasSupabaseUrl: !!process.env.SUPABASE_URL,
-        hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY
-      });
-      return res.status(500).json({ 
-        error: 'Server configuration error',
-        details: 'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
-      });
-    }
-    
     // Parse request body
     let bodyData;
     if (req.body) {
@@ -244,23 +103,9 @@ export default async (req, res) => {
       adminEmail: adminEmail ? `${adminEmail.substring(0, 3)}***` : 'NOT SET'
     });
     
-    // Initialize Supabase
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
-    );
-    
-    // Use service role if available (for RLS bypass)
-    let supabaseService = null;
-    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      supabaseService = createClient(
-        process.env.SUPABASE_URL,
-        process.env.SUPABASE_SERVICE_ROLE_KEY
-      );
-    }
-    
-    const dbClient = supabaseService || supabase;
+    // Service role required for orders/tickets after RLS hardening
+    const dbClient = await createAdminDbClient(res);
+    if (!dbClient) return;
     
     // Step 1: Verify order exists and is in valid status
     const { data: order, error: orderError } = await dbClient
@@ -466,7 +311,7 @@ export default async (req, res) => {
         
         // Generate tickets with QR codes
         const tickets = [];
-        const storageClient = supabaseService || supabase;
+        const storageClient = dbClient;
         
         for (const pass of orderPasses) {
           for (let i = 0; i < pass.quantity; i++) {
@@ -542,7 +387,7 @@ export default async (req, res) => {
                     code: registryInsertError.code,
                     details: registryInsertError.details,
                     hint: registryInsertError.hint,
-                    usingServiceRole: !!supabaseService,
+                    usingServiceRole: true,
                     entry: registryEntry
                   });
                 } else {
@@ -553,7 +398,7 @@ export default async (req, res) => {
                 console.error(`⚠️ Failed to populate QR registry for ticket ${ticketData.secure_token}:`, {
                   error: registryError.message,
                   stack: registryError.stack,
-                  usingServiceRole: !!supabaseService
+                  usingServiceRole: true
                 });
               }
             }

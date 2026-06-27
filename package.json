@@ -13,6 +13,8 @@
     "dev:full": "concurrently \"npm run dev\" \"npm run server\"",
     "security:check": "node scripts/check-security-config.js",
     "security:rls": "node scripts/security/check-supabase-rls.mjs",
+    "security:admin-auth": "node scripts/security/check-admin-service-role-auth.mjs",
+    "security:public-routes": "node scripts/security/check-public-service-role-routes.mjs",
     "security:storage": "node scripts/security/check-supabase-storage.mjs",
     "security:setup": "node scripts/setup-security.js",
     "invite:qr": "node scripts/create-invitation-qr-tickets.cjs",
@@ -22,6 +24,8 @@
     "email:api:test-investor": "node scripts/send-brevo-smtp-test.cjs --via api",
     "email:ticket-poster-pdf": "node scripts/render-premium-ticket-poster-pdf.cjs",
     "test:purchase-channel": "node --test api/_lib/purchase-channel-label.test.cjs",
+    "test:admin-auth-order": "node --test api/_lib/admin-route-auth-order.test.cjs api/_lib/admin-permission-routes.test.cjs",
+    "test:login-security": "node --test api/_lib/scanner-auth.test.cjs api/_lib/scanner-login-rate-limit.test.cjs api/_lib/ambassador-auth.test.cjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

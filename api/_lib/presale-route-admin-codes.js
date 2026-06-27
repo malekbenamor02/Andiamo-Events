@@ -2,10 +2,11 @@
  * Admin presale codes API (paths under /api/admin/presale/codes)
  */
 import '../../lib/sentry-server.js';
-import { createClient } from '@supabase/supabase-js';
 import { verifyAdminAuth, hasPermission } from './admin-verify.js';
 import { hashPresaleCode, requirePresalePepperOr503 } from './presale-server.js';
 import { validateAdminPassDiscounts } from './presale-discount.js';
+import { createAdminDbClient } from './service-role-client.js';
+import { writeAdminMutationAudit } from './admin-mutation-audit.js';
 
 function getPathname(req) {
   const raw = String(req.url || req.path || '');
@@ -20,11 +21,8 @@ function getPathname(req) {
   return raw.split('?')[0] || '';
 }
 
-function makeDb() {
-  const s = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-  return process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-    : s;
+async function makeDb(res) {
+  return createAdminDbClient(res);
 }
 
 async function readJsonBody(req) {
@@ -111,7 +109,8 @@ export async function handlePresaleAdminCodes(req, res) {
 
     const path = getPathname(req);
     const method = req.method;
-    const db = makeDb();
+    const db = await makeDb(res);
+    if (!db) return;
 
     if (method === 'GET' && path === '/api/admin/presale/codes') {
       const q = /^https?:\/\//i.test(String(req.url || ''))
@@ -214,6 +213,13 @@ export async function handlePresaleAdminCodes(req, res) {
           console.error('presale_codes insert label repair failed', repairErr);
         }
       }
+      await writeAdminMutationAudit(db, {
+        admin: auth.admin,
+        action: 'presale.code.created',
+        targetType: 'presale_code',
+        targetId: id,
+        details: { eventId, label: row.label },
+      });
       return res.status(200).json({
         success: true,
         id,
@@ -270,6 +276,14 @@ export async function handlePresaleAdminCodes(req, res) {
         await db.from('presale_code_pass_discounts').delete().eq('presale_code_id', codeId);
       }
 
+      await writeAdminMutationAudit(db, {
+        admin: auth.admin,
+        action: 'presale.code.discounts_updated',
+        targetType: 'presale_code',
+        targetId: codeId,
+        details: { discount_mode },
+      });
+
       return res.status(200).json({ success: true });
     }
 
@@ -300,6 +314,13 @@ export async function handlePresaleAdminCodes(req, res) {
         .update({ max_total_redemptions: maxR, updated_at: new Date().toISOString() })
         .eq('id', codeId);
       if (upErr) return res.status(400).json({ error: upErr.message });
+      await writeAdminMutationAudit(db, {
+        admin: auth.admin,
+        action: 'presale.code.max_redemptions_updated',
+        targetType: 'presale_code',
+        targetId: codeId,
+        details: { max_total_redemptions: maxR },
+      });
       return res.status(200).json({ success: true });
     }
 
@@ -335,6 +356,13 @@ export async function handlePresaleAdminCodes(req, res) {
         .update({ max_total_unlocks: maxUnlocks, updated_at: new Date().toISOString() })
         .eq('id', codeId);
       if (upErr) return res.status(400).json({ error: upErr.message });
+      await writeAdminMutationAudit(db, {
+        admin: auth.admin,
+        action: 'presale.code.max_unlocks_updated',
+        targetType: 'presale_code',
+        targetId: codeId,
+        details: { max_total_unlocks: maxUnlocks },
+      });
       return res.status(200).json({ success: true });
     }
 
@@ -347,6 +375,13 @@ export async function handlePresaleAdminCodes(req, res) {
         .eq('id', id)
         .is('revoked_at', null);
       if (error) return res.status(400).json({ error: error.message });
+      await writeAdminMutationAudit(db, {
+        admin: auth.admin,
+        action: 'presale.code.paused',
+        targetType: 'presale_code',
+        targetId: id,
+        details: {},
+      });
       return res.status(200).json({ success: true });
     }
 
@@ -359,6 +394,13 @@ export async function handlePresaleAdminCodes(req, res) {
         .eq('id', id)
         .is('revoked_at', null);
       if (error) return res.status(400).json({ error: error.message });
+      await writeAdminMutationAudit(db, {
+        admin: auth.admin,
+        action: 'presale.code.unpaused',
+        targetType: 'presale_code',
+        targetId: id,
+        details: {},
+      });
       return res.status(200).json({ success: true });
     }
 

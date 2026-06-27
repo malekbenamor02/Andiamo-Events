@@ -302,7 +302,7 @@ function ambassadorAccessDeniedReason(ambassador) {
 
 /**
  * Validate ambassador session cookie and optionally roll/rotate.
- * Returns auth context or null after sending 401.
+ * Returns auth context or null after sending 401/403.
  */
 async function requireAmbassadorAuth(req, res, db) {
   const rawToken = parseAmbassadorCookie(req);

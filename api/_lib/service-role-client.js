@@ -44,4 +44,12 @@ export async function createServiceRoleClient() {
   return createClient(url, serviceRoleKey);
 }
 
+/** Admin-authenticated routes: service role only (no anon fallback after RLS hardening). */
+export async function createAdminDbClient(res) {
+  const cfg = requireServiceRoleClient(res);
+  if (!cfg) return null;
+  const { createClient } = await import('@supabase/supabase-js');
+  return createClient(cfg.url, cfg.serviceRoleKey);
+}
+
 export { isProductionRuntime };

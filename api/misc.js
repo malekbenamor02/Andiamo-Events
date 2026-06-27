@@ -13,6 +13,8 @@ import {
   looksLikeBcryptHash,
 } from './_lib/ambassador-password-server.js';
 import { hasEffectivePermission } from './_lib/admin-authorization.mjs';
+import { createAdminDbClient, createServiceRoleClient } from './_lib/service-role-client.js';
+import { writeAdminMutationAudit } from './_lib/admin-mutation-audit.js';
 import { applyClearAdminTokenCookie } from './_lib/clear-admin-token-cookie.js';
 import { agentDebugLog } from './_lib/agent-debug-log.js';
 import { createRequire } from 'module';
@@ -1540,9 +1542,6 @@ export default async (req, res) => {
     // POST /api/aio-events/save-submission (moved from api/aio-events-save-submission.js)
     // ============================================
     if (path === '/api/aio-events/save-submission' && method === 'POST') {
-      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-        return res.status(500).json({ error: 'Supabase not configured' });
-      }
       try {
         const bodyData = await parseBody(req);
         const {
@@ -2916,11 +2915,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           data: { hasService: !!process.env.SUPABASE_SERVICE_ROLE_KEY },
         });
         // #endregion
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
         // Extract eventId from path: /api/admin/passes/[eventId]
         const pathParts = path.split('/');
         const eventId = pathParts[pathParts.length - 1];
@@ -2933,19 +2927,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           return res.status(400).json({ error: 'Event ID is required' });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-        
-        let dbClient = supabase;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Fetch ALL passes (including inactive) with stock information
         const { data: passes, error: passesError } = await dbClient
@@ -3074,11 +3057,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             valid: false
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
         // Extract pass ID from path: /api/admin/passes/[id]/stock
         const pathParts = path.split('/');
         const passId = pathParts[pathParts.length - 2]; // Second to last part
@@ -3100,19 +3078,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-        
-        let dbClient = supabase;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Fetch current pass state
         const { data: currentPass, error: fetchError } = await dbClient
@@ -3219,11 +3186,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             valid: false
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
         // Extract pass ID from path: /api/admin/passes/[id]/payment-methods
         const pathParts = path.split('/');
         const passId = pathParts[pathParts.length - 2]; // Second to last part
@@ -3241,19 +3203,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           return res.status(401).json({ error: 'Unauthorized' });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-        
-        let dbClient = supabase;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Fetch current pass to verify it exists
         const { data: currentPass, error: fetchError } = await dbClient
@@ -3372,11 +3323,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             valid: false
           });
         }
-
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-
         // Extract pass ID from path: /api/admin/passes/[id]/description
         const pathParts = path.split('/');
         const passId = pathParts[pathParts.length - 2]; // Second to last part
@@ -3399,19 +3345,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           return res.status(400).json({ error: 'Description too long', details: 'Max length is 2000 characters' });
         }
 
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-
-        let dbClient = supabase;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         const { data: currentPass, error: fetchError } = await dbClient
           .from('event_passes')
@@ -3490,11 +3425,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             valid: false
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
         // Extract pass ID from path: /api/admin/passes/[id]/activate
         const pathParts = path.split('/');
         const passId = pathParts[pathParts.length - 2]; // Second to last part
@@ -3515,19 +3445,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-        
-        let dbClient = supabase;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Fetch current pass state
         const { data: currentPass, error: fetchError } = await dbClient
@@ -3622,11 +3541,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             valid: false
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
         const bodyData = await parseBody(req);
         const { orderId, reason } = bodyData;
         const adminId = authResult.admin?.id;
@@ -3636,21 +3550,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           return res.status(400).json({ error: 'Order ID is required' });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-        
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
-        
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Step 1: Verify order exists and is in valid status
         const { data: order, error: orderError } = await dbClient
@@ -3852,7 +3753,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             
             // Generate tickets with QR codes
             const tickets = [];
-            const storageClient = supabaseService || supabase;
+            const storageClient = dbClient;
             
             for (const pass of orderPasses) {
               for (let i = 0; i < pass.quantity; i++) {
@@ -4225,9 +4126,6 @@ We Create Memories`;
       }
 
       try {
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
         // Do not trust frontend: only accept orderId. Payment success/failure is determined by ClicToPay API only.
         let orderId = null;
         if (method === 'POST') {
@@ -4239,13 +4137,7 @@ We Create Memories`;
         }
         if (!orderId) return res.status(400).json({ error: 'orderId is required' });
 
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-        }
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createServiceRoleClient();
 
         const { data: order, error: orderError } = await dbClient
           .from('orders')
@@ -4421,13 +4313,16 @@ We Create Memories`;
           if (existingTickets?.length > 0) {
             ticketResult = { success: true, message: 'Tickets already generated', ticketsCount: existingTickets.length, emailSent: true, smsSent: true };
           } else {
-            const { data: orderPasses, error: passesError } = await dbClient.from('order_passes').select('*').eq('order_id', orderId);
+            const { data: orderPasses, error: passesError } = await dbClient
+              .from('order_passes')
+              .select('id, quantity, pass_type, price, order_pass_id')
+              .eq('order_id', orderId);
             if (passesError || !orderPasses?.length) throw new Error('No passes found');
             const { v4: uuidv4 } = await import('uuid');
             const QRCode = await import('qrcode');
             // Order-level QR access token fields were removed from orders table.
             const tickets = [];
-            const storageClient = supabaseService || supabase;
+            const storageClient = dbClient;
             for (const pass of orderPasses) {
               for (let i = 0; i < pass.quantity; i++) {
                 const secureToken = uuidv4();
@@ -4662,11 +4557,6 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
         const bodyData = await parseBody(req);
         const { orderId, newEmail } = bodyData;
         const adminId = authResult.admin?.id;
@@ -4686,21 +4576,8 @@ Billets envoyés par email. We Create Memories`;
           return res.status(400).json({ error: 'Invalid email format' });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-        
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
-        
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Step 1: Verify order exists and get current email
         const { data: order, error: orderError } = await dbClient
@@ -4795,11 +4672,6 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
         const bodyData = await parseBody(req);
         const { orderId, adminNotes } = bodyData;
         const adminId = authResult.admin?.id;
@@ -4814,21 +4686,8 @@ Billets envoyés par email. We Create Memories`;
           return res.status(400).json({ error: 'Admin notes must be a string or null' });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-        
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
-        
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Step 1: Verify order exists
         const { data: order, error: orderError } = await dbClient
@@ -4927,11 +4786,6 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-
         const queryString = req.url && req.url.includes('?') ? req.url.split('?')[1] : '';
         const params = new URLSearchParams(queryString);
         const orderId = params.get('orderId');
@@ -4939,12 +4793,8 @@ Billets envoyés par email. We Create Memories`;
           return res.status(400).json({ error: 'Valid orderId (UUID) is required' });
         }
 
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-        const supabaseService = process.env.SUPABASE_SERVICE_ROLE_KEY
-          ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-          : null;
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         const { data: order, error: orderError } = await dbClient
           .from('orders')
@@ -5760,14 +5610,6 @@ Billets envoyés par email. We Create Memories`;
         });
         // #endregion
         
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ 
-            error: 'Server configuration error',
-            details: 'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
-          });
-        }
-        
-        // Admin must use service role so RLS does not block reading orders
         if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
           return res.status(503).json({ 
             error: 'Server configuration error',
@@ -5775,11 +5617,8 @@ Billets envoyés par email. We Create Memories`;
           });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_SERVICE_ROLE_KEY
-        );
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Parse query parameters from req.url
         const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
@@ -5795,7 +5634,7 @@ Billets envoyés par email. We Create Memories`;
         const offset = Math.max(0, parseInt(searchParams.get('offset') || '0', 10) || 0);
         
         function buildAmbassadorOrdersSelect(selectStr) {
-          let q = supabase
+          let q = dbClient
             .from('orders')
             .select(selectStr, { count: 'exact' })
             .eq('payment_method', 'ambassador_cash')
@@ -5819,7 +5658,7 @@ Billets envoyés par email. We Create Memories`;
         // Auto-reject expired orders in the background — do not block the list response (admin tab latency).
         void (async () => {
           try {
-            const { error: rpcErr } = await supabase.rpc('auto_reject_expired_pending_cash_orders');
+            const { error: rpcErr } = await dbClient.rpc('auto_reject_expired_pending_cash_orders');
             if (rpcErr) console.warn('Warning: auto_reject_expired_pending_cash_orders RPC error:', rpcErr);
           } catch (rejectError) {
             console.warn('Warning: Failed to auto-reject expired orders:', rejectError);
@@ -5916,14 +5755,6 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ 
-            error: 'Server configuration error',
-            details: 'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
-          });
-        }
-        
         const bodyData = await parseBody(req);
         const { orderId } = bodyData;
         const adminId = authResult.admin?.id;
@@ -5942,24 +5773,11 @@ Billets envoyés par email. We Create Memories`;
           adminEmail: adminEmail ? `${adminEmail.substring(0, 3)}***` : 'NOT SET'
         });
         
-        const { createClient } = await import('@supabase/supabase-js');
-        
-        // Use service role key if available (for RLS bypass)
-        let supabase;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Step 1: Verify order exists and get current status
-        const { data: order, error: orderError } = await supabase
+        const { data: order, error: orderError } = await dbClient
           .from('orders')
           .select('id, status, payment_method, payment_status')
           .eq('id', orderId)
@@ -5985,7 +5803,7 @@ Billets envoyés par email. We Create Memories`;
           
           // Log security event
           try {
-            await supabase.from('security_audit_logs').insert({
+            await dbClient.from('security_audit_logs').insert({
               event_type: 'invalid_order_removal',
               endpoint: '/api/admin-remove-order',
               user_id: adminId,
@@ -6023,7 +5841,7 @@ Billets envoyés par email. We Create Memories`;
         }
         
         // Step 4: Get order_passes to prepare for stock decrease (for future feature #2)
-        const { data: orderPasses, error: passesError } = await supabase
+        const { data: orderPasses, error: passesError } = await dbClient
           .from('order_passes')
           .select('*')
           .eq('order_id', orderId);
@@ -6035,7 +5853,7 @@ Billets envoyés par email. We Create Memories`;
         
         // Step 5: Update order status to REMOVED_BY_ADMIN (soft delete)
         const oldStatus = order.status;
-        const { data: updatedOrder, error: updateError } = await supabase
+        const { data: updatedOrder, error: updateError } = await dbClient
           .from('orders')
           .update({
             status: 'REMOVED_BY_ADMIN',
@@ -6050,7 +5868,7 @@ Billets envoyés par email. We Create Memories`;
         
         if (updateError || !updatedOrder) {
           // Check if order was already updated (idempotency check)
-          const { data: checkOrder } = await supabase
+          const { data: checkOrder } = await dbClient
             .from('orders')
             .select('id, status')
             .eq('id', orderId)
@@ -6084,13 +5902,13 @@ Billets envoyés par email. We Create Memories`;
         // Step 6: Release stock (decrease sold_quantity)
         // Use database function for reliability (handles pass_id NULL cases)
         try {
-          const { data: releaseResult, error: releaseError } = await supabase
+          const { data: releaseResult, error: releaseError } = await dbClient
             .rpc('release_order_stock_internal', { order_id_param: orderId });
 
           if (releaseError) {
             console.error('❌ Error calling release_order_stock_internal:', releaseError);
             // Fallback: Manual release with pass_type matching
-            await manualReleaseStockWithFallback(orderId, adminId, adminEmail, supabase);
+            await manualReleaseStockWithFallback(orderId, adminId, adminEmail, dbClient);
           } else {
             console.log(`✅ Stock released via database function`);
           }
@@ -6098,7 +5916,7 @@ Billets envoyés par email. We Create Memories`;
           console.error('❌ Error releasing stock on admin remove:', stockError);
           // Try fallback manual release
           try {
-            await manualReleaseStockWithFallback(orderId, adminId, adminEmail, supabase);
+            await manualReleaseStockWithFallback(orderId, adminId, adminEmail, dbClient);
           } catch (fallbackError) {
             console.error('❌ Fallback stock release also failed:', fallbackError);
             // Log but don't fail - database trigger will handle it as safety net
@@ -6107,7 +5925,7 @@ Billets envoyés par email. We Create Memories`;
 
         // Step 7: Log to order_logs (audit trail)
         try {
-          await supabase.from('order_logs').insert({
+          await dbClient.from('order_logs').insert({
             order_id: orderId,
             action: 'admin_remove',
             performed_by: adminId,
@@ -6180,28 +5998,8 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ 
-            error: 'Server configuration error',
-            details: 'Supabase not configured'
-          });
-        }
-        
-        const { createClient } = await import('@supabase/supabase-js');
-        
-        let dbClient;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         const { data, error } = await dbClient
           .from('order_expiration_settings')
@@ -6252,14 +6050,6 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ 
-            error: 'Server configuration error',
-            details: 'Supabase not configured'
-          });
-        }
-        
         const bodyData = await parseBody(req);
         const { settings } = bodyData;
         
@@ -6267,20 +6057,8 @@ Billets envoyés par email. We Create Memories`;
           return res.status(400).json({ error: 'Settings must be an array' });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        
-        let dbClient;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         const results = await Promise.all(
           settings.map(async (setting) => {
@@ -6398,14 +6176,6 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ 
-            error: 'Server configuration error',
-            details: 'Supabase not configured'
-          });
-        }
-        
         const bodyData = await parseBody(req);
         const { orderId, expiresAt, reason } = bodyData;
         const adminId = authResult.admin?.id;
@@ -6427,20 +6197,8 @@ Billets envoyés par email. We Create Memories`;
           return res.status(400).json({ error: 'Expiration date must be in the future' });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        
-        let dbClient;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Verify order exists
         const { data: order, error: orderError } = await dbClient
@@ -6512,14 +6270,6 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ 
-            error: 'Server configuration error',
-            details: 'Supabase not configured'
-          });
-        }
-        
         const bodyData = await parseBody(req);
         const { orderId } = bodyData;
         const adminId = authResult.admin?.id;
@@ -6528,20 +6278,8 @@ Billets envoyés par email. We Create Memories`;
           return res.status(400).json({ error: 'Order ID is required' });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        
-        let dbClient;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Update order to clear expiration
         const { data: updatedOrder, error: updateError } = await dbClient
@@ -6597,29 +6335,8 @@ Billets envoyés par email. We Create Memories`;
             details: authResult.details || authResult.reason
           });
         }
-
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ 
-            error: 'Supabase not configured',
-            details: 'Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables'
-          });
-        }
-
-        const { createClient } = await import('@supabase/supabase-js');
-        
-        // Use service role key if available for better access
-        let supabase;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         // Parse query parameters (all optional)
         const {
@@ -6661,7 +6378,7 @@ Billets envoyés par email. We Create Memories`;
         }
 
         // Build query
-        let query = supabase
+        let query = dbClient
           .from('aio_events_submissions')
           .select('*', { count: 'exact' });
 
@@ -6809,26 +6526,8 @@ Billets envoyés par email. We Create Memories`;
             details: superAdminResult.details
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
-        const { createClient } = await import('@supabase/supabase-js');
-        
-        // Use service role key if available (for RLS bypass)
-        let dbClient;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Parse query parameters
         const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
@@ -6976,11 +6675,6 @@ Billets envoyés par email. We Create Memories`;
           });
         }
         
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
-        const { createClient } = await import('@supabase/supabase-js');
         const body = await parseBody(req);
         const { guest_name, guest_phone, guest_email, event_id, pass_type_id, quantity } = body;
         
@@ -7010,19 +6704,8 @@ Billets envoyés par email. We Create Memories`;
           });
         }
         
-        // Use service role client for all database operations (bypasses RLS)
-        let dbClient;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         // Fetch event details
         const { data: event, error: eventError } = await dbClient
@@ -7273,26 +6956,11 @@ Billets envoyés par email. We Create Memories`;
             details: superAdminResult.details
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
         const { createClient } = await import('@supabase/supabase-js');
         const id = officialInvitationsIdMatch[1];
         
-        let dbClient;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         const { data: invitation, error: invitationError } = await dbClient
           .from('official_invitations')
@@ -7351,26 +7019,11 @@ Billets envoyés par email. We Create Memories`;
             details: superAdminResult.details
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
         const { createClient } = await import('@supabase/supabase-js');
         const id = officialInvitationsResendMatch[1];
         
-        let dbClient;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         const { data: invitation, error: invitationError } = await dbClient
           .from('official_invitations')
@@ -7516,26 +7169,11 @@ Billets envoyés par email. We Create Memories`;
             details: superAdminResult.details
           });
         }
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
-        }
-        
         const { createClient } = await import('@supabase/supabase-js');
         const id = officialInvitationsIdMatch[1];
         
-        let dbClient;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          dbClient = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
-        }
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         
         const { data: invitation, error: invitationError } = await dbClient
           .from('official_invitations')
@@ -7607,13 +7245,13 @@ Billets envoyés par email. We Create Memories`;
             details: authResult.details || authResult.reason
           });
         }
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
           return res.status(500).json({ error: 'Supabase not configured' });
         }
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(
           process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
+          process.env.SUPABASE_SERVICE_ROLE_KEY
         );
         const limit = Math.min(parseInt(req.query?.limit || '100', 10) || 100, 500);
         const offset = Math.max(parseInt(req.query?.offset || '0', 10) || 0, 0);
@@ -7781,25 +7419,8 @@ Billets envoyés par email. We Create Memories`;
           });
         }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
-
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         // Parse query parameters (handle both req.query and URL parsing)
         let queryParams = req.query || {};
@@ -7966,25 +7587,8 @@ Billets envoyés par email. We Create Memories`;
           });
         }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
-
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
         const counts = {};
 
         if (true) {
@@ -8064,25 +7668,8 @@ Billets envoyés par email. We Create Memories`;
           });
         }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
-
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         let queryParams = req.query || {};
         if (!req.query && req.url && req.url.includes('?')) {
@@ -8299,14 +7886,9 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-        const dbClient = process.env.SUPABASE_SERVICE_ROLE_KEY
-          ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-          : supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
+
         const { data, error } = await dbClient
           .from('investor_contacts')
           .select('id, email, created_at')
@@ -8388,25 +7970,8 @@ Billets envoyés par email. We Create Memories`;
           });
         }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
-
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         // Parse query parameters (handle both req.query and URL parsing)
         let queryParams = req.query || {};
@@ -8705,11 +8270,6 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
         const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
         if (!WINSMS_API_KEY) {
           return res.status(500).json({ 
@@ -8729,36 +8289,10 @@ Billets envoyés par email. We Create Memories`;
           return res.status(400).json({ success: false, error: 'Phone numbers array is required' });
         }
 
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
-
-        const dbClient = supabaseService || supabase;
-
-        // Get admin ID from JWT
-        let adminId = null;
-        try {
-          const jwt = await import('jsonwebtoken');
-          const cookies = req.headers.cookie || '';
-          const cookieMatch = cookies.match(/adminToken=([^;]+)/);
-          const token = cookieMatch ? cookieMatch[1] : null;
-          if (token) {
-            const decoded = jwt.default.verify(token, process.env.JWT_SECRET || 'fallback-secret');
-            adminId = decoded.id || decoded.userId;
-          }
-        } catch (e) {
-          // Ignore token errors
-        }
+        const adminId = authResult.admin?.id ?? null;
 
         const results = [];
         const errors = [];
@@ -8880,6 +8414,19 @@ Billets envoyés par email. We Create Memories`;
           await new Promise(resolve => setTimeout(resolve, 100));
         }
 
+        await writeAdminMutationAudit(dbClient, {
+          admin: authResult.admin,
+          action: 'marketing.bulk_sms.sent',
+          targetType: 'bulk_sms',
+          targetId: metadata?.campaignName || null,
+          details: {
+            total: phoneNumbers.length,
+            sent: results.length,
+            failed: errors.length,
+            smsLogIds,
+          },
+        });
+
         return res.json({
           success: true,
           data: {
@@ -8978,17 +8525,8 @@ Billets envoyés par email. We Create Memories`;
           });
         }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-        }
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         const campaignId = path.split('/')[4];
         const bodyData = await parseBody(req);
@@ -9110,6 +8648,13 @@ Billets envoyés par email. We Create Memories`;
 
         const { data: snapRaw } = await dbClient.from('marketing_campaigns').select('*').eq('id', campaignId).single();
         const snap = snapRaw ? normalizeMarketingCampaignRow(snapRaw) : null;
+        await writeAdminMutationAudit(dbClient, {
+          admin: authResult.admin,
+          action: 'marketing.campaign.launched',
+          targetType: 'marketing_campaign',
+          targetId: campaignId,
+          details: { total_recipients: recipients.length, status: 'scheduled' },
+        });
         return res.json({
           success: true,
           data: {
@@ -9146,17 +8691,8 @@ Billets envoyés par email. We Create Memories`;
           });
         }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-        }
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         const bodyData = await parseBody(req);
         const {
@@ -9232,6 +8768,13 @@ Billets envoyés par email. We Create Memories`;
             campaign_id: campaign.id,
             email_template: campaign.email_template,
             sender_profile: campaign.sender_profile,
+          });
+          await writeAdminMutationAudit(dbClient, {
+            admin: authResult.admin,
+            action: 'marketing.campaign.created',
+            targetType: 'marketing_campaign',
+            targetId: campaign.id,
+            details: { type: 'email', mode: 'draft' },
           });
           return res.json({
             success: true,
@@ -9475,17 +9018,8 @@ Billets envoyés par email. We Create Memories`;
           });
         }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-        }
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         const { data: campaigns, error } = await dbClient
           .from('marketing_campaigns')
@@ -9524,23 +9058,13 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
         const campaignId = path.split('/')[4];
         if (!campaignId) {
           return res.status(400).json({ success: false, error: 'Campaign ID required' });
         }
 
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-        }
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         const { data: c, error } = await dbClient
           .from('marketing_campaigns')
@@ -9596,23 +9120,13 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
         const campaignId = path.split('/')[4];
         if (!campaignId) {
           return res.status(400).json({ success: false, error: 'Campaign ID required' });
         }
 
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-        }
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         const result = await processMarketingCampaignSendBatch(dbClient, campaignId);
         if (!result.ok) {
@@ -9642,25 +9156,14 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
         const campaignId = path.split('/')[4];
         if (!campaignId) {
           return res.status(400).json({ success: false, error: 'Campaign ID required' });
         }
 
         const bodyData = await parseBody(req);
-        const { createClient } = await import('@supabase/supabase-js');
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-        } else {
-          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-        }
-        const dbClient = supabaseService;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         const { data: camp, error: loadErr } = await dbClient
           .from('marketing_campaigns')
@@ -9777,8 +9280,22 @@ Billets envoyés par email. We Create Memories`;
             .eq('id', campaignId)
             .single();
           if (loadSavedErr || !savedRow) {
+            await writeAdminMutationAudit(dbClient, {
+              admin: authResult.admin,
+              action: 'marketing.campaign.updated',
+              targetType: 'marketing_campaign',
+              targetId: campaignId,
+              details: { contentPatch: true },
+            });
             return res.json({ success: true, data: { updated: true } });
           }
+          await writeAdminMutationAudit(dbClient, {
+            admin: authResult.admin,
+            action: 'marketing.campaign.updated',
+            targetType: 'marketing_campaign',
+            targetId: campaignId,
+            details: { contentPatch: true },
+          });
           return res.json({ success: true, data: { updated: true, campaign: savedRow } });
         }
 
@@ -9799,6 +9316,13 @@ Billets envoyés par email. We Create Memories`;
         if (error) {
           return res.status(500).json({ success: false, error: error.message });
         }
+        await writeAdminMutationAudit(dbClient, {
+          admin: authResult.admin,
+          action: 'marketing.campaign.status_updated',
+          targetType: 'marketing_campaign',
+          targetId: campaignId,
+          details: { previousStatus: camp.status, newStatus: targetStatus },
+        });
         return res.json({ success: true, data: { status: targetStatus } });
       } catch (err) {
         console.error('Error PATCH campaign:', err);
@@ -9820,11 +9344,6 @@ Billets envoyés par email. We Create Memories`;
             valid: false
           });
         }
-
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ success: false, error: 'Supabase not configured' });
-        }
-
         const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
         if (!WINSMS_API_KEY) {
           return res.status(500).json({ 
@@ -9844,21 +9363,8 @@ Billets envoyés par email. We Create Memories`;
           return res.status(400).json({ success: false, error: 'Phone numbers array is required' });
         }
 
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
-
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
-
-        const dbClient = supabaseService || supabase;
+        const dbClient = await createAdminDbClient(res);
+        if (!dbClient) return;
 
         const results = [];
         const errors = [];

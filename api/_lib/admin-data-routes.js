@@ -2,7 +2,12 @@
  * Admin data API routes — service-role backed; replaces client Supabase on private tables.
  * All routes enforce tab/permission access and use explicit field allowlists on writes.
  */
+import { createRequire } from 'module';
 import { hasEffectivePermission } from './admin-authorization.mjs';
+import { writeAdminMutationAudit } from './admin-mutation-audit.js';
+
+const requireCjs = createRequire(import.meta.url);
+const { revokeAllAmbassadorSessions } = requireCjs('./ambassador-auth.cjs');
 import {
   ADMIN_DATA_ROUTE_PERMISSIONS as PERM,
   pickAllowedFields,
@@ -134,6 +139,13 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
 
       const { data, error } = await ctx.db.from('ambassadors').insert(row).select().single();
       if (error) return res.status(500).json({ error: error.message });
+      await writeAdminMutationAudit(ctx.db, {
+        admin: ctx.auth.admin,
+        action: 'ambassador.created',
+        targetType: 'ambassador',
+        targetId: data?.id,
+        details: { status: row.status },
+      });
       return res.status(201).json({
         data,
         ...(temporaryPassword ? { temporaryPassword } : {}),
@@ -150,6 +162,13 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
     if (method === 'DELETE') {
       const { error } = await ctx.db.from('ambassadors').delete().eq('id', ambassadorId);
       if (error) return res.status(500).json({ error: error.message });
+      await writeAdminMutationAudit(ctx.db, {
+        admin: ctx.auth.admin,
+        action: 'ambassador.deleted',
+        targetType: 'ambassador',
+        targetId: ambassadorId,
+        details: {},
+      });
       return res.status(200).json({ success: true });
     }
     const body = await parseBody(req);
@@ -174,6 +193,7 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
       });
       row.updated_at = new Date().toISOString();
 
+      const passwordChanged = !!row.password;
       const { data, error } = await ctx.db
         .from('ambassadors')
         .update(row)
@@ -181,6 +201,16 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
         .select()
         .single();
       if (error) return res.status(500).json({ error: error.message });
+      if (passwordChanged) {
+        await revokeAllAmbassadorSessions(ctx.db, ambassadorId, 'admin_password_reset').catch(() => {});
+      }
+      await writeAdminMutationAudit(ctx.db, {
+        admin: ctx.auth.admin,
+        action: 'ambassador.updated',
+        targetType: 'ambassador',
+        targetId: ambassadorId,
+        details: { fields: Object.keys(row), passwordChanged },
+      });
       return res.status(200).json({
         data,
         ...(temporaryPassword ? { temporaryPassword } : {}),

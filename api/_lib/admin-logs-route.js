@@ -2,6 +2,7 @@
  * Admin logs (served via api/misc.js — keeps Vercel serverless count ≤ 11).
  */
 import { verifyAdminAuth, hasPermission } from './admin-verify.js';
+import { createAdminDbClient } from './service-role-client.js';
 
 let corsUtils = null;
 async function getCorsUtils() {
@@ -47,17 +48,9 @@ export async function handleAdminLogs(req, res) {
     });
   }
 
-  if (!process.env.SUPABASE_URL || (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_ANON_KEY)) {
-    return res.status(500).json({ 
-      error: 'Supabase not configured',
-      details: 'Please check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY) environment variables'
-    });
-  }
-
   try {
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-    const supabase = createClient(process.env.SUPABASE_URL, supabaseKey);
+    const supabase = await createAdminDbClient(res);
+    if (!supabase) return;
 
     // Parse query parameters (all optional)
     const {

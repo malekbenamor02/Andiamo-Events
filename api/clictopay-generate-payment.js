@@ -2,8 +2,8 @@
 // Generates ClicToPay payment and returns redirect URL
 // ClicToPay (Société Monétique Tunisie) - register.do
 
-import { createClient } from '@supabase/supabase-js';
 import { createRequire } from 'module';
+import { createServiceRoleClient } from './_lib/service-role-client.js';
 import { publicApiError, PUBLIC_ERROR_CODES } from './_lib/public-api-error.js';
 
 const requireFee = createRequire(import.meta.url);
@@ -59,15 +59,14 @@ export default async function handler(req, res) {
     return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, { logDetails: 'orderId required' });
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !supabaseKey) {
+  let dbClient;
+  try {
+    dbClient = await createServiceRoleClient();
+  } catch {
     return publicApiError(res, 500, PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE, undefined, {
-      logDetails: 'Database not configured',
+      logDetails: 'SUPABASE_SERVICE_ROLE_KEY not configured',
     });
   }
-
-  const dbClient = createClient(supabaseUrl, supabaseKey);
 
   const { data: order, error: orderError } = await dbClient
     .from('orders')

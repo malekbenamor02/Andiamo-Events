@@ -120,11 +120,47 @@ if (resolvedSupabaseUrl && resolvedSupabaseAnonKey) {
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
     supabaseService = createClient(resolvedSupabaseUrl, trimEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY));
   } else {
-    console.warn('SUPABASE_SERVICE_ROLE_KEY not set - storage operations may fail. Using anon key instead.');
+    console.warn('SUPABASE_SERVICE_ROLE_KEY not set — privileged routes will fail closed (503).');
   }
 } else {
   // Supabase client not initialized - admin login disabled
 }
+
+/** Service role only — never fall back to anon for privileged DB access. */
+function failClosedServiceRole(res, details) {
+  const payload = {
+    error: 'Server configuration error',
+    details: details || 'SUPABASE_SERVICE_ROLE_KEY is required.',
+  };
+  if (res && typeof res.status === 'function') {
+    res.status(503).json(payload);
+    return null;
+  }
+  return null;
+}
+
+function requireServiceRoleDb(res) {
+  if (!supabaseService) {
+    return failClosedServiceRole(res);
+  }
+  return supabaseService;
+}
+
+function getServiceRoleDbOrThrow() {
+  if (!supabaseService) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is required');
+  }
+  return supabaseService;
+}
+
+function getSecurityAuditDb() {
+  return supabaseService;
+}
+
+function getPublicAnonDb() {
+  return supabase;
+}
+
 
 const {
   requireAdminAuth,
@@ -375,7 +411,7 @@ const logSecurityRequest = async (req, res, next) => {
       }
       
       // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       await securityLogClient.from('security_audit_logs').insert({
         event_type: 'api_request',
         endpoint: req.path,
@@ -420,7 +456,7 @@ const validateOrigin = (req, res, next) => {
     // Log for security audit
     if (supabase) {
       // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       securityLogClient.from('security_audit_logs').insert({
         event_type: 'request_without_origin',
         endpoint: req.path,
@@ -454,7 +490,7 @@ const validateOrigin = (req, res, next) => {
     // Log security event
     if (supabase) {
       // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       securityLogClient.from('security_audit_logs').insert({
         event_type: 'origin_validation_failed',
         endpoint: req.path,
@@ -584,7 +620,7 @@ const checkSuspiciousActivity = async (eventType, details, req) => {
     if (eventCount >= threshold) {
       // Log critical alert
       // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       await securityLogClient.from('security_audit_logs').insert({
         event_type: 'suspicious_activity_alert',
         endpoint: req.path || 'unknown',
@@ -746,7 +782,7 @@ const qrCodeAccessLimiter = createRateLimiter({
     if (supabase) {
       try {
         // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'rate_limit_exceeded',
           endpoint: '/api/qr-codes/:accessToken',
@@ -780,7 +816,7 @@ const smsLimiter = createRateLimiter({
     if (supabase) {
       try {
         // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'rate_limit_exceeded',
           endpoint: req.path,
@@ -1120,7 +1156,8 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     }
     
     // Fetch admin by email (service role — admins table RLS denies anon)
-    const loginDb = supabaseService || supabase;
+    const loginDb = requireServiceRoleDb(res);
+    if (!loginDb) return;
     const { data: admin, error } = await loginDb
       .from('admins')
       .select('*')
@@ -1418,7 +1455,8 @@ app.post('/api/audience-suggestions', suggestionsLimiter, async (req, res) => {
 // Update sales settings endpoint
 app.post('/api/update-sales-settings', requireAdminAuth, requireAdminPermission('settings:manage'), async (req, res) => {
   try {
-    const dbClient = supabaseService || supabase;
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     if (!dbClient) {
       return res.status(500).json({ error: 'Supabase not configured' });
     }
@@ -1513,7 +1551,8 @@ app.get('/api/verify-admin', verifyAdminLimiter, requireAdminAuth, async (req, r
 app.get('/api/scan-system-status', async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ enabled: false });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { data: row, error } = await db.from('scan_system_config').select('scan_enabled').limit(1).single();
     if (error || !row) return res.json({ enabled: false });
     return res.json({ enabled: !!row.scan_enabled });
@@ -1538,7 +1577,8 @@ function clearScannerTokenCookie(req, res) {
 app.post('/api/scanner-login', scannerLoginLimiter, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Service unavailable' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { email, password } = req.body || {};
     const em = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const pw = typeof password === 'string' ? password : '';
@@ -1581,7 +1621,8 @@ app.patch('/api/admin/scan-system-config', requireAdminAuth, requireSuperAdmin, 
       return res.status(400).json({ error: 'Invalid payload: scan_enabled/enabled must be boolean' });
     }
     const scan_enabled = v === true || v === 'true';
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const nowIso = new Date().toISOString();
     const { error } = await db
       .from('scan_system_config')
@@ -1596,7 +1637,8 @@ app.patch('/api/admin/scan-system-config', requireAdminAuth, requireSuperAdmin, 
 app.get('/api/admin/scan-system-config', requireAdminAuth, requireSuperAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { data: rows, error } = await db
       .from('scan_system_config')
       .select('scan_enabled, updated_at, updated_by')
@@ -1617,7 +1659,8 @@ app.get('/api/admin/scan-system-config', requireAdminAuth, requireSuperAdmin, as
 app.get('/api/admin/scanners', requireAdminAuth, requireSuperAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { data: rows, error } = await db.from('scanners').select('id, name, email, is_active, role, created_by, created_at').order('created_at', { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     const adminIds = [...new Set((rows || []).map(r => r.created_by).filter(Boolean))];
@@ -1644,7 +1687,8 @@ app.post('/api/admin/scanners', requireAdminAuth, requireSuperAdmin, async (req,
     if (pw.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
     let roleVal = 'scanner';
     if (typeof role === 'string' && role.trim() === 'supervisor') roleVal = 'supervisor';
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { data: existingRow, error: findErr } = await db.from('scanners').select('id').eq('email', em).maybeSingle();
     if (findErr) return res.status(500).json({ error: findErr.message });
     if (existingRow?.id) return res.status(400).json({ error: 'Email already used' });
@@ -1674,7 +1718,8 @@ app.patch('/api/admin/scanners/:id', requireAdminAuth, requireSuperAdmin, async 
     const id = req.params.id;
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'Invalid id' });
     const { name, email, is_active, password, role } = req.body || {};
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const up = {};
     if (typeof name === 'string' && name.trim()) up.name = name.trim();
     if (typeof email === 'string' && email.trim()) { const e = email.trim().toLowerCase(); if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) up.email = e; }
@@ -1703,7 +1748,8 @@ app.delete('/api/admin/scanners/:id', requireAdminAuth, requireSuperAdmin, async
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const id = req.params.id;
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'Invalid id' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { error } = await db.from('scanners').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) return res.status(500).json({ error: error.message });
     return res.json({ success: true });
@@ -1714,7 +1760,8 @@ app.delete('/api/admin/scanners/:id', requireAdminAuth, requireSuperAdmin, async
 app.post('/api/scanner/validate-ticket', requireScannerAuth, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ success: false, result: 'error', message: 'Service unavailable' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { data: cfg } = await db.from('scan_system_config').select('scan_enabled').limit(1).single();
     if (!cfg || !cfg.scan_enabled) return res.status(503).json({ success: false, enabled: false, message: 'Scan system is not started', result: 'disabled' });
     const scannerId = req.scanner.scannerId;
@@ -1789,7 +1836,8 @@ app.post('/api/scanner/validate-ticket', requireScannerAuth, async (req, res) =>
 app.get('/api/scanner/events', requireScannerAuth, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { data: cfg } = await db.from('scan_system_config').select('scan_enabled').limit(1).single();
     if (!cfg || !cfg.scan_enabled) return res.status(503).json({ error: 'Scan system is not started', enabled: false });
     const now = new Date().toISOString();
@@ -1803,7 +1851,8 @@ app.get('/api/scanner/events', requireScannerAuth, async (req, res) => {
 app.get('/api/scanner/scans', requireScannerAuth, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const scannerId = req.scanner.scannerId;
     const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : null;
     const date_from = typeof req.query.date_from === 'string' ? req.query.date_from : null;
@@ -1831,7 +1880,8 @@ app.get('/api/scanner/scans', requireScannerAuth, async (req, res) => {
 app.get('/api/scanner/statistics', requireScannerAuth, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const scannerId = req.scanner.scannerId;
     const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : null;
     const date_from = typeof req.query.date_from === 'string' ? req.query.date_from : null;
@@ -1859,7 +1909,8 @@ app.get('/api/scanner/statistics', requireScannerAuth, async (req, res) => {
 app.get('/api/scanner/session', requireScannerAuth, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { data: sc, error } = await db.from('scanners').select('id, name, email, role, is_active').eq('id', req.scanner.scannerId).single();
     if (error || !sc || !sc.is_active) {
       clearScannerTokenCookie(req, res);
@@ -1876,7 +1927,8 @@ app.get('/api/scanner/session', requireScannerAuth, async (req, res) => {
 app.post('/api/scanner/lookup-ticket', requireScannerAuth, requireSupervisorAuth, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ success: false, result: 'error', message: 'Service unavailable' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { secure_token, event_id } = req.body || {};
     const out = await scanSupervisor.supervisorLookupTicket(db, { secure_token, event_id });
     return res.status(out.status).json(out.body);
@@ -1889,7 +1941,8 @@ app.post('/api/scanner/lookup-ticket', requireScannerAuth, requireSupervisorAuth
 app.get('/api/scanner/inspect-detail', requireScannerAuth, requireSupervisorAuth, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ success: false, error: 'Service unavailable' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const qr_ticket_id = typeof req.query.qr_ticket_id === 'string' ? req.query.qr_ticket_id.trim() : '';
     const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : '';
     const out = await scanSupervisor.supervisorInspectDetail(db, { qr_ticket_id, event_id });
@@ -1903,7 +1956,8 @@ app.get('/api/scanner/inspect-detail', requireScannerAuth, requireSupervisorAuth
 app.get('/api/scanner/event-scans', requireScannerAuth, requireSupervisorAuth, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : '';
     const date_from = typeof req.query.date_from === 'string' ? req.query.date_from : null;
     const date_to = typeof req.query.date_to === 'string' ? req.query.date_to : null;
@@ -1920,7 +1974,8 @@ app.get('/api/scanner/event-scans', requireScannerAuth, requireSupervisorAuth, a
 app.get('/api/scanner/event-statistics', requireScannerAuth, requireSupervisorAuth, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : '';
     const date_from = typeof req.query.date_from === 'string' ? req.query.date_from : null;
     const date_to = typeof req.query.date_to === 'string' ? req.query.date_to : null;
@@ -1937,7 +1992,8 @@ app.get('/api/admin/scanners/:id/scans', requireAdminAuth, requireSuperAdmin, as
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const id = req.params.id;
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'Invalid id' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : null;
     const date_from = typeof req.query.date_from === 'string' ? req.query.date_from : null;
     const date_to = typeof req.query.date_to === 'string' ? req.query.date_to : null;
@@ -1963,7 +2019,8 @@ app.get('/api/admin/scanners/:id/statistics', requireAdminAuth, requireSuperAdmi
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const id = req.params.id;
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'Invalid id' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     let q = db.from('scans').select('scan_result, qr_ticket_id').eq('scanner_id', id);
     const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : null;
     if (event_id && /^[0-9a-f-]{36}$/i.test(event_id)) q = q.eq('event_id', event_id);
@@ -1992,7 +2049,8 @@ app.get('/api/admin/scanners/:id/statistics', requireAdminAuth, requireSuperAdmi
 app.get('/api/admin/scan-history', requireAdminAuth, requireSuperAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const scanner_id = typeof req.query.scanner_id === 'string' ? req.query.scanner_id.trim() : null;
     const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : null;
     const date_from = typeof req.query.date_from === 'string' ? req.query.date_from : null;
@@ -2046,7 +2104,8 @@ app.get('/api/admin/scan-history', requireAdminAuth, requireSuperAdmin, async (r
 app.get('/api/admin/scan-statistics', requireAdminAuth, requireSuperAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const db = supabaseService || supabase;
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const scanner_id = typeof req.query.scanner_id === 'string' ? req.query.scanner_id.trim() : null;
     const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : null;
     const date_from = typeof req.query.date_from === 'string' ? req.query.date_from : null;
@@ -2625,8 +2684,8 @@ app.post('/api/admin/official-invitations/create', requireAdminAuth, requireSupe
     }
 
     // Use service role client for all database operations (bypasses RLS)
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Fetch event details
     const { data: event, error: eventError } = await dbClient
       .from('events')
@@ -2735,7 +2794,8 @@ app.post('/api/admin/official-invitations/create', requireAdminAuth, requireSupe
 
     // Insert all qr_tickets entries
     if (qrTicketsEntries.length > 0) {
-      const dbClient = supabaseService || supabase;
+      const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
       const { error: qrTicketsError } = await dbClient
         .from('qr_tickets')
         .insert(qrTicketsEntries);
@@ -2863,8 +2923,8 @@ app.get('/api/admin/official-invitations', requireAdminAuth, requireSuperAdmin, 
 
   try {
     // Use service role client to bypass RLS (backend operations)
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     const { event_id, status, search, limit = '50', offset = '0' } = req.query;
 
     let query = dbClient
@@ -2988,8 +3048,8 @@ app.get('/api/admin/official-invitations/:id', requireAdminAuth, requireSuperAdm
 
   try {
     // Use service role client to bypass RLS (backend operations)
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     const { id } = req.params;
 
     // Fetch invitation
@@ -3048,8 +3108,8 @@ app.post('/api/admin/official-invitations/:id/resend', requireAdminAuth, require
     const { id } = req.params;
 
     // Use service role client to bypass RLS (backend operations)
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Fetch invitation
     const { data: invitation, error: invitationError } = await dbClient
       .from('official_invitations')
@@ -3183,8 +3243,8 @@ app.delete('/api/admin/official-invitations/:id', requireAdminAuth, requireSuper
 
   try {
     // Use service role client to bypass RLS (backend operations)
-    const dbClient = supabaseService || supabase;
-    
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     const { id } = req.params;
 
     // Check if invitation exists
@@ -3406,7 +3466,8 @@ app.post('/api/admin-update-application', requireAdminAuth, requireAdminPermissi
     // Update application status (using anon key - RLS policies should allow this)
     // If RLS blocks it, we'll get a clear error message
     
-    const dbClient = supabaseService || supabase;
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     const { data: reviewerRow } = await dbClient.from('admins').select('name').eq('id', req.admin.id).maybeSingle();
     const reviewerName = (reviewerRow?.name && String(reviewerRow.name).trim()) || req.admin.email || null;
 
@@ -4395,8 +4456,8 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, requireAdminPermis
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
     }
 
-    const db = supabaseService || supabase;
-
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { sources, includeMetadata } = req.query;
     
     if (!sources) {
@@ -4745,8 +4806,8 @@ app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) =>
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
     }
 
-    const db = supabaseService || supabase;
-
+    const db = requireServiceRoleDb(res);
+    if (!db) return;
     const { sources } = req.query;
     const requestedSources = sources ? (typeof sources === 'string' ? sources.split(',') : sources) : 
       ['ambassador_applications', 'orders', 'aio_events_submissions', 'approved_ambassadors', 'phone_subscribers'];
@@ -5298,8 +5359,8 @@ app.post('/api/admin/cancel-order', requireAdminAuth, requireAdminPermission('or
       });
     }
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Verify order exists
     const { data: order, error: orderError } = await dbClient
       .from('orders')
@@ -5407,8 +5468,8 @@ app.post('/api/admin-remove-order', requireAdminAuth, requireAdminPermission('or
       adminEmail: adminEmail ? `${adminEmail.substring(0, 3)}***` : 'NOT SET'
     });
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Step 1: Verify order exists and get current status
     const { data: order, error: orderError } = await dbClient
       .from('orders')
@@ -5711,8 +5772,8 @@ app.get('/api/passes/:eventId', async (req, res) => {
       return res.status(400).json({ error: 'Event ID is required' });
     }
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     const { data: eventData, error: eventError } = await dbClient
       .from('events')
       .select('id, presale_enabled')
@@ -5811,8 +5872,8 @@ app.get('/api/admin/passes/:eventId', requireAdminAuth, requireAdminPermission('
       return res.status(400).json({ error: 'Invalid event id' });
     }
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Fetch ALL passes (including inactive) with stock information
     const { data: passes, error: passesError } = await dbClient
       .from('event_passes')
@@ -6174,8 +6235,8 @@ app.post('/api/admin/passes/:id/stock', requireAdminAuth, requireAdminPermission
       });
     }
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Fetch current pass state (for audit log)
     const { data: currentPass, error: fetchError } = await dbClient
       .from('event_passes')
@@ -6288,8 +6349,8 @@ app.put('/api/admin/passes/:id/payment-methods', requireAdminAuth, requireAdminP
       return res.status(400).json({ error: 'Pass ID is required' });
     }
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Fetch current pass to verify it exists
     const { data: currentPass, error: fetchError } = await dbClient
       .from('event_passes')
@@ -6419,8 +6480,8 @@ app.put('/api/admin/passes/:id/description', requireAdminAuth, requireAdminPermi
       return res.status(400).json({ error: 'Description too long', details: 'Max length is 2000 characters' });
     }
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     const { data: currentPass, error: fetchError } = await dbClient
       .from('event_passes')
       .select('id, event_id, name, description')
@@ -6493,8 +6554,8 @@ app.post('/api/admin/passes/:id/activate', requireAdminAuth, requireAdminPermiss
       });
     }
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Fetch current pass state (for audit log)
     const { data: currentPass, error: fetchError } = await dbClient
       .from('event_passes')
@@ -6578,7 +6639,8 @@ app.post('/api/admin/passes/:id/activate', requireAdminAuth, requireAdminPermiss
 // DELETE /api/admin/passes/:id — super_admin events:manage, service role
 app.delete('/api/admin/passes/:id', requireAdminAuth, requireAdminPermission('events:manage'), async (req, res) => {
   try {
-    const dbClient = supabaseService || supabase;
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     if (!dbClient) {
       return res.status(500).json({ error: 'Supabase not configured' });
     }
@@ -6719,7 +6781,8 @@ app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, requireAdminPerm
       return res.status(500).json({ error: 'Supabase not configured' });
     }
     // Use service role so RLS does not block reading orders; anon would return empty/fail
-    const dbClient = supabaseService || supabase;
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     if (!supabaseService) {
       return res.status(503).json({
         error: 'Server configuration error',
@@ -6787,7 +6850,8 @@ app.get('/api/admin/ambassador-sales/logs', requireAdminAuth, requireAdminPermis
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    const dbClient = supabaseService || supabase;
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     const { date_from, date_to, action, ambassador_id, order_id, limit = 100, offset = 0 } = req.query;
 
     let query = dbClient
@@ -6850,7 +6914,8 @@ app.get('/api/auto-reject-expired-orders', requireCronSecret, async (req, res) =
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    const dbClient = supabaseService || supabase;
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     const { data, error } = await dbClient.rpc('auto_reject_expired_pending_cash_orders');
 
     if (error) {
@@ -6891,7 +6956,8 @@ app.get('/api/admin/order-expiration-settings', requireAdminAuth, requireAdminPe
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    const dbClient = supabaseService || supabase;
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     const { data, error } = await dbClient
       .from('order_expiration_settings')
       .select('*')
@@ -6937,7 +7003,8 @@ app.post('/api/admin/order-expiration-settings', requireAdminAuth, requireAdminP
       return res.status(400).json({ error: 'Settings must be an array' });
     }
 
-    const dbClient = supabaseService || supabase;
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     const adminId = req.admin?.id;
 
     // Get current settings per status in the loop below
@@ -7072,8 +7139,8 @@ app.post('/api/admin/set-order-expiration', requireAdminAuth, requireAdminPermis
       return res.status(400).json({ error: 'Expiration date must be in the future' });
     }
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Verify order exists
     const { data: order, error: orderError } = await dbClient
       .from('orders')
@@ -7146,8 +7213,8 @@ app.delete('/api/admin/clear-order-expiration', requireAdminAuth, requireAdminPe
       return res.status(400).json({ error: 'Order ID is required' });
     }
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Update order to clear expiration
     const { data: updatedOrder, error: updateError } = await dbClient
       .from('orders')
@@ -8181,8 +8248,8 @@ app.get('/api/qr-codes/:accessToken', logSecurityRequest, qrCodeAccessLimiter, a
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    const dbClient = supabaseService || supabase;
-    
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Find order by QR access token
     const { data: order, error: orderError } = await dbClient
       .from('orders')
@@ -8820,9 +8887,9 @@ async function generateTicketsAndSendEmail(orderId) {
     }
 
     // Use service role client for ALL operations (storage AND database) if available
-    const dbClient = supabaseService || supabase;
-    const storageClient = supabaseService || supabase;
-    
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
+    const storageClient = dbClient;
     console.log('🔑 Supabase Client Type:', supabaseService ? 'Service Role (✅)' : 'Anon Key (⚠️)');
     if (!supabaseService) {
       console.warn('⚠️ Service role key not set - using anon key (may fail due to RLS)');
@@ -9708,7 +9775,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
           // Log security event
           try {
             // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       await securityLogClient.from('security_audit_logs').insert({
               event_type: 'captcha_verification_failed',
               endpoint: '/api/generate-tickets-for-order',
@@ -9781,7 +9848,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       // Log security event - invalid order ID attempt
       try {
         // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'invalid_order_access',
           endpoint: '/api/generate-tickets-for-order',
@@ -9809,7 +9876,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       // Log security event - attempt to generate tickets for unpaid order
       try {
         // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'unauthorized_ticket_generation',
           endpoint: '/api/generate-tickets-for-order',
@@ -9852,7 +9919,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       // But log it for security audit
       try {
         // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'duplicate_ticket_generation_attempt',
           endpoint: '/api/generate-tickets-for-order',
@@ -9875,7 +9942,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       // Log security event - invalid order ID attempt
       try {
         // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'invalid_order_access',
           endpoint: '/api/generate-tickets-for-order',
@@ -9907,7 +9974,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       // Log security event - attempt to generate tickets for unpaid order
       try {
         // Use service role client for security audit logs (bypasses RLS)
-      const securityLogClient = supabaseService || supabase;
+      const securityLogClient = getSecurityAuditDb();
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'unauthorized_ticket_generation',
           endpoint: '/api/generate-tickets-for-order',
@@ -10018,8 +10085,8 @@ app.post('/api/admin-skip-ambassador-confirmation', requireAdminAuth, requireAdm
     });
 
     // Fetch order with conditional update (idempotency)
-    const dbClient = supabaseService || supabase;
-    
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Step 1: Verify order exists and is in valid status
     const { data: order, error: orderError } = await dbClient
       .from('orders')
@@ -10046,7 +10113,7 @@ app.post('/api/admin-skip-ambassador-confirmation', requireAdminAuth, requireAdm
       
       // Log security event
       try {
-        const securityLogClient = supabaseService || supabase;
+        const securityLogClient = getSecurityAuditDb();
         await securityLogClient.from('security_audit_logs').insert({
           event_type: 'invalid_status_transition',
           endpoint: '/api/admin-skip-ambassador-confirmation',
@@ -10264,8 +10331,8 @@ app.post('/api/admin-approve-order', requireAdminAuth, requireAdminPermission('o
       adminEmail: adminEmail ? `${adminEmail.substring(0, 3)}***` : 'NOT SET'
     });
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Step 1: Verify order exists and is in valid status
     const { data: order, error: orderError } = await dbClient
       .from('orders')
@@ -10291,7 +10358,7 @@ app.post('/api/admin-approve-order', requireAdminAuth, requireAdminPermission('o
 
       // Log security event
       try {
-        const securityLogClient = supabaseService || supabase;
+        const securityLogClient = getSecurityAuditDb();
         await securityLogClient.from('security_audit_logs').insert({
           event_type: 'invalid_status_transition',
           endpoint: '/api/admin-approve-order',
@@ -10531,8 +10598,8 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, requireAdminPermiss
       adminEmail: adminEmail ? `${adminEmail.substring(0, 3)}***` : 'NOT SET'
     });
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Step 1: Verify order exists and is PAID
     const { data: order, error: orderError } = await dbClient
       .from('orders')
@@ -10584,7 +10651,7 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, requireAdminPermiss
       
       // Log security event
       try {
-        const securityLogClient = supabaseService || supabase;
+        const securityLogClient = getSecurityAuditDb();
         await securityLogClient.from('security_audit_logs').insert({
           event_type: 'invalid_resend_attempt',
           endpoint: '/api/admin-resend-ticket-email',
@@ -10826,11 +10893,7 @@ function shuffleArray(array) {
 }
 
 async function releaseOrderStock(orderId, reason) {
-  if (!supabase) {
-    throw new Error('Supabase not configured');
-  }
-
-  const dbClient = supabaseService || supabase;
+  const dbClient = getServiceRoleDbOrThrow();
 
   // Step 1: Atomically check and set stock_released flag
   // This prevents double-release from webhook retries, admin double-clicks, or race conditions
@@ -10968,7 +11031,7 @@ async function releaseOrderStock(orderId, reason) {
 
 // Helper: log order creation failure to security_audit_logs (for Logs tab)
 async function logOrderCreateFailure(req, statusCode, details) {
-  const securityLogClient = supabaseService || supabase;
+  const securityLogClient = getSecurityAuditDb();
   if (!securityLogClient) return;
   try {
     await securityLogClient.from('security_audit_logs').insert({
@@ -10988,7 +11051,7 @@ async function logOrderCreateFailure(req, statusCode, details) {
 }
 
 async function logOrderCreateSuccess(req, orderId, details) {
-  const securityLogClient = supabaseService || supabase;
+  const securityLogClient = getSecurityAuditDb();
   if (!securityLogClient) return;
   try {
     await securityLogClient.from('security_audit_logs').insert({
@@ -11059,8 +11122,8 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     }
     const promoCodeForOrder = promoBodyParse.code;
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     if (promoCodeForOrder) {
       const { requireEventPromoPepperOr503 } = await import('./api/_lib/event-promo-hash.js');
       const { tryEventPromoOrderCreateRate } = await import('./api/_lib/event-promo-server.js');
@@ -11961,8 +12024,8 @@ app.post('/api/aio-events/save-submission', async (req, res) => {
       });
     }
 
-    const dbClient = supabaseService || supabase;
-
+    const dbClient = requireServiceRoleDb(res);
+    if (!dbClient) return;
     // Extract IP address and user agent
     const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || null;
     const userAgent = req.headers['user-agent'] || null;

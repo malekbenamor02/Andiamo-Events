@@ -5,6 +5,7 @@ import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { verifyAdminAuth, hasPermission } from './_lib/admin-verify.js';
+import { createServiceRoleClient } from './_lib/service-role-client.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
@@ -71,11 +72,7 @@ async function buildPosTicketsReadyEmail(order, orderId, orderPasses, tickets) {
 }
 
 async function getSupabase() {
-  const { createClient } = await import('@supabase/supabase-js');
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error('Supabase not configured');
-  return createClient(url, key);
+  return createServiceRoleClient();
 }
 
 async function parseBody(req) {

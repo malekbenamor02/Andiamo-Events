@@ -11,6 +11,8 @@ const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = requireCjs(path.join(__dirname, '_lib/email-branding.cjs'));
 const { sendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/transactional-email.cjs'));
 const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/can-send-transactional-email.cjs'));
+const { ensureSupabaseServerEnv, getSupabaseEnv } = requireCjs(path.join(__dirname, '_lib/supabase-env.cjs'));
+const { isProductionRuntime, allowDevAnonFallback } = requireCjs(path.join(__dirname, '_lib/scanner-db.cjs'));
 import querystring from 'querystring';
 
 // Import shared CORS utility (using dynamic import for ES modules)
@@ -102,12 +104,29 @@ function parsePosPath(url) {
   };
 }
 
-async function getSupabase() {
+async function getSupabase(res) {
   const { createClient } = await import('@supabase/supabase-js');
-  if (!process.env.SUPABASE_URL) throw new Error('SUPABASE_URL not set');
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!key) throw new Error('Supabase key not set');
-  return createClient(process.env.SUPABASE_URL, key);
+  ensureSupabaseServerEnv();
+  const { url, serviceRoleKey, anonKey } = getSupabaseEnv();
+  if (!url) {
+    throw new Error('SUPABASE_URL not set');
+  }
+  if (serviceRoleKey) {
+    return createClient(url, serviceRoleKey);
+  }
+  if (isProductionRuntime()) {
+    if (res) {
+      res.status(503).json({
+        error: 'Service configuration error',
+        message: 'Database not configured for privileged POS operations',
+      });
+    }
+    return null;
+  }
+  if (allowDevAnonFallback() && anonKey) {
+    return createClient(url, anonKey);
+  }
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
 }
 
 async function getOutletBySlug(supabase, slug) {
@@ -536,9 +555,10 @@ export default async (req, res) => {
   const { outletSlug, action, actionId } = parsed;
   let supabase;
   try {
-    supabase = await getSupabase();
+    supabase = await getSupabase(res);
+    if (!supabase) return;
   } catch (e) {
-    return res.status(500).json({ error: 'Server configuration error' });
+    return res.status(503).json({ error: 'Server configuration error', message: 'Database not configured for POS' });
   }
 
   // POST /api/pos/:outletSlug/login

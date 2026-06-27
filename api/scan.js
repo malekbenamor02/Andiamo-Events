@@ -15,15 +15,43 @@ import '../lib/sentry-server.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const scanSupervisor = require(join(__dirname, '../lib/scanner-supervisor-handlers.cjs'));
-import { createClient } from '@supabase/supabase-js';
+const { createScannerDbClient, dbConfigErrorResponse } = require(join(__dirname, '_lib/scanner-db.cjs'));
+const {
+  requireScannerAuthWithDb,
+  requireSupervisorFromAuth,
+  getJwtSecret,
+} = require(join(__dirname, '_lib/scanner-auth.cjs'));
+const { requireScannerAdminAuth } = require(join(__dirname, '_lib/scanner-admin-auth.cjs'));
+const {
+  isScannerLoginRateLimited,
+  recordFailedScannerLogin,
+  clearScannerLoginRateLimit,
+} = require(join(__dirname, '_lib/scanner-login-rate-limit.cjs'));
+const { validateScannerTicketAtomic } = require(join(__dirname, '_lib/scanner-validate-ticket.cjs'));
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
 function getDb() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key);
+  return createScannerDbClient();
+}
+
+function getClientIp(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.headers['x-real-ip'] || 'unknown';
+}
+
+function clearScannerCookie(res, req) {
+  res.setHeader('Set-Cookie', buildScannerTokenCookieHeader('', req, 0));
+}
+
+async function requireScannerAuth(req, res, db) {
+  return requireScannerAuthWithDb(req, db, {
+    res,
+    clearCookie: clearScannerCookie,
+  });
+}
+
+async function requireAdminAuth(req, res) {
+  return requireScannerAdminAuth(req, res);
 }
 
 const SCAN_ENABLED_CACHE_TTL_MS = 30_000;
@@ -39,9 +67,6 @@ async function getScanEnabled(db) {
   scanEnabledCache = { value: enabled, expiresAt: now + SCAN_ENABLED_CACHE_TTL_MS };
   return enabled;
 }
-
-const QR_TICKET_VALIDATE_COLUMNS =
-  'id, event_id, event_name, event_date, event_venue, source, invitation_id, ambassador_id, ambassador_name, pass_type, buyer_name, buyer_phone, buyer_email';
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -104,40 +129,6 @@ async function setCORS(res, req) {
   return true;
 }
 
-async function requireAdminAuth(req) {
-  const token = getCookie(req, 'adminToken');
-  if (!token) return { err: { statusCode: 401, body: { error: 'Not authenticated', reason: 'No token provided', valid: false } } };
-  const secret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
-  if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') return { err: { statusCode: 500, body: { error: 'Server configuration error', valid: false } } };
-  try {
-    const d = jwt.verify(token, secret);
-    if (!d?.id || !d?.email || !d?.role) return { err: { statusCode: 401, body: { error: 'Invalid token', reason: 'Token payload is invalid', valid: false } } };
-    return { admin: d };
-  } catch (e) {
-    return { err: { statusCode: 401, body: { error: 'Invalid or expired token', reason: e.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token', valid: false } } };
-  }
-}
-
-async function requireScannerAuth(req) {
-  const token = getCookie(req, 'scannerToken');
-  if (!token) return { err: { statusCode: 401, body: { error: 'Not authenticated', reason: 'No token' } } };
-  const secret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
-  try {
-    const d = jwt.verify(token, secret);
-    if (d?.type !== 'scanner' || !d?.scannerId) return { err: { statusCode: 401, body: { error: 'Invalid scanner token' } } };
-    const role = d.scannerRole === 'supervisor' ? 'supervisor' : 'scanner';
-    return { scanner: { scannerId: d.scannerId, email: d.email, role } };
-  } catch {
-    return { err: { statusCode: 401, body: { error: 'Invalid or expired scanner token' } } };
-  }
-}
-
-function requireSupervisorFromAuth(auth) {
-  if (!auth.scanner || auth.scanner.role !== 'supervisor') {
-    return { err: { statusCode: 403, body: { error: 'Forbidden', reason: 'Supervisor role required' } } };
-  }
-  return {};
-}
 
 export default async function handler(req, res) {
   try {
@@ -153,21 +144,12 @@ export default async function handler(req, res) {
 
     const db = getDb();
 
-    // Validate environment variables for database operations
-    if (!process.env.SUPABASE_URL || (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_ANON_KEY)) {
-      console.error('Missing Supabase configuration:', {
-        hasUrl: !!process.env.SUPABASE_URL,
-        hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-        hasAnonKey: !!process.env.SUPABASE_ANON_KEY
-      });
-      // For public endpoints, return appropriate response
-      if (path === '/api/scan-system-status') {
-        return res.status(200).json({ enabled: false });
+    // Privileged routes require service role in production (no silent anon fallback)
+    if (!db && path !== '/api/scan-system-status') {
+      const cfgErr = dbConfigErrorResponse();
+      if (path === '/api/scanner-login' || path.startsWith('/api/scanner') || path.startsWith('/api/admin/scan')) {
+        return res.status(cfgErr.statusCode).json(cfgErr.body);
       }
-      return res.status(500).json({ 
-        error: 'Service configuration error',
-        message: 'Database not configured'
-      });
     }
 
     try {
@@ -181,17 +163,34 @@ export default async function handler(req, res) {
     // ——— POST /api/scanner-login
     if (path === '/api/scanner-login' && method === 'POST') {
       const body = await parseBody(req);
-      if (!db) return res.status(500).json({ error: 'Service unavailable' });
+      if (!db) {
+        const cfgErr = dbConfigErrorResponse();
+        return res.status(cfgErr.statusCode).json(cfgErr.body);
+      }
+      const ip = getClientIp(req);
       const em = (typeof body.email === 'string' ? body.email.trim().toLowerCase() : '') || '';
       const pw = typeof body.password === 'string' ? body.password : '';
       if (!em || !pw) return res.status(400).json({ error: 'Email and password required' });
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'Invalid email' });
-      if (pw.length < 6) return res.status(401).json({ error: 'Invalid credentials' });
+      if (isScannerLoginRateLimited(ip, em)) {
+        return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'Invalid credentials' });
+      if (pw.length < 6) {
+        recordFailedScannerLogin(ip, em);
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
       const { data: sc, error: e } = await db.from('scanners').select('id, email, name, password_hash, is_active, role').eq('email', em).single();
-      if (e || !sc || !sc.is_active) return res.status(401).json({ error: 'Invalid credentials' });
+      if (e || !sc || !sc.is_active) {
+        recordFailedScannerLogin(ip, em);
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
       const ok = await bcrypt.compare(pw, sc.password_hash || '');
-      if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-      const secret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
+      if (!ok) {
+        recordFailedScannerLogin(ip, em);
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      clearScannerLoginRateLimit(ip, em);
+      const secret = getJwtSecret();
       const scannerRole = sc.role === 'supervisor' ? 'supervisor' : 'scanner';
       const token = jwt.sign({ scannerId: sc.id, email: sc.email, type: 'scanner', scannerRole }, secret, { expiresIn: '8h' });
       res.setHeader('Set-Cookie', buildScannerTokenCookieHeader(token, req, 28800));
@@ -206,9 +205,8 @@ export default async function handler(req, res) {
 
     // ——— GET /api/admin/scan-system-config (super_admin)
     if (path === '/api/admin/scan-system-config' && method === 'GET') {
-      const auth = await requireAdminAuth(req);
+      const auth = await requireAdminAuth(req, res);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const { data: rows, error } = await db
         .from('scan_system_config')
@@ -227,9 +225,8 @@ export default async function handler(req, res) {
 
     // ——— PATCH /api/admin/scan-system-config (super_admin)
     if (path === '/api/admin/scan-system-config' && method === 'PATCH') {
-      const auth = await requireAdminAuth(req);
+      const auth = await requireAdminAuth(req, res);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const body = await parseBody(req);
       const v = body && (body.scan_enabled ?? body.enabled);
@@ -248,9 +245,8 @@ export default async function handler(req, res) {
 
     // ——— GET /api/admin/scanners (super_admin)
     if (path === '/api/admin/scanners' && method === 'GET') {
-      const auth = await requireAdminAuth(req);
+      const auth = await requireAdminAuth(req, res);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const { data: rows, error } = await db.from('scanners').select('id, name, email, is_active, role, created_by, created_at').order('created_at', { ascending: false });
       if (error) return res.status(500).json({ error: error.message });
@@ -266,9 +262,8 @@ export default async function handler(req, res) {
 
     // ——— POST /api/admin/scanners (super_admin)
     if (path === '/api/admin/scanners' && method === 'POST') {
-      const auth = await requireAdminAuth(req);
+      const auth = await requireAdminAuth(req, res);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const body = await parseBody(req);
       const n = (typeof body.name === 'string' ? body.name.trim() : '') || '';
@@ -303,9 +298,8 @@ export default async function handler(req, res) {
     // ——— PATCH /api/admin/scanners/:id
     const patchScannersId = path.match(/^\/api\/admin\/scanners\/([^/]+)$/);
     if (patchScannersId && method === 'PATCH') {
-      const auth = await requireAdminAuth(req);
+      const auth = await requireAdminAuth(req, res);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const id = patchScannersId[1];
       if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'Invalid id' });
@@ -337,9 +331,8 @@ export default async function handler(req, res) {
 
     // ——— DELETE /api/admin/scanners/:id
     if (patchScannersId && method === 'DELETE') {
-      const auth = await requireAdminAuth(req);
+      const auth = await requireAdminAuth(req, res);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const id = patchScannersId[1];
       if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'Invalid id' });
@@ -351,9 +344,8 @@ export default async function handler(req, res) {
     // ——— GET /api/admin/scanners/:id/scans
     const scannersIdScans = path.match(/^\/api\/admin\/scanners\/([^/]+)\/scans$/);
     if (scannersIdScans && method === 'GET') {
-      const auth = await requireAdminAuth(req);
+      const auth = await requireAdminAuth(req, res);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const id = scannersIdScans[1];
       if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'Invalid id' });
@@ -388,9 +380,8 @@ export default async function handler(req, res) {
     // ——— GET /api/admin/scanners/:id/statistics
     const scannersIdStats = path.match(/^\/api\/admin\/scanners\/([^/]+)\/statistics$/);
     if (scannersIdStats && method === 'GET') {
-      const auth = await requireAdminAuth(req);
+      const auth = await requireAdminAuth(req, res);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const id = scannersIdStats[1];
       if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'Invalid id' });
@@ -423,9 +414,8 @@ export default async function handler(req, res) {
 
     // ——— GET /api/admin/scan-history (super_admin) + fallback when qr_ticket_id/scanner_id missing
     if (path === '/api/admin/scan-history' && method === 'GET') {
-      const auth = await requireAdminAuth(req);
+      const auth = await requireAdminAuth(req, res);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const q = (req.url || '').includes('?') ? new URLSearchParams((req.url || '').split('?')[1]) : null;
       const scanner_id = (q && q.get('scanner_id')) || null;
@@ -472,9 +462,8 @@ export default async function handler(req, res) {
 
     // ——— GET /api/admin/scan-statistics (super_admin) + fallback
     if (path === '/api/admin/scan-statistics' && method === 'GET') {
-      const auth = await requireAdminAuth(req);
+      const auth = await requireAdminAuth(req, res);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const q = (req.url || '').includes('?') ? new URLSearchParams((req.url || '').split('?')[1]) : null;
       const scanner_id = (q && q.get('scanner_id')) || null;
@@ -541,11 +530,13 @@ export default async function handler(req, res) {
       return res.status(200).json({ total, byStatus, byPass, byScanner, byScannerStatus, scannerNames, remaining_valid_passes });
     }
 
-    // ——— POST /api/scanner/validate-ticket (requireScannerAuth)
+    // ——— POST /api/scanner/validate-ticket (requireScannerAuth + DB revalidation + atomic RPC)
     if (path === '/api/scanner/validate-ticket' && method === 'POST') {
-      const auth = await requireScannerAuth(req);
+      const auth = await requireScannerAuth(req, res, db);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (!db) return res.status(500).json({ success: false, result: 'error', message: 'Service unavailable' });
+      if (!db) {
+        return res.status(503).json({ success: false, result: 'error', message: 'Service unavailable' });
+      }
       const scanEnabled = await getScanEnabled(db);
       if (!scanEnabled) return res.status(503).json({ success: false, enabled: false, message: 'Scan system is not started', result: 'disabled' });
       const body = await parseBody(req);
@@ -555,41 +546,19 @@ export default async function handler(req, res) {
       const di = typeof body.device_info === 'string' ? body.device_info.trim().slice(0, 500) : null;
       if (!st) return res.status(400).json({ success: false, result: 'invalid', message: 'secure_token required' });
       if (!ev || !/^[0-9a-f-]{36}$/i.test(ev)) return res.status(400).json({ success: false, result: 'invalid', message: 'event_id required and must be UUID' });
-      const scannerId = auth.scanner.scannerId;
-      const { data: qt, error: qtErr } = await db.from('qr_tickets').select(QR_TICKET_VALIDATE_COLUMNS).eq('secure_token', st).single();
-      if (qtErr || !qt) {
-        await db.from('scans').insert({ event_id: ev, scanner_id: scannerId, scan_result: 'invalid', scan_location: sl, device_info: di, notes: 'Token not found' });
-        return res.status(200).json({ success: false, result: 'invalid', message: 'Ticket not found' });
-      }
-      const now = new Date();
-      const evId = qt.event_id ? String(qt.event_id) : null;
-      if (evId && evId !== ev) {
-        await db.from('scans').insert({ event_id: ev, scanner_id: scannerId, qr_ticket_id: qt.id, scan_result: 'wrong_event', scan_location: sl, device_info: di, ambassador_id: qt.ambassador_id, notes: 'Wrong event' });
-        return res.status(200).json({ success: false, result: 'wrong_event', message: 'This ticket is for a different event', correct_event: { event_id: evId, event_name: qt.event_name || null, event_date: qt.event_date || null } });
-      }
-      const { data: existing } = await db.from('scans').select('id, scan_time, scanner_id').eq('qr_ticket_id', qt.id).eq('scan_result', 'valid').limit(1).single();
-      if (existing) {
-        let prevName = 'Unknown';
-        if (existing.scanner_id) { const { data: sn } = await db.from('scanners').select('name').eq('id', existing.scanner_id).single(); if (sn) prevName = sn.name; }
-        await db.from('scans').insert({ event_id: ev, scanner_id: scannerId, qr_ticket_id: qt.id, scan_result: 'already_scanned', scan_location: sl, device_info: di, ambassador_id: qt.ambassador_id, notes: 'Duplicate' });
-        const isInvDup = qt.source === 'official_invitation';
-        let invDup = null;
-        if (isInvDup && qt.invitation_id) { const { data: id } = await db.from('official_invitations').select('invitation_number, recipient_name, recipient_phone, recipient_email').eq('id', qt.invitation_id).single(); invDup = id; }
-        const ticketDup = isInvDup ? { is_invitation: true, pass_type: qt.pass_type || null, invitation_number: invDup?.invitation_number || null, recipient_name: invDup?.recipient_name || qt.buyer_name || null, recipient_phone: invDup?.recipient_phone || qt.buyer_phone || null, recipient_email: invDup?.recipient_email || qt.buyer_email || null } : undefined;
-        return res.status(200).json({ success: false, result: 'already_scanned', message: 'Ticket already scanned', previous_scan: { scanned_at: existing.scan_time, scanner_name: prevName }, ...(ticketDup && { ticket: ticketDup }) });
-      }
-      await db.from('qr_tickets').update({ ticket_status: 'USED', updated_at: now.toISOString() }).eq('id', qt.id);
-      const { data: scanRow } = await db.from('scans').insert({ event_id: ev, scanner_id: scannerId, qr_ticket_id: qt.id, scan_result: 'valid', scan_location: sl, device_info: di, ambassador_id: qt.ambassador_id, notes: 'Valid' }).select('scan_time').single();
-      const isInv = qt.source === 'official_invitation';
-      let invData = null;
-      if (isInv && qt.invitation_id) { const { data: inv } = await db.from('official_invitations').select('invitation_number, recipient_name, recipient_phone, recipient_email').eq('id', qt.invitation_id).single(); invData = inv; }
-      const ticket = { pass_type: qt.pass_type || null, buyer_name: qt.buyer_name || null, ambassador_name: isInv ? null : (qt.ambassador_name || null), event_name: qt.event_name || null, event_date: qt.event_date || null, event_venue: qt.event_venue || null, is_invitation: isInv, source: qt.source || null, scanned_at: (scanRow && scanRow.scan_time) || now.toISOString(), ...(isInv && { invitation_number: invData?.invitation_number || null, recipient_name: invData?.recipient_name || qt.buyer_name || null, recipient_phone: invData?.recipient_phone || qt.buyer_phone || null, recipient_email: invData?.recipient_email || qt.buyer_email || null }) };
-      return res.status(200).json({ success: true, result: 'valid', message: 'Ticket validated', ticket });
+      const out = await validateScannerTicketAtomic(db, {
+        secureToken: st,
+        eventId: ev,
+        scannerId: auth.scanner.scannerId,
+        scanLocation: sl,
+        deviceInfo: di,
+      });
+      return res.status(out.status).json(out.body);
     }
 
     // ——— GET /api/scanner/events
     if (path === '/api/scanner/events' && method === 'GET') {
-      const auth = await requireScannerAuth(req);
+      const auth = await requireScannerAuth(req, res, db);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const { data: cfg } = await db.from('scan_system_config').select('scan_enabled').limit(1).single();
@@ -602,7 +571,7 @@ export default async function handler(req, res) {
 
     // ——— GET /api/scanner/scans
     if (path === '/api/scanner/scans' && method === 'GET') {
-      const auth = await requireScannerAuth(req);
+      const auth = await requireScannerAuth(req, res, db);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const q = (req.url || '').includes('?') ? new URLSearchParams((req.url || '').split('?')[1] || '') : new URLSearchParams('');
@@ -626,7 +595,7 @@ export default async function handler(req, res) {
 
     // ——— GET /api/scanner/statistics
     if (path === '/api/scanner/statistics' && method === 'GET') {
-      const auth = await requireScannerAuth(req);
+      const auth = await requireScannerAuth(req, res, db);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const q = (req.url || '').includes('?') ? new URLSearchParams((req.url || '').split('?')[1] || '') : new URLSearchParams('');
@@ -650,21 +619,19 @@ export default async function handler(req, res) {
 
     // ——— GET /api/scanner/session
     if (path === '/api/scanner/session' && method === 'GET') {
-      const auth = await requireScannerAuth(req);
+      const auth = await requireScannerAuth(req, res, db);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
-      if (!db) return res.status(500).json({ error: 'Supabase not configured' });
-      const { data: sc, error } = await db.from('scanners').select('id, name, email, role, is_active').eq('id', auth.scanner.scannerId).single();
-      if (error || !sc || !sc.is_active) {
-        res.setHeader('Set-Cookie', buildScannerTokenCookieHeader('', req, 0));
-        return res.status(401).json({ error: 'Invalid or inactive scanner' });
-      }
-      const role = sc.role === 'supervisor' ? 'supervisor' : 'scanner';
-      return res.status(200).json({ id: sc.id, name: sc.name, email: sc.email, role });
+      return res.status(200).json({
+        id: auth.scanner.scannerId,
+        name: auth.scanner.name,
+        email: auth.scanner.email,
+        role: auth.scanner.role,
+      });
     }
 
     // ——— POST /api/scanner/lookup-ticket (supervisor)
     if (path === '/api/scanner/lookup-ticket' && method === 'POST') {
-      const auth = await requireScannerAuth(req);
+      const auth = await requireScannerAuth(req, res, db);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
       const supErr = requireSupervisorFromAuth(auth);
       if (supErr.err) return res.status(supErr.err.statusCode).json(supErr.err.body);
@@ -676,7 +643,7 @@ export default async function handler(req, res) {
 
     // ——— GET /api/scanner/inspect-detail (supervisor)
     if (path === '/api/scanner/inspect-detail' && method === 'GET') {
-      const auth = await requireScannerAuth(req);
+      const auth = await requireScannerAuth(req, res, db);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
       const supErr = requireSupervisorFromAuth(auth);
       if (supErr.err) return res.status(supErr.err.statusCode).json(supErr.err.body);
@@ -690,7 +657,7 @@ export default async function handler(req, res) {
 
     // ——— GET /api/scanner/event-scans (supervisor)
     if (path === '/api/scanner/event-scans' && method === 'GET') {
-      const auth = await requireScannerAuth(req);
+      const auth = await requireScannerAuth(req, res, db);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
       const supErr = requireSupervisorFromAuth(auth);
       if (supErr.err) return res.status(supErr.err.statusCode).json(supErr.err.body);
@@ -707,7 +674,7 @@ export default async function handler(req, res) {
 
     // ——— GET /api/scanner/event-statistics (supervisor)
     if (path === '/api/scanner/event-statistics' && method === 'GET') {
-      const auth = await requireScannerAuth(req);
+      const auth = await requireScannerAuth(req, res, db);
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
       const supErr = requireSupervisorFromAuth(auth);
       if (supErr.err) return res.status(supErr.err.statusCode).json(supErr.err.body);

@@ -222,7 +222,6 @@ const AppContent = ({
               <Route path="/careers/:slug" element={<Careers language={language} />} />
               <Route path="/ambassador" element={<AmbassadorApplication language={language} />} />
               <Route path="/ambassador/auth" element={<Auth language={language} />} />
-
               <Route
                 path="/ambassador/dashboard"
                 element={
