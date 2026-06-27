@@ -72,6 +72,7 @@ const { handleClicToPayConfirmPayment } = requireFromRoot(
   nodePath.join(__dirname, '_lib', 'clictopay-confirm-payment.cjs')
 );
 const { processConfirmedTicketPurchaseTracking } = requireFromRoot(nodePath.join(__dirname, '_lib', 'meta', 'ticket-purchase-tracking.cjs'));
+const { randomUuid } = requireFromRoot(nodePath.join(__dirname, '_lib', 'random-uuid.cjs'));
 const {
   parseAttributionFromBody,
   processAmbassadorLeadTracking,
@@ -3758,11 +3759,10 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             }
             
             // Import required modules
-            const { v4: uuidv4 } = await import('uuid');
             const QRCode = await import('qrcode');
             
             // Generate order access token
-            const orderAccessToken = uuidv4();
+            const orderAccessToken = randomUuid();
             
             // Calculate expiration date
             let urlExpiresAt = null;
@@ -3784,7 +3784,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             
             for (const pass of orderPasses) {
               for (let i = 0; i < pass.quantity; i++) {
-                const secureToken = uuidv4();
+                const secureToken = randomUuid();
                 const qrCodeUrl = buildTicketQrApiUrl(secureToken);
 
                 // Create ticket entry
@@ -6359,12 +6359,11 @@ We Create Memories`;
         
         // Generate QR codes
         const QRCode = (await import('qrcode')).default;
-        const { v4: uuidv4 } = await import('uuid');
         const qrCodes = [];
         const qrTicketsEntries = [];
         
         for (let i = 0; i < quantityNum; i++) {
-          const secureToken = uuidv4();
+          const secureToken = randomUuid();
           let qrCodeUrl;
           try {
             qrCodeUrl = buildTicketQrApiUrl(secureToken);

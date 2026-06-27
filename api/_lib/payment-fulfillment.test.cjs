@@ -477,6 +477,43 @@ describe('buildPaymentConfirmJson', () => {
   });
 });
 
+describe('paid-order-fulfillment uuid generation', () => {
+  const { randomUuid } = require('./random-uuid.cjs');
+
+  it('randomUuid returns RFC 4122 v4 format', () => {
+    const id = randomUuid();
+    assert.match(
+      id,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
+  });
+
+  it('paid-order-fulfillment.cjs does not import uuid package', () => {
+    const src = read('api/_lib/paid-order-fulfillment.cjs');
+    assert.doesNotMatch(src, /import\s*\(\s*['"]uuid['"]\s*\)/);
+    assert.doesNotMatch(src, /require\s*\(\s*['"]uuid['"]\s*\)/);
+    assert.match(src, /random-uuid\.cjs/);
+  });
+
+  it('paid-order-fulfillment.cjs loads without dynamic uuid import', () => {
+    const mod = require('./paid-order-fulfillment.cjs');
+    assert.equal(typeof mod.fulfillPaidOrderTicketsAndEmail, 'function');
+    assert.equal(typeof mod.buildFulfillmentDepsFromMisc, 'function');
+  });
+
+  it('api serverless routes do not dynamic-import uuid', () => {
+    for (const rel of [
+      'api/clictopay-confirm-payment.js',
+      'api/admin-approve-order.js',
+      'api/admin-pos.js',
+      'api/misc.js',
+    ]) {
+      const src = read(rel);
+      assert.doesNotMatch(src, /import\s*\(\s*['"]uuid['"]\s*\)/, rel);
+    }
+  });
+});
+
 describe('buildFulfillmentDepsFromMisc lib path', () => {
   const nodePath = require('path');
   const {

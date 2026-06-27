@@ -16,6 +16,7 @@ const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./_lib/render-premiu
 const { uploadTicketQrToR2OrSupabase, buildTicketQrApiUrl } = requireCjs(path.join(__dirname, '_lib/r2-media.cjs'));
 const { buildOnlineTicketEmailHtml } = requireCjs(path.join(__dirname, '_lib/online-ticket-email-html.cjs'));
 const { prepareTicketsByPassTypeForEmail, mergeEmailAttachments } = requireCjs(path.join(__dirname, '_lib/ticket-qr-email.cjs'));
+const { randomUuid } = requireCjs(path.join(__dirname, '_lib/random-uuid.cjs'));
 
 /** PostgREST may return `events` as [{…}]; PDF builder needs one row + poster URL when embed is missing. */
 async function ensureOrderEventsForPdf(sb, order) {
@@ -586,13 +587,12 @@ async function ordersApprove(sb, id, auth, req, res) {
     updated_at: new Date().toISOString()
   }).eq('id', id).eq('status', 'PENDING_ADMIN_APPROVAL');
 
-  const { v4: uuidv4 } = await import('uuid');
   const QRCode = await import('qrcode');
   const tickets = [];
 
   for (const pass of orderPasses) {
     for (let i = 0; i < pass.quantity; i++) {
-      const secureToken = uuidv4();
+      const secureToken = randomUuid();
       let publicQrUrl;
       try {
         publicQrUrl = buildTicketQrApiUrl(secureToken);

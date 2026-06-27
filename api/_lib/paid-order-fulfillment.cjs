@@ -11,6 +11,8 @@ const {
   buildTicketInsertPlan,
 } = require('./fulfillment-ticket-plan.cjs');
 
+const { randomUuid } = require('./random-uuid.cjs');
+
 const ORDER_PASSES_COLUMNS = 'id, order_id, quantity, pass_type, price, pass_id';
 
 const ORDER_FULFILLMENT_SELECT =
@@ -312,11 +314,10 @@ async function fulfillPaidOrderTicketsAndEmail(dbClient, deps, options) {
     result.ticketsCreatedCount = toCreate;
     result.warnings.push('dry-run: no tickets created');
   } else if (toCreate > 0) {
-    const { v4: uuidv4 } = await import('uuid');
     const nowIso = new Date().toISOString();
     const preparedRows = [];
     for (const slot of insertPlan) {
-      const secureToken = uuidv4();
+      const secureToken = randomUuid();
       let ticketQrUrl;
       try {
         ticketQrUrl = buildTicketQrApiUrl(secureToken);

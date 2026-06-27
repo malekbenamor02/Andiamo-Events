@@ -15,6 +15,7 @@ const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/can-
 const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./_lib/render-premium-ticket-pdf.cjs');
 const { buildTicketQrApiUrl } = requireCjs(path.join(__dirname, '_lib/ticket-qr-url.cjs'));
 const { prepareTicketsByPassTypeForEmail, mergeEmailAttachments } = requireCjs(path.join(__dirname, '_lib/ticket-qr-email.cjs'));
+const { randomUuid } = requireCjs(path.join(__dirname, '_lib/random-uuid.cjs'));
 
 // Helper function to format event time
 function formatEventTime(eventDate) {
@@ -303,8 +304,7 @@ export default async (req, res) => {
           throw new Error('No passes found for this order');
         }
         
-        // Import required modules
-        const { v4: uuidv4 } = await import('uuid');
+        // Generate tickets with QR codes
         const QRCode = await import('qrcode');
         
         // Order-level QR access token fields were removed from orders table.
@@ -315,7 +315,7 @@ export default async (req, res) => {
         
         for (const pass of orderPasses) {
           for (let i = 0; i < pass.quantity; i++) {
-            const secureToken = uuidv4();
+            const secureToken = randomUuid();
             let qrCodeUrl;
             try {
               qrCodeUrl = buildTicketQrApiUrl(secureToken);

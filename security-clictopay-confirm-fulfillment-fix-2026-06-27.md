@@ -72,3 +72,57 @@ node scripts/recover-paid-order-fulfillment.mjs --batch-underfulfilled --since 2
 ```
 
 Requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the environment.
+
+---
+
+## Follow-up production error: uuid package missing
+
+### Root cause
+
+After the `fulfillmentLibDir` fix (`a2fdbef`), confirm reached `api/_lib/paid-order-fulfillment.cjs` but crashed during ticket creation:
+
+```
+Cannot find package 'uuid' imported from /var/task/api/_lib/paid-order-fulfillment.cjs
+```
+
+`paid-order-fulfillment.cjs` used `await import('uuid')` for `secure_token` generation. Although `uuid` is listed in `package.json` `dependencies`, Vercel’s serverless bundle for `clictopay-confirm-payment.js` does not reliably include packages only reached via **dynamic import** from nested `_lib` modules. Local tests passed because `uuid` is present in full `node_modules`.
+
+This is **not** a ClicToPay verification failure and **not** fixed by adding Vercel `includeFiles` for `uuid`.
+
+### File changed
+
+| File | Change |
+|------|--------|
+| `api/_lib/random-uuid.cjs` | **New** — `crypto.randomUUID()` wrapper |
+| `api/_lib/paid-order-fulfillment.cjs` | Use `randomUuid()` instead of `import('uuid')` |
+| `api/admin-approve-order.js` | Same (prevent identical serverless failure) |
+| `api/admin-pos.js` | Same |
+| `api/misc.js` | Same |
+| `api/_lib/payment-fulfillment.test.cjs` | Regression tests for no `uuid` import in fulfillment/API |
+
+### `uuid` package
+
+**Removed from server-side fulfillment and API ticket paths.** `uuid` remains in `dependencies` only for the browser (`src/pages/PassPurchase.tsx` idempotency key). No new dependency added.
+
+### Tests run
+
+```bash
+npm run test:payment-fulfillment
+npm run build
+```
+
+### Deployment risk
+
+Low — `crypto.randomUUID()` is built into Node 18+ (Vercel runtime). Output format matches prior `uuid` v4 tokens expected by `tickets.secure_token`.
+
+### Affected orders requiring recovery
+
+Any order where payment was approved and status became **PAID** but fulfillment crashed on `uuid` (zero tickets, no email/SMS). **Do not re-charge.**
+
+After deploy:
+
+```bash
+node scripts/recover-paid-order-fulfillment.mjs --batch-underfulfilled --since 2026-06-27
+```
+
+Re-query Supabase for `PAID` online orders with `ticket_count < expected_tickets` after deployment.
