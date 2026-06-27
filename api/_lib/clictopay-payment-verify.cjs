@@ -19,8 +19,8 @@ function expectedOrderAmountMillimes(order, orderPasses) {
   let amount = 0;
   if (order.total_with_fees != null && order.total_with_fees !== '') {
     amount = Number(order.total_with_fees);
-  } else if (order.total_amount != null && order.total_amount !== '') {
-    amount = Number(order.total_amount);
+  } else if (order.total_price != null && order.total_price !== '') {
+    amount = Number(order.total_price);
   } else if (orderPasses?.length) {
     const baseAmount = orderPasses.reduce(
       (sum, p) => sum + Number(p.price) * Number(p.quantity),

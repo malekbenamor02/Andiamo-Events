@@ -203,11 +203,16 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
             }).description
           );
         } else if (!res.ok && data.status !== 'PAID') {
-          setState('failed');
+          // Server/route errors after bank redirect: payment may already have succeeded.
+          const showUnknown =
+            res.status === 404 || res.status >= 500 || data.error === 'Failed to load order';
+          setState(showUnknown ? 'unknown' : 'failed');
           setError(
             mapPaymentError({
-              error: data.error,
-              message: data.message || t.genericError,
+              error: showUnknown ? 'payment_unknown' : data.error,
+              message: showUnknown
+                ? data.message || t.unknownMessage
+                : data.message || t.genericError,
             }).description
           );
         } else {

@@ -11,7 +11,7 @@ const {
 } = require('./paid-order-fulfillment.cjs');
 
 const ORDER_CONFIRM_SELECT =
-  'id, status, event_id, order_number, payment_gateway_reference, total_amount, total_with_fees, fee_amount, payment_method, source';
+  'id, status, event_id, order_number, payment_gateway_reference, total_price, total_with_fees, fee_amount, payment_method, source';
 
 async function loadOrderForConfirm(dbClient, orderId) {
   return dbClient.from('orders').select(ORDER_CONFIRM_SELECT).eq('id', orderId).single();
@@ -94,7 +94,16 @@ async function handleClicToPayConfirmPayment(ctx) {
 
     const dbClient = await createServiceRoleClient();
     const { data: order, error: orderError } = await loadOrderForConfirm(dbClient, orderId);
-    if (orderError || !order) return res.status(404).json({ error: 'Order not found' });
+    if (orderError || !order) {
+      if (orderError?.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+      console.error('ClicToPay confirm: failed to load order', orderId, orderError);
+      return res.status(500).json({
+        error: 'Failed to load order',
+        details: orderError?.message || 'Order lookup failed',
+      });
+    }
 
     const { data: orderPasses } = await loadOrderPasses(dbClient, orderId);
     const gateway = await verifyClicToPayForOrder(order, orderPasses || []);

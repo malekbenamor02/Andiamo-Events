@@ -63,6 +63,12 @@ describe('payment fulfillment static guards', () => {
     assert.match(src, /validateClicToPayPaymentForOrder/);
   });
 
+  it('ORDER_CONFIRM_SELECT uses total_price (not total_amount — column does not exist on orders)', () => {
+    const src = read('api/_lib/clictopay-confirm-payment.cjs');
+    assert.match(src, /total_price/);
+    assert.doesNotMatch(src, /ORDER_CONFIRM_SELECT[\s\S]*total_amount/);
+  });
+
   it('migration defines advisory lock RPC and pass_sequence unique index', () => {
     const sql = read('supabase/migrations/20260627140000_order_fulfillment_concurrency.sql');
     assert.match(sql, /pg_advisory_xact_lock/);
@@ -167,6 +173,12 @@ describe('validateClicToPayPaymentForOrder', () => {
       passes
     );
     assert.equal(v.ok, true);
+  });
+
+  it('uses total_price when total_with_fees is absent', () => {
+    const legacyOrder = { order_number: 100, total_price: 2.1, payment_gateway_reference: 'gw' };
+    const millimes = expectedOrderAmountMillimes(legacyOrder, []);
+    assert.equal(millimes, 2100);
   });
 
   it('rejects amount mismatch', () => {
@@ -480,10 +492,13 @@ describe('clictopay confirm public safety', () => {
 
   it('vercel.json routes clictopay-confirm to dedicated function not misc.js', () => {
     const vercel = read('vercel.json');
-    assert.match(vercel, /"source": "\/api\/clictopay-confirm-payment"[\s\S]*?"destination": "\/api\/clictopay-confirm-payment\.js"/);
+    assert.match(
+      vercel,
+      /"source": "\/api\/clictopay-confirm-payment",\s*\n\s*"destination": "\/api\/clictopay-confirm-payment\.js"/
+    );
     assert.doesNotMatch(
       vercel,
-      /"source": "\/api\/clictopay-confirm-payment"[\s\S]*?"destination": "\/api\/misc\.js"/
+      /"source": "\/api\/clictopay-confirm-payment",\s*\n\s*"destination": "\/api\/misc\.js"/
     );
   });
 
