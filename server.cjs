@@ -47,7 +47,7 @@ const {
   isAmbassadorCityWide,
 } = require('./api/_lib/ambassador-selection-settings.cjs');
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./api/_lib/email-branding.cjs');
-const { uploadTicketQrToR2OrSupabase } = require('./api/_lib/r2-media.cjs');
+const { uploadTicketQrToR2OrSupabase, buildTicketQrApiUrl } = require('./api/_lib/r2-media.cjs');
 const { computeOnlinePaymentFees } = require('./api/_lib/online-payment-fee.cjs');
 const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
 const {
@@ -2693,24 +2693,11 @@ app.post('/api/admin/official-invitations/create', requireAdminAuth, requireSupe
       const secureToken = uuidv4();
       
       // Generate QR code image
-      const qrCodeBuffer = await QRCode.toBuffer(secureToken, {
-        type: 'png',
-        width: 512,
-        errorCorrectionLevel: 'M'
-      });
-
-      const fileName = `invitations/${invitation.id}/${secureToken}.png`;
-      const storageClient = supabaseService || supabase;
       let qrCodeUrl;
       try {
-        qrCodeUrl = await uploadTicketQrToR2OrSupabase(qrCodeBuffer, fileName, storageClient);
+        qrCodeUrl = buildTicketQrApiUrl(secureToken);
       } catch (uploadErr) {
-        console.error(`Error uploading QR code ${i + 1}:`, uploadErr);
-        continue;
-      }
-
-      if (!qrCodeUrl) {
-        console.error(`Failed to get public URL for QR code ${i + 1}`);
+        console.error(`Error building QR URL ${i + 1}:`, uploadErr.message);
         continue;
       }
 
@@ -3493,12 +3480,12 @@ app.post('/api/admin-update-application', requireAdminAuth, requireAdminPermissi
   }
 });
 
-// R2 + WebP/AVIF media upload (same handlers as api/media.js on Vercel)
+// Storage security + admin media upload (service role; replaces anon client uploads)
 try {
-  const { registerMediaRoutes } = require('./api/_lib/register-media-routes.cjs');
-  registerMediaRoutes(app, { requireAdminAuth });
+  const { registerStorageSecurityRoutes } = require('./api/_lib/register-storage-security-routes.cjs');
+  registerStorageSecurityRoutes(app, { requireAdminAuth, requireAdminPermission });
 } catch (mediaRegErr) {
-  console.error('Media routes registration failed:', mediaRegErr.message);
+  console.error('Storage security routes registration failed:', mediaRegErr.message);
 }
 
 const adminRouteDeps = {
@@ -9042,19 +9029,11 @@ async function generateTicketsAndSendEmail(orderId) {
         const secureToken = uuidv4();
         
         // Generate QR code
-        const qrCodeBuffer = await QRCode.toBuffer(secureToken, {
-          type: 'png',
-          width: 512,
-          margin: 2
-        });
-
-        // Upload to Supabase Storage
-        const fileName = `tickets/${orderId}/${secureToken}.png`;
         let ticketPublicUrl = null;
         try {
-          ticketPublicUrl = await uploadTicketQrToR2OrSupabase(qrCodeBuffer, fileName, storageClient);
+          ticketPublicUrl = buildTicketQrApiUrl(secureToken);
         } catch (uploadErr) {
-          console.error(`❌ Error uploading QR code for ticket ${secureToken}:`, uploadErr);
+          console.error(`❌ Error building QR URL for ticket:`, uploadErr.message);
           continue;
         }
 

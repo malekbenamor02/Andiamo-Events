@@ -109,6 +109,22 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/tickets/qr/:secureToken",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/careers/upload-document",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/media/upload",
+      "destination": "/api/media.js"
+    },
+    {
+      "source": "/api/admin/media/delete",
+      "destination": "/api/media.js"
+    },
+    {
       "source": "/api/media/upload",
       "destination": "/api/media.js"
     },
@@ -462,6 +478,38 @@
     },
     {
       "source": "/api/admin/sms-logs",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/site-logs",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/events/by-slug/:slug",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/events/by-id/:eventId",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/application-selections",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/application-selections/:path*",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/application-selection-items",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/application-selection-items/:path*",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/change-password",
       "destination": "/api/misc.js"
     },
     {
@@ -820,12 +868,12 @@
     "api/misc.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{api/_lib/**,academyRoutes.cjs,shared/admin/**,node_modules/multer/**,node_modules/bcryptjs/**,node_modules/@sparticuz/chromium/**}"
+      "includeFiles": "{api/_lib/**,academyRoutes.cjs,shared/admin/**,node_modules/multer/**,node_modules/qrcode/**,node_modules/bcryptjs/**,node_modules/@sparticuz/chromium/**}"
     },
     "api/media.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "api/_lib/**"
+      "includeFiles": "{api/_lib/**,node_modules/multer/**}"
     },
     "api/pos.js": {
       "maxDuration": 30,

@@ -20,9 +20,9 @@ import {
   fetchCareerPageContent,
   checkCareerApplicationDuplicate,
   submitCareerApplication,
+  uploadCareerDocument,
 } from "@/lib/career/api";
 import type { CareerDomain, CareerApplicationField } from "@/lib/career/types";
-import { uploadCareerDocument } from "@/lib/upload";
 import { mapPublicError } from "@/lib/userErrors";
 import { Briefcase, ArrowLeft, ArrowRight, CheckCircle, Upload, X, Search, Loader2, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -457,12 +457,12 @@ export default function Careers({ language }: CareersProps) {
         for (const [key, file] of Object.entries(fileFiles)) {
           if (file) {
             const result = await uploadCareerDocument(file);
-            if (result.error) {
-              toast({ title: "Error", description: mapPublicError({ error: result.error, message: result.error }, language).description, variant: "destructive" });
+            if (result.error || !result.storageRef) {
+              toast({ title: "Error", description: mapPublicError({ error: result.error || 'Upload failed', message: result.error }, language).description, variant: "destructive" });
               setSubmitting(false);
               return;
             }
-            payload[key] = result.url;
+            payload[key] = result.storageRef;
           }
         }
         const res = await submitCareerApplication({

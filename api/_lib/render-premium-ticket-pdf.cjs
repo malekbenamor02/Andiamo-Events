@@ -319,10 +319,24 @@ async function tryBuildPremiumTicketsPdfAttachment(params) {
   });
 
   const ticketRows = [];
+  const { generateTicketQrDataUrl } = require('./ticket-qr-generate.cjs');
+  const { resolveTicketQrUrl } = require('./ticket-qr-url.cjs');
   for (const t of tickets) {
-    if (!t || !t.qr_code_url) continue;
-    const qrResolved = toAbsolutePublicUrl(t.qr_code_url) || t.qr_code_url;
-    const qrData = (await fetchUrlAsDataUrl(qrResolved)) || qrResolved;
+    if (!t) continue;
+    let qrData = null;
+    if (t.secure_token) {
+      try {
+        qrData = await generateTicketQrDataUrl(t.secure_token);
+      } catch (_) {
+        qrData = null;
+      }
+    }
+    if (!qrData && t.qr_code_url) {
+      const resolved = resolveTicketQrUrl(t.secure_token, t.qr_code_url) || t.qr_code_url;
+      const qrResolved = toAbsolutePublicUrl(resolved) || resolved;
+      qrData = (await fetchUrlAsDataUrl(qrResolved)) || qrResolved;
+    }
+    if (!qrData) continue;
     const pass = t.order_pass_id ? passById.get(t.order_pass_id) : null;
     const passType = (pass && pass.pass_type) || 'Pass';
     ticketRows.push({ passType, qrDataUrl: qrData });

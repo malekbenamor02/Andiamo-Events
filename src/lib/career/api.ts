@@ -142,6 +142,38 @@ export async function checkCareerApplicationDuplicate(params: {
   return { emailTaken: data.emailTaken ?? false, phoneTaken: data.phoneTaken ?? false };
 }
 
+export async function uploadCareerDocument(file: File): Promise<{
+  storageRef: string;
+  originalFilename: string;
+  error?: string;
+}> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`${getApiBaseUrl()}${API_ROUTES.CAREERS_UPLOAD_DOCUMENT}`, {
+    method: 'POST',
+    body: fd,
+  });
+  const data = await handleApiResponse(res);
+  if (!data.storageRef) {
+    return { storageRef: '', originalFilename: '', error: 'Upload failed' };
+  }
+  return {
+    storageRef: String(data.storageRef),
+    originalFilename: String(data.originalFilename || file.name),
+  };
+}
+
+export async function fetchCareerApplicationDocumentUrl(
+  applicationId: string,
+  fieldKey: string
+): Promise<{ signedUrl: string; originalFilename?: string }> {
+  const res = await apiFetch(
+    API_ROUTES.CAREERS_ADMIN_APPLICATION_DOCUMENT_URL(applicationId, fieldKey),
+    { credentials: 'include' }
+  );
+  return handleApiResponse(res);
+}
+
 export async function submitCareerApplication(body: {
   domainId?: string;
   domainSlug?: string;

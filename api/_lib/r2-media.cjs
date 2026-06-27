@@ -126,25 +126,26 @@ async function listAndDeleteByPrefix(prefix) {
   return count;
 }
 
+const {
+  buildTicketQrApiUrl,
+  extractSecureTokenFromQrStorageKey,
+  resolveTicketQrUrl,
+} = require('./ticket-qr-url.cjs');
+
 /**
- * Upload ticket / invitation QR PNG. Uses R2 when configured, else Supabase tickets bucket.
+ * Ticket QR delivery uses the authenticated API route (/api/tickets/qr/:token).
+ * Legacy Supabase/R2 public uploads are no longer performed for new tickets.
  */
-async function uploadTicketQrToR2OrSupabase(buffer, key, storageClient) {
-  const url = await putPublicObject({
-    key,
-    body: buffer,
-    contentType: 'image/png',
-    cacheControl: IMMUTABLE_CACHE,
-  });
-  if (url) return url;
-  if (!storageClient?.storage) throw new Error('No R2 config and no Supabase storage client');
-  const { error } = await storageClient.storage.from('tickets').upload(key, buffer, {
-    contentType: 'image/png',
-    upsert: true,
-  });
-  if (error) throw new Error(error.message);
-  const { data } = storageClient.storage.from('tickets').getPublicUrl(key);
-  return data.publicUrl;
+async function uploadTicketQrToR2OrSupabase(buffer, key, storageClient, secureToken) {
+  void buffer;
+  void storageClient;
+  const token =
+    secureToken ||
+    extractSecureTokenFromQrStorageKey(key);
+  if (!token) {
+    throw new Error('secureToken required for ticket QR URL');
+  }
+  return buildTicketQrApiUrl(token);
 }
 
 module.exports = {
@@ -155,6 +156,8 @@ module.exports = {
   deleteMediaImageVariants,
   listAndDeleteByPrefix,
   uploadTicketQrToR2OrSupabase,
+  resolveTicketQrUrl,
+  buildTicketQrApiUrl,
   IMMUTABLE_CACHE,
   FAVICON_CACHE,
 };

@@ -12,7 +12,7 @@ const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = requireCjs(path
 const { sendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/transactional-email.cjs'));
 const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/can-send-transactional-email.cjs'));
 const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./_lib/render-premium-ticket-pdf.cjs');
-const { uploadTicketQrToR2OrSupabase } = requireCjs(path.join(__dirname, '_lib/r2-media.cjs'));
+const { uploadTicketQrToR2OrSupabase, buildTicketQrApiUrl } = requireCjs(path.join(__dirname, '_lib/r2-media.cjs'));
 
 /** PostgREST may return `events` as [{…}]; PDF builder needs one row + poster URL when embed is missing. */
 async function ensureOrderEventsForPdf(sb, order) {
@@ -576,13 +576,11 @@ async function ordersApprove(sb, id, auth, req, res) {
   for (const pass of orderPasses) {
     for (let i = 0; i < pass.quantity; i++) {
       const secureToken = uuidv4();
-      const buf = await QRCode.default.toBuffer(secureToken, { type: 'png', width: 512, margin: 2 });
-      const fname = `tickets/${id}/${secureToken}.png`;
-      let publicQrUrl = null;
+      let publicQrUrl;
       try {
-        publicQrUrl = await uploadTicketQrToR2OrSupabase(buf, fname, sb);
+        publicQrUrl = buildTicketQrApiUrl(secureToken);
       } catch (e) {
-        console.error('POS ticket QR upload:', e);
+        console.error('POS ticket QR URL:', e.message);
         continue;
       }
       const { data: t } = await sb.from('tickets').insert({

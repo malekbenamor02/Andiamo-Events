@@ -92,36 +92,30 @@ export const uploadFavicon = async (
     } else {
       if (r2?.error) return { url: '', path: '', error: r2.error };
 
-      const fileExtension = file.name.split('.').pop();
-      const fileTimestamp = Date.now();
-      const fileName = `${type}_${fileTimestamp}.${fileExtension}`;
-      filePath = `favicon/${fileName}`;
-
-      try {
-        const { data: oldFiles } = await supabase.storage.from('images').list('favicon', {
-          search: type,
-        });
-        if (oldFiles && oldFiles.length > 0) {
-          const filesToDelete = oldFiles
-            .filter((f) => f.name.startsWith(`${type}_`))
-            .map((f) => `favicon/${f.name}`);
-          if (filesToDelete.length > 0) {
-            await supabase.storage.from('images').remove(filesToDelete);
-          }
-        }
-      } catch {
-        /* continue */
-      }
-
-      const { error } = await supabase.storage.from('images').upload(filePath, file, {
-        cacheControl: '0',
-        upsert: false,
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('scope', 'favicon');
+      fd.append('faviconType', type);
+      const res = await fetch(`${apiBase}/api/admin/media/upload`, {
+        method: 'POST',
+        body: fd,
+        credentials: 'include',
       });
-      if (error) {
-        return { url: '', path: '', error: error.message };
+      let data: Record<string, unknown> = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
       }
-      const { data: urlData } = supabase.storage.from('images').getPublicUrl(filePath);
-      urlDataPublicUrl = urlData.publicUrl;
+      if (!res.ok) {
+        return {
+          url: '',
+          path: '',
+          error: (data.error as string) || res.statusText,
+        };
+      }
+      urlDataPublicUrl = String(data.url || '');
+      filePath = String(data.path || '');
     }
 
     const { data: existingData } = await supabase

@@ -198,7 +198,13 @@ export function CareerTab({ language }: CareerTabProps) {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<CareerApplication | null>(null);
-  const [detailData, setDetailData] = useState<{ application: CareerApplication; domain: CareerDomain; fields: CareerApplicationField[]; logs: CareerApplicationLog[] } | null>(null);
+  const [detailData, setDetailData] = useState<{
+    application: CareerApplication;
+    domain: CareerDomain;
+    fields: CareerApplicationField[];
+    logs: CareerApplicationLog[];
+    file_signed_urls?: Record<string, string>;
+  } | null>(null);
   const fieldsDialogContentRef = useRef<HTMLDivElement | null>(null);
   const [fieldToDelete, setFieldToDelete] = useState<CareerApplicationField | null>(null);
 
@@ -2218,7 +2224,12 @@ export function CareerTab({ language }: CareerTabProps) {
                     const value = (detailData.application.form_data as Record<string, unknown>)[f.field_key];
                     const isEmpty = value == null || String(value).trim() === "";
                     const isFile = f.field_type === "file";
-                    const isUrl = isFile && typeof value === "string" && (value.startsWith("http") || value.startsWith("/"));
+                    const signedDocUrl = detailData.file_signed_urls?.[f.field_key];
+                    const isUrl =
+                      isFile &&
+                      (Boolean(signedDocUrl) ||
+                        (typeof value === "string" &&
+                          (value.startsWith("http") || value.startsWith("/") || value.startsWith("storage:career-documents/"))));
                     const stringValue = isEmpty ? "" : String(value);
                     const isPhone = f.field_type === "phone" && !isEmpty;
                     const isEmail = f.field_type === "email" && !isEmpty;
@@ -2259,10 +2270,13 @@ export function CareerTab({ language }: CareerTabProps) {
                           </span>
                           {isFile && isUrl ? (
                             <a
-                              href={stringValue}
+                              href={signedDocUrl || (typeof value === "string" && value.startsWith("http") ? stringValue : "#")}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 text-sm font-medium text-destructive hover:text-destructive/90 break-words"
+                              onClick={(e) => {
+                                if (!signedDocUrl && !stringValue.startsWith("http")) e.preventDefault();
+                              }}
                             >
                               <Download className="h-4 w-4 shrink-0" />
                               {language === "fr" ? "Télécharger le document" : "Download document"}

@@ -6,6 +6,8 @@ import '../lib/sentry-server.js';
 import { verifyAdminAuth, hasPermission } from './_lib/admin-verify.js';
 import { handleVerifyAdmin } from './_lib/verify-admin-http.js';
 import { handleAdminDataRoutes, provisionAmbassadorForApplication } from './_lib/admin-data-routes.js';
+import { handleClientSiteLog } from './_lib/client-site-log.js';
+import { handlePublicEventBySlug, handlePublicEventById } from './_lib/public-event-by-slug.js';
 import {
   resolveAmbassadorPasswordFromBody,
   looksLikeBcryptHash,
@@ -54,7 +56,7 @@ const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot
   nodePath.join(__dirname, '_lib', 'online-payment-fee.cjs')
 );
 
-const { uploadTicketQrToR2OrSupabase } = requireFromRoot(nodePath.join(__dirname, '_lib', 'r2-media.cjs'));
+const { uploadTicketQrToR2OrSupabase, buildTicketQrApiUrl, resolveTicketQrUrl } = requireFromRoot(nodePath.join(__dirname, '_lib', 'r2-media.cjs'));
 const { sendTransactionalEmail } = requireFromRoot(nodePath.join(__dirname, '_lib', 'transactional-email.cjs'));
 const { canSendTransactionalEmail } = requireFromRoot(nodePath.join(__dirname, '_lib', 'can-send-transactional-email.cjs'));
 const { processConfirmedTicketPurchaseTracking } = requireFromRoot(nodePath.join(__dirname, '_lib', 'meta', 'ticket-purchase-tracking.cjs'));
@@ -326,6 +328,33 @@ async function getCareerApp() {
     return app;
   })();
   return careerAppPromise;
+}
+
+let storageSecurityAppPromise = null;
+async function getStorageSecurityApp() {
+  if (storageSecurityAppPromise) return storageSecurityAppPromise;
+  storageSecurityAppPromise = (async () => {
+    const expressModule = await import('express');
+    const express = expressModule.default || expressModule;
+    const cookieParserModule = await import('cookie-parser');
+    const cookieParser = cookieParserModule.default || cookieParserModule;
+    const {
+      requireAdminAuth,
+      requireAdminPermission,
+    } = requireFromRoot(nodePath.join(__dirname, '_lib', 'admin-authorization-express.cjs'));
+    const { registerStorageSecurityRoutes } = requireFromRoot(
+      nodePath.join(__dirname, '_lib', 'register-storage-security-routes.cjs')
+    );
+    const app = express();
+    app.use(cookieParser());
+    app.use(express.json({ limit: '512kb' }));
+    registerStorageSecurityRoutes(app, {
+      requireAdminAuth,
+      requireAdminPermission,
+    });
+    return app;
+  })();
+  return storageSecurityAppPromise;
 }
 
 // Lazy academy Express app (runs via misc.js to avoid an extra serverless function on Hobby)
@@ -1349,6 +1378,17 @@ export default async (req, res) => {
     return res.status(410).end();
   }
 
+  if (path === '/api/site-logs' && method === 'POST') {
+    return handleClientSiteLog(req, res, parseBody);
+  }
+
+  if (path.startsWith('/api/events/by-slug/')) {
+    return handlePublicEventBySlug(req, res);
+  }
+  if (path.startsWith('/api/events/by-id/')) {
+    return handlePublicEventById(req, res);
+  }
+
   if (path === '/api/verify-admin') {
     return handleVerifyAdmin(req, res);
   }
@@ -1359,6 +1399,34 @@ export default async (req, res) => {
   });
   if (adminDataHandled) {
     return;
+  }
+
+  const storageSecurityPath =
+    path.startsWith('/api/tickets/qr/') ||
+    path === '/api/careers/upload-document' ||
+    path === '/api/admin/media/upload' ||
+    path === '/api/admin/media/delete' ||
+    (path.startsWith('/api/admin/careers/applications/') && path.endsWith('/document-url'));
+  if (storageSecurityPath) {
+    try {
+      const app = await getStorageSecurityApp();
+      await new Promise((resolve) => {
+        const onFinish = () => resolve();
+        res.on('finish', onFinish);
+        res.on('close', onFinish);
+        app(req, res, (err) => {
+          if (err) {
+            console.error('Storage security route error:', err);
+            if (!res.headersSent) res.status(500).json({ error: err.message || 'Server error' });
+          }
+          resolve();
+        });
+      });
+      return;
+    } catch (err) {
+      console.error('Storage security app error:', err);
+      return res.status(500).json({ error: err.message || 'Storage service unavailable' });
+    }
   }
 
   // Career routes (public + admin) — handled by Express app from careerRoutes.cjs
@@ -1980,17 +2048,17 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           }
         }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ 
-            error: 'Supabase not configured',
-            details: 'Please check environment variables: SUPABASE_URL and SUPABASE_ANON_KEY must be set'
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(503).json({
+            error: 'Server configuration error',
+            details: 'SUPABASE_SERVICE_ROLE_KEY is required for ambassador applications after RLS hardening',
           });
         }
 
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(
           process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
+          process.env.SUPABASE_SERVICE_ROLE_KEY
         );
 
         const sanitizedFullName = fullName.trim();
@@ -2321,8 +2389,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           return res.status(429).json({ error: 'Too many suggestions submitted. Please try again later.' });
         }
 
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Server error', details: 'Service temporarily unavailable.' });
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(503).json({ error: 'Server error', details: 'Service temporarily unavailable.' });
         }
 
         const bodyData = await parseBody(req);
@@ -2394,7 +2462,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         }
 
         const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
         const { data: row, error } = await supabase
           .from('audience_suggestions')
@@ -3787,32 +3855,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             for (const pass of orderPasses) {
               for (let i = 0; i < pass.quantity; i++) {
                 const secureToken = uuidv4();
-                
-                // Generate QR code
-                const qrCodeBuffer = await QRCode.default.toBuffer(secureToken, {
-                  type: 'png',
-                  width: 512,
-                  margin: 2
-                });
-                
-                // Upload to Supabase Storage
-                const fileName = `tickets/${orderId}/${secureToken}.png`;
-                const { data: uploadData, error: uploadError } = await storageClient.storage
-                  .from('tickets')
-                  .upload(fileName, qrCodeBuffer, {
-                    contentType: 'image/png',
-                    upsert: true
-                  });
-
-                if (uploadError) {
-                  console.error(`❌ Error uploading QR code:`, uploadError);
-                  continue;
-                }
-
-                // Get public URL
-                const { data: urlData } = storageClient.storage
-                  .from('tickets')
-                  .getPublicUrl(fileName);
+                const qrCodeUrl = buildTicketQrApiUrl(secureToken);
 
                 // Create ticket entry
                 const { data: ticketData, error: ticketError } = await dbClient
@@ -3821,7 +3864,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                     order_id: orderId,
                     order_pass_id: pass.id,
                     secure_token: secureToken,
-                    qr_code_url: urlData?.publicUrl || null,
+                    qr_code_url: qrCodeUrl,
                     status: 'GENERATED',
                     generated_at: new Date().toISOString()
                   })
@@ -4383,11 +4426,9 @@ We Create Memories`;
             for (const pass of orderPasses) {
               for (let i = 0; i < pass.quantity; i++) {
                 const secureToken = uuidv4();
-                const qrCodeBuffer = await QRCode.default.toBuffer(secureToken, { type: 'png', width: 512, margin: 2 });
-                const fileName = `tickets/${orderId}/${secureToken}.png`;
-                let ticketQrUrl = null;
+                let ticketQrUrl;
                 try {
-                  ticketQrUrl = await uploadTicketQrToR2OrSupabase(qrCodeBuffer, fileName, storageClient);
+                  ticketQrUrl = buildTicketQrApiUrl(secureToken);
                 } catch {
                   continue;
                 }
@@ -7050,36 +7091,11 @@ Billets envoyés par email. We Create Memories`;
         
         for (let i = 0; i < quantityNum; i++) {
           const secureToken = uuidv4();
-          const qrCodeBuffer = await QRCode.toBuffer(secureToken, {
-            type: 'png',
-            width: 512,
-            errorCorrectionLevel: 'M'
-          });
-          
-          const fileName = `invitations/${invitation.id}/${secureToken}.png`;
-          const storageClient = process.env.SUPABASE_SERVICE_ROLE_KEY
-            ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-            : dbClient;
-
-          const { error: uploadError } = await storageClient.storage
-            .from('tickets')
-            .upload(fileName, qrCodeBuffer, {
-              contentType: 'image/png',
-              upsert: true
-            });
-
-          if (uploadError) {
-            console.error(`Error uploading QR code ${i + 1}:`, uploadError);
-            continue;
-          }
-
-          const { data: urlData } = storageClient.storage
-            .from('tickets')
-            .getPublicUrl(fileName);
-
-          const qrCodeUrl = urlData?.publicUrl;
-          if (!qrCodeUrl) {
-            console.error(`Failed to get public URL for QR code ${i + 1}`);
+          let qrCodeUrl;
+          try {
+            qrCodeUrl = buildTicketQrApiUrl(secureToken);
+          } catch (err) {
+            console.error(`Error building QR URL ${i + 1}:`, err.message);
             continue;
           }
           

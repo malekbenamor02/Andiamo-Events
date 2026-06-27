@@ -5,6 +5,10 @@
 const ExcelJS = require('exceljs');
 const { getBaseEmailHtml } = require('./api/_lib/career-email-base-html.cjs');
 const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
+const {
+  signedUrlForFormValue,
+  resolveCareerDocumentRef,
+} = require('./api/_lib/career-document-storage.cjs');
 
 let publicApiErrorModPromise = null;
 function getPublicApiErrorMod() {
@@ -1401,7 +1405,15 @@ function registerCareerRoutes(app, deps) {
         adminMap = (admins || []).reduce((acc, a) => { acc[a.id] = a.name || a.id; return acc; }, {});
       }
       const logsWithNames = (logs || []).map((l) => ({ ...l, admin_name: l.admin_id ? (adminMap[l.admin_id] ?? null) : null }));
-      res.json({ application, domain: domain || null, fields: fields || [], logs: logsWithNames });
+      const fileSignedUrls = {};
+      for (const f of fields || []) {
+        if (f.field_type !== 'file') continue;
+        const raw = application.form_data?.[f.field_key];
+        if (!raw || !resolveCareerDocumentRef(raw)) continue;
+        const signed = await signedUrlForFormValue(db, raw);
+        if (signed) fileSignedUrls[f.field_key] = signed;
+      }
+      res.json({ application, domain: domain || null, fields: fields || [], logs: logsWithNames, file_signed_urls: fileSignedUrls });
     } catch (e) {
       console.error('GET /api/admin/careers/applications/:id', e);
       return careerServiceError(res, 500, e);

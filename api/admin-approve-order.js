@@ -12,6 +12,7 @@ const { emailLogoHeaderHtml } = requireCjs(path.join(__dirname, '_lib/email-bran
 const { sendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/transactional-email.cjs'));
 const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/can-send-transactional-email.cjs'));
 const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./_lib/render-premium-ticket-pdf.cjs');
+const { buildTicketQrApiUrl } = requireCjs(path.join(__dirname, '_lib/ticket-qr-url.cjs'));
 
 // Helper function to format event time
 function formatEventTime(eventDate) {
@@ -469,32 +470,13 @@ export default async (req, res) => {
         for (const pass of orderPasses) {
           for (let i = 0; i < pass.quantity; i++) {
             const secureToken = uuidv4();
-            
-            // Generate QR code
-            const qrCodeBuffer = await QRCode.default.toBuffer(secureToken, {
-              type: 'png',
-              width: 512,
-              margin: 2
-            });
-            
-            // Upload to Supabase Storage
-            const fileName = `tickets/${orderId}/${secureToken}.png`;
-            const { data: uploadData, error: uploadError } = await storageClient.storage
-              .from('tickets')
-              .upload(fileName, qrCodeBuffer, {
-                contentType: 'image/png',
-                upsert: true
-              });
-
-            if (uploadError) {
-              console.error(`❌ Error uploading QR code:`, uploadError);
+            let qrCodeUrl;
+            try {
+              qrCodeUrl = buildTicketQrApiUrl(secureToken);
+            } catch (err) {
+              console.error('❌ Error building ticket QR URL:', err.message);
               continue;
             }
-
-            // Get public URL
-            const { data: urlData } = storageClient.storage
-              .from('tickets')
-              .getPublicUrl(fileName);
 
             // Create ticket entry
             const { data: ticketData, error: ticketError } = await dbClient
@@ -503,7 +485,7 @@ export default async (req, res) => {
                 order_id: orderId,
                 order_pass_id: pass.id,
                 secure_token: secureToken,
-                qr_code_url: urlData?.publicUrl || null,
+                qr_code_url: qrCodeUrl,
                 status: 'GENERATED',
                 generated_at: new Date().toISOString()
               })

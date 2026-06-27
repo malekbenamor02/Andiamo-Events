@@ -13,6 +13,7 @@
     "dev:full": "concurrently \"npm run dev\" \"npm run server\"",
     "security:check": "node scripts/check-security-config.js",
     "security:rls": "node scripts/security/check-supabase-rls.mjs",
+    "security:storage": "node scripts/security/check-supabase-storage.mjs",
     "security:setup": "node scripts/setup-security.js",
     "invite:qr": "node scripts/create-invitation-qr-tickets.cjs",
     "media:reupload-current": "node scripts/reupload-optimize-current-media.cjs --dry-run",

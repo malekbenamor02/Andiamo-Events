@@ -1,11 +1,13 @@
-import { supabase } from '@/integrations/supabase/client';
+import {
+  deleteAdminMediaObject,
+  uploadHeroImageViaAdminApi,
+  uploadImageViaAdminApi,
+  uploadMarketingEmailAttachmentViaAdminApi,
+} from '@/lib/adminMediaUpload';
 
 /** Short TTL for mutable or non-versioned-looking uploads */
 const CACHE_CONTROL_DEFAULT = '3600';
-/**
- * Long TTL for versioned public URLs (unique filename per upload).
- * Browsers/CDNs may keep the response for up to 1 year; users can still clear cache.
- */
+/** Long TTL for versioned public URLs (unique filename per upload). */
 const CACHE_CONTROL_IMMUTABLE_PUBLIC = '31536000';
 
 export interface UploadResult {
@@ -24,73 +26,42 @@ function makeStoragePath(file: File, prefix = ''): string {
   return prefix ? `${prefix}/${fileName}` : fileName;
 }
 
-async function uploadToBucket(
-  file: File,
-  bucket: string,
-  path: string,
-  cacheControl: string
-): Promise<UploadResult> {
-  try {
-    const { error } = await supabase.storage.from(bucket).upload(path, file, {
-      cacheControl,
-      upsert: false,
-    });
-    if (error) return { url: '', path: '', error: error.message };
-
-    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-    return { url: urlData.publicUrl, path };
-  } catch (error) {
-    return {
-      url: '',
-      path: '',
-      error: error instanceof Error ? error.message : 'Upload failed',
-    };
-  }
-}
-
-async function deleteFromBucket(path: string, bucket: string): Promise<boolean> {
-  try {
-    const { error } = await supabase.storage.from(bucket).remove([path]);
-    return !error;
-  } catch {
-    return false;
-  }
-}
-
 export const uploadImage = async (file: File, folder: string = 'posters'): Promise<UploadResult> => {
-  const filePath = makeStoragePath(file, folder);
-  const longCache = folder === 'posters' || folder === 'gallery' || folder === 'seating-charts';
-  return uploadToBucket(
-    file,
-    'images',
-    filePath,
-    longCache ? CACHE_CONTROL_IMMUTABLE_PUBLIC : CACHE_CONTROL_DEFAULT
-  );
+  const result = await uploadImageViaAdminApi(file, folder);
+  if (result.error) return { url: '', path: '', error: result.error };
+  return {
+    url: result.url,
+    path: result.path,
+    thumbUrl: result.thumbUrl,
+    midUrl: result.midUrl,
+    avifUrl: result.avifUrl,
+  };
 };
 
 export const deleteImage = async (path: string, bucket: string = 'images'): Promise<boolean> => {
-  return deleteFromBucket(path, bucket);
+  return deleteAdminMediaObject(path, bucket);
 };
 
 export const uploadHeroImage = async (file: File): Promise<UploadResult> => {
-  const filePath = makeStoragePath(file);
-  return uploadToBucket(file, 'hero-images', filePath, CACHE_CONTROL_IMMUTABLE_PUBLIC);
+  const result = await uploadHeroImageViaAdminApi(file);
+  if (result.error) return { url: '', path: '', error: result.error };
+  return {
+    url: result.url,
+    path: result.path,
+    thumbUrl: result.thumbUrl,
+    midUrl: result.midUrl,
+    avifUrl: result.avifUrl,
+  };
 };
 
 export const deleteHeroImage = async (path: string): Promise<boolean> => {
-  return deleteFromBucket(path, 'hero-images');
+  return deleteAdminMediaObject(path, 'hero-images');
 };
 
-/** Upload CV/document for career application. Returns public URL to store in form_data. */
-export const uploadCareerDocument = async (file: File): Promise<UploadResult> => {
-  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_').slice(0, 80);
-  const timestamp = Date.now();
-  const filePath = `${timestamp}-${safeName}`;
-  return uploadToBucket(file, 'career-documents', filePath, CACHE_CONTROL_DEFAULT);
-};
-
-/** PDF or image for marketing email attachments (Brevo). Public URL in `images` bucket. */
 export const uploadMarketingEmailAttachment = async (file: File): Promise<UploadResult> => {
-  const filePath = makeStoragePath(file, 'marketing-email-attachments');
-  return uploadToBucket(file, 'images', filePath, CACHE_CONTROL_IMMUTABLE_PUBLIC);
+  const result = await uploadMarketingEmailAttachmentViaAdminApi(file);
+  if (result.error) return { url: '', path: '', error: result.error };
+  return { url: result.url, path: result.path };
 };
+
+export { makeStoragePath, CACHE_CONTROL_DEFAULT, CACHE_CONTROL_IMMUTABLE_PUBLIC };
