@@ -510,6 +510,7 @@ describe('paid-order-fulfillment uuid generation', () => {
     ]) {
       const src = read(rel);
       assert.doesNotMatch(src, /import\s*\(\s*['"]uuid['"]\s*\)/, rel);
+      assert.doesNotMatch(src, /import\s*\(\s*['"]qrcode['"]\s*\)/, rel);
     }
   });
 });

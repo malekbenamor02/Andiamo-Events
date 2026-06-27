@@ -587,7 +587,6 @@ async function ordersApprove(sb, id, auth, req, res) {
     updated_at: new Date().toISOString()
   }).eq('id', id).eq('status', 'PENDING_ADMIN_APPROVAL');
 
-  const QRCode = await import('qrcode');
   const tickets = [];
 
   for (const pass of orderPasses) {

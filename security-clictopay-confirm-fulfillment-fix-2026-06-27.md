@@ -126,3 +126,56 @@ node scripts/recover-paid-order-fulfillment.mjs --batch-underfulfilled --since 2
 ```
 
 Re-query Supabase for `PAID` online orders with `ticket_count < expected_tickets` after deployment.
+
+---
+
+## Follow-up: QR/PDF email missing due to qrcode dynamic import bundling
+
+### Root cause
+
+After payment + ticket creation worked (`3895fd7`), confirmation emails sent **without inline QR images or PDF attachments**. Vercel log:
+
+```
+[ticket-qr-email] QR generation failed … Cannot find package 'qrcode' imported from /var/task/api/_lib/ticket-qr-generate.cjs
+```
+
+`api/_lib/ticket-qr-generate.cjs` used `await import('qrcode')`. `qrcode` is already in **`dependencies`** and `package-lock.json`, but Vercel NFT does not bundle packages reached only via **dynamic import** inside nested `_lib` modules for `clictopay-confirm-payment.js`.
+
+`ticket-qr-email.cjs` catches QR errors per ticket and continues; `render-premium-ticket-pdf.cjs` skips tickets without QR data URL → returns `null` → no PDF attachment.
+
+**Why `npm install qrcode` was not enough:** the package was already installed; the deployed function bundle did not include `node_modules/qrcode/**`.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `api/_lib/ticket-qr-generate.cjs` | Top-level `require('qrcode')`; shared `QR_OPTIONS` |
+| `api/admin-approve-order.js` | Removed unused `import('qrcode')` |
+| `api/admin-pos.js` | Removed unused `import('qrcode')` |
+| `api/misc.js` | Removed unused `import('qrcode')` (2 sites) |
+| `vercel.json` | Added `node_modules/qrcode/**`, `pdf-lib/**`, `puppeteer-core/**` to confirm/approve/POS functions |
+| `api/_lib/ticket-qr-generate.test.cjs` | **New** — QR buffer, data URL, email CID, bundling tests |
+| `api/_lib/payment-fulfillment.test.cjs` | Assert no dynamic `qrcode` import in API routes |
+| `package.json` | `test:payment-fulfillment` runs QR tests |
+
+### PDF dependency check
+
+`render-premium-ticket-pdf.cjs` already uses **static** `require()` for `puppeteer-core`, `@sparticuz/chromium`, `pdf-lib`, and `./ticket-qr-generate.cjs`. PDF failure in production was a **downstream effect of QR failure**. `includeFiles` for confirm/approve/POS now also lists `pdf-lib` and `puppeteer-core` as safety alignment alongside existing `@sparticuz/chromium`.
+
+### Tests run
+
+```bash
+npm run test:payment-fulfillment
+npm run build
+```
+
+### Production resend plan
+
+**Order #755282** — PAID, 1 ticket, email sent without QR/PDF. **Do not re-charge or create new tickets.**
+
+After deploy:
+
+1. Admin dashboard → **Resend ticket email** for order #755282, or  
+2. `node scripts/recover-paid-order-fulfillment.mjs --order-number 755282` (reuses existing tickets, `forceEmail: true`)
+
+Older zero-ticket orders: `node scripts/recover-paid-order-fulfillment.mjs --batch-underfulfilled --since 2026-06-27`

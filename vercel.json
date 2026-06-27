@@ -851,7 +851,7 @@
     "api/admin-approve-order.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**}"
+      "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**,node_modules/qrcode/**,node_modules/pdf-lib/**,node_modules/puppeteer-core/**}"
     },
     "api/orders-create.js": {
       "maxDuration": 60,
@@ -872,7 +872,7 @@
     "api/clictopay-confirm-payment.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**}"
+      "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**,node_modules/qrcode/**,node_modules/pdf-lib/**,node_modules/puppeteer-core/**}"
     },
     "api/misc.js": {
       "maxDuration": 60,
@@ -891,7 +891,7 @@
     "api/admin-pos.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**}"
+      "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**,node_modules/qrcode/**,node_modules/pdf-lib/**,node_modules/puppeteer-core/**}"
     },
     "api/scan.js": {
       "maxDuration": 30

@@ -305,7 +305,6 @@ export default async (req, res) => {
         }
         
         // Generate tickets with QR codes
-        const QRCode = await import('qrcode');
         
         // Order-level QR access token fields were removed from orders table.
         

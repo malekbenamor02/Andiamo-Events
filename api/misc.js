@@ -3758,9 +3758,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
               throw new Error('No passes found for this order');
             }
             
-            // Import required modules
-            const QRCode = await import('qrcode');
-            
             // Generate order access token
             const orderAccessToken = randomUuid();
             
@@ -6358,7 +6355,6 @@ We Create Memories`;
         }
         
         // Generate QR codes
-        const QRCode = (await import('qrcode')).default;
         const qrCodes = [];
         const qrTicketsEntries = [];
         
