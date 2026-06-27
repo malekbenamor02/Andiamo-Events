@@ -31,6 +31,15 @@ const {
   resolvePublicBaseUrl,
 } = require('./api/_lib/clictopay-client.cjs');
 const {
+  validateClicToPayPaymentForAcademyRegistration,
+  buildAcademyPaymentValidationAudit,
+} = require('./api/_lib/clictopay-payment-verify.cjs');
+const {
+  shouldSendOnlineConfirmedEmail,
+  resolveAdminResendEmailTemplate,
+  interpretAcademyConfirmUpdateRace,
+} = require('./api/_lib/academy-payment-helpers.cjs');
+const {
   buildAcademyOnlineConfirmedEmailHtml,
   buildAcademyManualPaymentReceivedEmailHtml,
   buildAcademyApprovedEmailHtml,
@@ -156,7 +165,15 @@ async function sendAcademyEmail(reg, template) {
     );
     return true;
   } catch (e) {
-    console.error(`[academy] ${template} email failed:`, e.message || e);
+    console.warn(`[academy] ${template} email failed:`, {
+      message: e?.message,
+      code: e?.code,
+      details: e?.details,
+      hint: e?.hint,
+      registrationId: reg?.id,
+      registrationNumber: reg?.registration_number,
+      emailType: template,
+    });
     return false;
   }
 }
@@ -227,6 +244,29 @@ async function runAcademyPurchaseTracking(db, registrationId, req) {
     );
     return null;
   }
+}
+
+async function respondAcademyConfirmIdempotent(res, db, registration, req) {
+  const metaTracking = await runAcademyPurchaseTracking(db, registration.id, req);
+  if (registration.status === 'approved') {
+    return res.json({
+      success: true,
+      alreadyPaid: true,
+      status: 'approved',
+      registrationNumber: registration.registration_number,
+      metaTracking,
+    });
+  }
+  const approveResult = await tryAutoApprove(db, registration, null, null, { skipApprovedEmail: true });
+  const statusReg = approveResult.registration || registration;
+  return res.json({
+    success: true,
+    status: approveResult.approved ? 'approved' : 'paid_online',
+    approved: approveResult.approved,
+    capReached: approveResult.reason === 'cap_reached',
+    registrationNumber: statusReg.registration_number,
+    metaTracking,
+  });
 }
 
 async function respondToExistingAcademyRegistration(res, db, existing, vData, lang, req) {
@@ -773,18 +813,10 @@ function registerAcademyRoutes(app, deps) {
       }
 
       if (activeReg.status === 'approved') {
-        const metaTracking = await runAcademyPurchaseTracking(db, registrationId, req);
-        return res.json({ success: true, alreadyPaid: true, status: 'approved', metaTracking });
+        return respondAcademyConfirmIdempotent(res, db, activeReg, req);
       }
       if (activeReg.status === 'paid_online') {
-        const metaTracking = await runAcademyPurchaseTracking(db, registrationId, req);
-        const approveResult = await tryAutoApprove(db, activeReg, null, null, { skipApprovedEmail: true });
-        return res.json({
-          success: true,
-          status: approveResult.approved ? 'approved' : 'paid_online',
-          approved: approveResult.approved,
-          metaTracking,
-        });
+        return respondAcademyConfirmIdempotent(res, db, activeReg, req);
       }
       if (activeReg.status !== 'pending_online' && activeReg.status !== 'pending_payment') {
         return res.status(400).json({ error: 'Not pending payment', status: activeReg.status });
@@ -794,23 +826,35 @@ function registerAcademyRoutes(app, deps) {
       if (!ctpId) return res.status(400).json({ error: 'No gateway reference' });
 
       const gateway = await fetchClicToPayOrderStatus(ctpId);
-      if (!gateway.ok) {
-        await db
-          .from('academy_registrations')
-          .update({
-            status: 'failed',
-            payment_confirm_response: gateway.statusData,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', registrationId);
-        return res.status(400).json({ success: false, error: 'Payment not confirmed by gateway' });
+      const statusData = gateway.statusData;
+      const validation = validateClicToPayPaymentForAcademyRegistration(activeReg, statusData);
+
+      if (!validation.ok) {
+        console.warn(
+          '[academy clictopay confirm] payment_validation_failed',
+          buildAcademyPaymentValidationAudit(activeReg, statusData, validation)
+        );
+        if (validation.reason === 'gateway_not_paid') {
+          await db
+            .from('academy_registrations')
+            .update({
+              status: 'failed',
+              payment_confirm_response: statusData,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', registrationId)
+            .in('status', ['pending_payment', 'pending_online']);
+          return res.status(400).json({ success: false, ok: false, error: 'Payment not confirmed by gateway' });
+        }
+        return res.status(400).json({ success: false, ok: false, error: 'payment_validation_failed' });
       }
 
+      const previousStatus = activeReg.status;
       const { data: paidReg, error: upErr } = await db
         .from('academy_registrations')
         .update({
           status: 'paid_online',
-          payment_confirm_response: gateway.statusData,
+          payment_confirm_response: statusData,
           updated_at: new Date().toISOString(),
         })
         .eq('id', registrationId)
@@ -819,30 +863,48 @@ function registerAcademyRoutes(app, deps) {
         .single();
       if (upErr) throw upErr;
       if (!paidReg) {
-        return res.status(410).json({
+        const { data: raced } = await db
+          .from('academy_registrations')
+          .select('*')
+          .eq('id', registrationId)
+          .maybeSingle();
+        const race = interpretAcademyConfirmUpdateRace(raced?.status);
+        if (race.kind === 'idempotent' && raced) {
+          return respondAcademyConfirmIdempotent(res, db, raced, req);
+        }
+        if (race.kind === 'expired') {
+          return res.status(410).json({
+            success: false,
+            error: 'registration_expired',
+            message: 'This registration has expired. Please register again.',
+            status: 'cancelled',
+          });
+        }
+        return res.status(409).json({
           success: false,
-          error: 'registration_expired',
-          message: 'This registration has expired. Please register again.',
-          status: 'cancelled',
+          error: 'confirm_race',
+          status: raced?.status,
         });
       }
 
       await logAcademyEvent(db, {
         registrationId,
         eventType: 'payment_confirmed',
-        oldStatus: activeReg.status,
+        oldStatus: previousStatus,
         newStatus: 'paid_online',
       });
 
       const approveResult = await tryAutoApprove(db, paidReg, null, null, { skipApprovedEmail: true });
 
       const emailReg = approveResult.registration || paidReg;
-      const onlineSent = await sendAcademyEmail(emailReg, 'online_confirmed');
-      if (onlineSent) {
-        await db
-          .from('academy_registrations')
-          .update({ last_email_type: 'online_confirmed', email_sent_at: new Date().toISOString() })
-          .eq('id', registrationId);
+      if (shouldSendOnlineConfirmedEmail(previousStatus)) {
+        const onlineSent = await sendAcademyEmail(emailReg, 'online_confirmed');
+        if (onlineSent) {
+          await db
+            .from('academy_registrations')
+            .update({ last_email_type: 'online_confirmed', email_sent_at: new Date().toISOString() })
+            .eq('id', registrationId);
+        }
       }
 
       const metaTracking = await runAcademyPurchaseTracking(db, registrationId, req);
@@ -1072,14 +1134,21 @@ function registerAcademyRoutes(app, deps) {
       const db = getServiceDb();
       const { data: reg } = await db.from('academy_registrations').select('*').eq('id', req.params.id).single();
       if (!reg) return res.status(404).json({ error: 'Not found' });
-      if (reg.status !== 'approved') {
-        return res.status(400).json({ error: 'Resend is only available for approved registrations' });
+      const template = resolveAdminResendEmailTemplate(reg);
+      if (!template) {
+        return res.status(400).json({
+          error: 'Resend is only available for approved registrations or paid online card payments',
+        });
       }
-      const sent = await sendAcademyEmail(reg, 'approved');
+      const sent = await sendAcademyEmail(reg, template);
       if (!sent) {
         return res.status(502).json({ error: 'Could not send confirmation email' });
       }
-      res.json({ success: true });
+      await db
+        .from('academy_registrations')
+        .update({ last_email_type: template, email_sent_at: new Date().toISOString() })
+        .eq('id', reg.id);
+      res.json({ success: true, emailType: template });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
