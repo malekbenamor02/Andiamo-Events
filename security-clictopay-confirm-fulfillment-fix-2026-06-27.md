@@ -179,3 +179,39 @@ After deploy:
 2. `node scripts/recover-paid-order-fulfillment.mjs --order-number 755282` (reuses existing tickets, `forceEmail: true`)
 
 Older zero-ticket orders: `node scripts/recover-paid-order-fulfillment.mjs --batch-underfulfilled --since 2026-06-27`
+
+---
+
+## Follow-up: missing `dijkstrajs` (qrcode transitive dependency)
+
+### Root cause
+
+Including only `node_modules/qrcode/**` in Vercel `includeFiles` copies the `qrcode` package but **not its runtime dependencies**. `segments.js` requires `dijkstrajs`; PNG rendering requires `pngjs`.
+
+### `qrcode@1.5.4` dependency tree (lockfile)
+
+| Package | Required for `toBuffer` / `toDataURL` | Bundled |
+|---------|--------------------------------------|---------|
+| `dijkstrajs` | Yes (`core/segments.js`) | Added |
+| `pngjs` | Yes (`renderer/png.js`) | Added |
+| `yargs` | CLI only (`bin/qrcode`) | Excluded |
+| `encode-utf8` | Not in lockfile for 1.5.4 | N/A |
+
+### Vercel includeFiles (QR-generating functions)
+
+Added `node_modules/dijkstrajs/**` and `node_modules/pngjs/**` to:
+
+- `api/clictopay-confirm-payment.js`
+- `api/admin-approve-order.js`
+- `api/admin-pos.js`
+- `api/misc.js`
+
+### Files changed
+
+- `api/_lib/qrcode-runtime-deps.cjs` — lockfile-aware bundle list + test helpers
+- `vercel.json` — transitive qrcode deps
+- `api/_lib/ticket-qr-generate.test.cjs` — lockfile/includeFiles regression tests
+
+### Tests
+
+`npm run test:payment-fulfillment` → **51/51** (includes lockfile-aware bundle assertions)

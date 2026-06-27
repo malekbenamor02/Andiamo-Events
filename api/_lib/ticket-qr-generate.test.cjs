@@ -19,8 +19,32 @@ const {
 } = require('./ticket-qr-generate.cjs');
 
 const { prepareTicketsByPassTypeForEmail } = require('./ticket-qr-email.cjs');
+const {
+  QRCODE_VERCEL_NODE_MODULES,
+  QRCODE_PROGRAMMATIC_RUNTIME_PACKAGES,
+  programmaticRuntimePackagesFromLockfile,
+  QR_GENERATING_VERCEL_FUNCTIONS,
+} = require('./qrcode-runtime-deps.cjs');
+
+function includeFilesForFunction(vercelJson, functionPath) {
+  const block = new RegExp(
+    `"${functionPath.replace(/\//g, '\\/')}"[\\s\\S]*?"includeFiles":\\s*"([^"]+)"`
+  ).exec(vercelJson);
+  assert.ok(block, `includeFiles block not found for ${functionPath}`);
+  return block[1];
+}
 
 describe('ticket-qr-generate.cjs', () => {
+  it('require("qrcode") exposes toBuffer and toDataURL', async () => {
+    const QRCode = require('qrcode');
+    assert.equal(typeof QRCode.toBuffer, 'function');
+    assert.equal(typeof QRCode.toDataURL, 'function');
+    const buf = await QRCode.toBuffer('hello', { type: 'png', width: 64 });
+    assert.ok(Buffer.isBuffer(buf));
+    const dataUrl = await QRCode.toDataURL('hello', { type: 'png', width: 64 });
+    assert.match(dataUrl, /^data:image\/png;base64,/);
+  });
+
   it('loads with static require("qrcode") not dynamic import', () => {
     const src = read('api/_lib/ticket-qr-generate.cjs');
     assert.match(src, /const QRCode = require\(['"]qrcode['"]\)/);
@@ -72,12 +96,31 @@ describe('ClicToPay confirm QR bundling', () => {
     assert.doesNotMatch(src, /import\s*\(\s*['"]qrcode['"]\s*\)/);
   });
 
-  it('vercel.json includes qrcode for clictopay-confirm-payment', () => {
+  it('lockfile qrcode programmatic runtime deps match bundle list', () => {
+    const fromLock = programmaticRuntimePackagesFromLockfile();
+    assert.deepEqual(fromLock.sort(), [...QRCODE_PROGRAMMATIC_RUNTIME_PACKAGES].sort());
+  });
+
+  it('vercel.json QR-generating functions include full qrcode runtime tree', () => {
     const vercel = read('vercel.json');
-    assert.match(
-      vercel,
-      /"api\/clictopay-confirm-payment\.js"[\s\S]*?"includeFiles": "\{api\/_lib\/\*\*,node_modules\/@sparticuz\/chromium\/\*\*,node_modules\/qrcode\/\*\*/
-    );
+    for (const fn of QR_GENERATING_VERCEL_FUNCTIONS) {
+      const includeFiles = includeFilesForFunction(vercel, fn);
+      for (const glob of QRCODE_VERCEL_NODE_MODULES) {
+        assert.match(
+          includeFiles,
+          new RegExp(glob.replace(/\//g, '\\/').replace(/\*\*/g, '\\*\\*')),
+          `${fn} missing ${glob}`
+        );
+      }
+    }
+  });
+
+  it('confirm function also bundles PDF runtime packages', () => {
+    const vercel = read('vercel.json');
+    const includeFiles = includeFilesForFunction(vercel, 'api/clictopay-confirm-payment.js');
+    assert.match(includeFiles, /node_modules\/pdf-lib\/\*\*/);
+    assert.match(includeFiles, /node_modules\/puppeteer-core\/\*\*/);
+    assert.match(includeFiles, /node_modules\/@sparticuz\/chromium\/\*\*/);
   });
 
   it('confirm fulfillment chain loads ticket-qr-generate without dynamic qrcode', () => {
