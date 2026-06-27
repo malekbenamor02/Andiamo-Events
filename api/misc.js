@@ -3,6 +3,15 @@
 // This reduces function count from 7 to 1
 
 import '../lib/sentry-server.js';
+// Bare imports for Vercel Node File Trace — must live in this entrypoint, not only in api/_lib.
+import 'qrcode';
+import 'dijkstrajs';
+import 'pngjs';
+import 'pdf-lib';
+import 'puppeteer-core';
+import '@sparticuz/chromium';
+import 'follow-redirects';
+import 'nodemailer';
 import { verifyAdminAuth, hasPermission } from './_lib/admin-verify.js';
 import { handleVerifyAdmin } from './_lib/verify-admin-http.js';
 import { handleAdminDataRoutes, provisionAmbassadorForApplication } from './_lib/admin-data-routes.js';
@@ -26,11 +35,6 @@ const { ensureSupabaseServerEnv } = requireFromRoot(
   nodePath.join(__dirname, '_lib', 'supabase-env.cjs')
 );
 ensureSupabaseServerEnv();
-
-const { ensureTicketEmailRuntimeDepsAreTraceable } = requireFromRoot(
-  nodePath.join(__dirname, '_lib', 'ticket-email-bundle-hints.cjs')
-);
-ensureTicketEmailRuntimeDepsAreTraceable();
 
 const { fetchAmbassadorSocialLinkFromApplications } = requireFromRoot(
   nodePath.join(__dirname, '_lib', 'ambassador-social-link.cjs')

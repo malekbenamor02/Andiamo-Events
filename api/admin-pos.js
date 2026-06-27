@@ -1,6 +1,15 @@
 // Admin POS API: outlets, users, stock, orders, audit-log
 // All routes require verifyAdminAuth + pos:manage. Audit to pos_audit_log.
 
+// Bare imports for Vercel Node File Trace — must live in this entrypoint, not only in api/_lib.
+import 'qrcode';
+import 'dijkstrajs';
+import 'pngjs';
+import 'pdf-lib';
+import 'puppeteer-core';
+import '@sparticuz/chromium';
+import 'follow-redirects';
+import 'nodemailer';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,11 +26,6 @@ const { uploadTicketQrToR2OrSupabase, buildTicketQrApiUrl } = requireCjs(path.jo
 const { buildOnlineTicketEmailHtml } = requireCjs(path.join(__dirname, '_lib/online-ticket-email-html.cjs'));
 const { prepareTicketsByPassTypeForEmail, mergeEmailAttachments } = requireCjs(path.join(__dirname, '_lib/ticket-qr-email.cjs'));
 const { randomUuid } = requireCjs(path.join(__dirname, '_lib/random-uuid.cjs'));
-
-const { ensureTicketEmailRuntimeDepsAreTraceable } = requireCjs(
-  path.join(__dirname, '_lib/ticket-email-bundle-hints.cjs')
-);
-ensureTicketEmailRuntimeDepsAreTraceable();
 
 /** PostgREST may return `events` as [{…}]; PDF builder needs one row + poster URL when embed is missing. */
 async function ensureOrderEventsForPdf(sb, order) {

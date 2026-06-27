@@ -338,3 +338,19 @@ One controlled online payment only:
 5. `safeInsertEmailDeliveryLog` succeeds or logs structured non-blocking details
 
 Then resend #755282; do not bulk resend before validation passes.
+
+---
+
+## Follow-up: entrypoint-level bare imports for Node File Trace
+
+### Root cause
+
+`ticket-email-bundle-hints.cjs` was loaded via `createRequire` + `includeFiles` copy of `api/_lib/**`. Vercel’s tracer does **not** walk npm dependencies from files only copied into the bundle — production error: `Cannot find module 'qrcode'` from the hints helper.
+
+### Fix
+
+Literal top-level `import 'package'` in each serverless entrypoint (`clictopay-confirm-payment.js`, `admin-approve-order.js`, `admin-pos.js`, `misc.js`). Short `includeFiles` unchanged: `{api/_lib/**,node_modules/@sparticuz/chromium/**}`.
+
+### Tests
+
+Entrypoint static-import regression tests in `ticket-qr-generate.test.cjs` — must not pass if refs exist only in `ticket-email-bundle-hints.cjs`.

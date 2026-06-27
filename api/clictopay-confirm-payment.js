@@ -2,6 +2,15 @@
 // Dedicated Vercel function (do not route through misc.js rewrite — path dispatch breaks on rewrite).
 
 import '../lib/sentry-server.js';
+// Bare imports for Vercel Node File Trace — must live in this entrypoint, not only in api/_lib.
+import 'qrcode';
+import 'dijkstrajs';
+import 'pngjs';
+import 'pdf-lib';
+import 'puppeteer-core';
+import '@sparticuz/chromium';
+import 'follow-redirects';
+import 'nodemailer';
 import { createRequire } from 'module';
 import nodePath from 'path';
 import { fileURLToPath } from 'url';
@@ -15,11 +24,6 @@ const { ensureSupabaseServerEnv } = requireFromRoot(
   nodePath.join(__dirname, '_lib', 'supabase-env.cjs')
 );
 ensureSupabaseServerEnv();
-
-const { ensureTicketEmailRuntimeDepsAreTraceable } = requireFromRoot(
-  nodePath.join(__dirname, '_lib', 'ticket-email-bundle-hints.cjs')
-);
-ensureTicketEmailRuntimeDepsAreTraceable();
 
 const { handleClicToPayConfirmPayment } = requireFromRoot(
   nodePath.join(__dirname, '_lib', 'clictopay-confirm-payment.cjs')

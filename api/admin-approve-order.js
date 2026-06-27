@@ -1,6 +1,15 @@
 // Admin Approve Order endpoint for Vercel
 // This endpoint approves orders in PENDING_ADMIN_APPROVAL status
 
+// Bare imports for Vercel Node File Trace — must live in this entrypoint, not only in api/_lib.
+import 'qrcode';
+import 'dijkstrajs';
+import 'pngjs';
+import 'pdf-lib';
+import 'puppeteer-core';
+import '@sparticuz/chromium';
+import 'follow-redirects';
+import 'nodemailer';
 import { verifyAdminAuth } from './_lib/admin-verify.js';
 import { createAdminDbClient } from './_lib/service-role-client.js';
 import { createRequire } from 'module';
@@ -16,11 +25,6 @@ const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./_lib/render-premiu
 const { buildTicketQrApiUrl } = requireCjs(path.join(__dirname, '_lib/ticket-qr-url.cjs'));
 const { prepareTicketsByPassTypeForEmail, mergeEmailAttachments } = requireCjs(path.join(__dirname, '_lib/ticket-qr-email.cjs'));
 const { randomUuid } = requireCjs(path.join(__dirname, '_lib/random-uuid.cjs'));
-
-const { ensureTicketEmailRuntimeDepsAreTraceable } = requireCjs(
-  path.join(__dirname, '_lib/ticket-email-bundle-hints.cjs')
-);
-ensureTicketEmailRuntimeDepsAreTraceable();
 
 // Helper function to format event time
 function formatEventTime(eventDate) {

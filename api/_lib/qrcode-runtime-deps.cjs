@@ -99,9 +99,36 @@ function includeFilesForFunction(vercelJson, functionPath) {
   return block[1];
 }
 
+const TICKET_EMAIL_ENTRYPOINT_RUNTIME_PACKAGES = [
+  'qrcode',
+  'dijkstrajs',
+  'pngjs',
+  'pdf-lib',
+  'puppeteer-core',
+  '@sparticuz/chromium',
+  'follow-redirects',
+  'nodemailer',
+];
+
+function entrypointStaticImportPattern(packageName) {
+  const escaped = packageName.replace('/', '\\/');
+  return new RegExp(`import\\s+['"]${escaped}['"]\\s*;`);
+}
+
+function assertEntrypointStaticallyImportsTicketEmailPackages(entrypointSource, entrypointPath) {
+  for (const pkg of TICKET_EMAIL_ENTRYPOINT_RUNTIME_PACKAGES) {
+    if (!entrypointStaticImportPattern(pkg).test(entrypointSource)) {
+      throw new Error(
+        `${entrypointPath} missing top-level import '${pkg}' (Vercel file trace requires entrypoint-level bare imports)`
+      );
+    }
+  }
+}
+
 module.exports = {
   VERCEL_INCLUDE_FILES_MAX_LENGTH,
   QR_GENERATING_VERCEL_FUNCTIONS,
+  TICKET_EMAIL_ENTRYPOINT_RUNTIME_PACKAGES,
   MISC_EXTRA_VERCEL_INCLUDES,
   TICKET_EMAIL_CHROMIUM_GLOB,
   TICKET_EMAIL_VERCEL_INCLUDE_FILES,
@@ -115,4 +142,6 @@ module.exports = {
   assertAllIncludeFilesWithinSchemaLimit,
   assertShortTicketEmailIncludeFiles,
   includeFilesForFunction,
+  entrypointStaticImportPattern,
+  assertEntrypointStaticallyImportsTicketEmailPackages,
 };

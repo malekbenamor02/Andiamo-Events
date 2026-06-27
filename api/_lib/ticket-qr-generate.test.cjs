@@ -26,15 +26,15 @@ const {
   TICKET_EMAIL_VERCEL_INCLUDE_FILES,
   MISC_TICKET_EMAIL_VERCEL_INCLUDE_FILES,
   VERCEL_INCLUDE_FILES_MAX_LENGTH,
+  TICKET_EMAIL_ENTRYPOINT_RUNTIME_PACKAGES,
   assertAllIncludeFilesWithinSchemaLimit,
   assertShortTicketEmailIncludeFiles,
+  assertEntrypointStaticallyImportsTicketEmailPackages,
   includeFilesForFunction,
+  entrypointStaticImportPattern,
 } = require('./qrcode-runtime-deps.cjs');
 
-const {
-  TICKET_EMAIL_BUNDLE_HINT_PACKAGES,
-  ensureTicketEmailRuntimeDepsAreTraceable,
-} = require('./ticket-email-bundle-hints.cjs');
+const { ensureTicketEmailRuntimeDepsAreTraceable } = require('./ticket-email-bundle-hints.cjs');
 
 function readVercelJson() {
   return read('vercel.json');
@@ -140,22 +140,43 @@ describe('ClicToPay confirm QR bundling', () => {
     }
   });
 
-  it('ticket-email-bundle-hints.cjs statically references runtime packages', () => {
-    const src = read('api/_lib/ticket-email-bundle-hints.cjs');
-    for (const pkg of TICKET_EMAIL_BUNDLE_HINT_PACKAGES) {
-      assert.match(src, new RegExp(`require\\(['"]${pkg.replace('/', '\\/')}['"]\\)`));
-    }
-  });
-
-  it('QR/PDF/email API entrypoints call ensureTicketEmailRuntimeDepsAreTraceable', () => {
+  it('serverless entrypoints statically import QR/PDF/SMTP runtime packages', () => {
+    const hintsOnly = read('api/_lib/ticket-email-bundle-hints.cjs');
     for (const rel of QR_GENERATING_VERCEL_FUNCTIONS) {
       const src = read(rel);
-      assert.match(src, /ticket-email-bundle-hints\.cjs/);
-      assert.match(src, /ensureTicketEmailRuntimeDepsAreTraceable\(\)/);
+      assertEntrypointStaticallyImportsTicketEmailPackages(src, rel);
+      assert.doesNotMatch(
+        src,
+        /ensureTicketEmailRuntimeDepsAreTraceable\(\)/,
+        `${rel} must not rely on _lib bundle-hints helper for production tracing`
+      );
+      for (const pkg of TICKET_EMAIL_ENTRYPOINT_RUNTIME_PACKAGES) {
+        assert.doesNotMatch(
+          hintsOnly,
+          entrypointStaticImportPattern(pkg),
+          `package ${pkg} must be imported from entrypoint ${rel}, not only bundle-hints`
+        );
+        assert.match(
+          src,
+          entrypointStaticImportPattern(pkg),
+          `${rel} missing top-level import for ${pkg}`
+        );
+      }
     }
   });
 
-  it('ensureTicketEmailRuntimeDepsAreTraceable loads without MODULE_NOT_FOUND', () => {
+  it('ticket-email-bundle-hints.cjs remains a local smoke helper (not production entrypoint path)', () => {
+    const hintsSrc = read('api/_lib/ticket-email-bundle-hints.cjs');
+    for (const pkg of TICKET_EMAIL_ENTRYPOINT_RUNTIME_PACKAGES) {
+      assert.match(hintsSrc, new RegExp(`require\\(['"]${pkg.replace('/', '\\/')}['"]\\)`));
+    }
+    for (const rel of QR_GENERATING_VERCEL_FUNCTIONS) {
+      const src = read(rel);
+      assert.doesNotMatch(src, /ticket-email-bundle-hints\.cjs/);
+    }
+  });
+
+  it('ensureTicketEmailRuntimeDepsAreTraceable loads without MODULE_NOT_FOUND locally', () => {
     ensureTicketEmailRuntimeDepsAreTraceable();
   });
 

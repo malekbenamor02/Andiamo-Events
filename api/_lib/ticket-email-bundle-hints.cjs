@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * Static requires so Vercel Node File Trace bundles QR/PDF/SMTP runtime deps
- * without listing every hoisted package in includeFiles (256-char schema limit).
+ * Local smoke helper for ticket-email runtime deps (not used by serverless entrypoints).
+ * Vercel Node File Trace requires bare imports in api/*.js entrypoints — see those files.
  */
 const TICKET_EMAIL_BUNDLE_HINT_PACKAGES = [
   'qrcode',
