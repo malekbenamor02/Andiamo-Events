@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
+import ProtectedScannerRoute from "@/components/auth/ProtectedScannerRoute";
 import ScannerLogin from "./ScannerLogin";
 import ScannerEvents from "./ScannerEvents";
 import ScannerScan from "./ScannerScan";
@@ -11,6 +12,22 @@ import ScannerInspectDetail from "./ScannerInspectDetail";
 
 interface ScannerAppProps {
   language: "en" | "fr";
+}
+
+function ProtectedScannerRoutes({ language }: ScannerAppProps) {
+  return (
+    <ProtectedScannerRoute language={language}>
+      <Routes>
+        <Route path="/" element={<ScannerEvents />} />
+        <Route path="/events" element={<ScannerEvents />} />
+        <Route path="/scan" element={<ScannerScan />} />
+        <Route path="/history" element={<ScannerHistory />} />
+        <Route path="/event-activity" element={<ScannerEventActivity />} />
+        <Route path="/inspect-detail" element={<ScannerInspectDetail />} />
+        <Route path="*" element={<ScannerEvents />} />
+      </Routes>
+    </ProtectedScannerRoute>
+  );
 }
 
 export default function ScannerApp({ language }: ScannerAppProps) {
@@ -51,14 +68,8 @@ export default function ScannerApp({ language }: ScannerAppProps) {
 
   return (
     <Routes>
-      <Route path="/" element={<ScannerEvents />} />
       <Route path="/login" element={<ScannerLogin />} />
-      <Route path="/events" element={<ScannerEvents />} />
-      <Route path="/scan" element={<ScannerScan />} />
-      <Route path="/history" element={<ScannerHistory />} />
-      <Route path="/event-activity" element={<ScannerEventActivity />} />
-      <Route path="/inspect-detail" element={<ScannerInspectDetail />} />
-      <Route path="*" element={<ScannerEvents />} />
+      <Route path="/*" element={<ProtectedScannerRoutes language={language} />} />
     </Routes>
   );
 }

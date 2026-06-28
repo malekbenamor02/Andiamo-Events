@@ -143,7 +143,6 @@ export const API_ROUTES = {
   AMBASSADOR_CANCEL_ORDER: '/api/ambassador/cancel-order',
   
   // Tickets & QR Codes
-  VALIDATE_TICKET: '/api/validate-ticket',
   GENERATE_QR_CODE: '/api/generate-qr-code',
   GENERATE_TICKETS_FOR_ORDER: '/api/generate-tickets-for-order',
   

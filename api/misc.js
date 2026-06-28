@@ -89,6 +89,11 @@ const { handleClicToPayConfirmPayment } = requireFromRoot(
 const { processConfirmedTicketPurchaseTracking } = requireFromRoot(nodePath.join(__dirname, '_lib', 'meta', 'ticket-purchase-tracking.cjs'));
 const { randomUuid } = requireFromRoot(nodePath.join(__dirname, '_lib', 'random-uuid.cjs'));
 const {
+  logQrRegistryPopulated,
+  logQrRegistryInsertError,
+  logQrRegistryFailure,
+} = requireFromRoot(nodePath.join(__dirname, '_lib', 'safe-ticket-log.cjs'));
+const {
   parseAttributionFromBody,
   processAmbassadorLeadTracking,
 } = requireFromRoot(nodePath.join(__dirname, '_lib', 'meta', 'ambassador-lead-tracking.cjs'));
@@ -3783,23 +3788,15 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                     const { data: registryData, error: registryInsertError } = await dbClient.from('qr_tickets').insert(registryEntry);
                     
                     if (registryInsertError) {
-                      console.error(`❌ QR Registry Insert Error for ticket ${ticketData.secure_token}:`, {
-                        error: registryInsertError.message,
-                        code: registryInsertError.code,
-                        details: registryInsertError.details,
-                        hint: registryInsertError.hint,
+                      logQrRegistryInsertError(ticketData, registryInsertError, {
                         usingServiceRole: !!supabaseService,
-                        entry: registryEntry
                       });
                     } else {
-                      console.log(`✅ QR Registry populated for ticket ${ticketData.secure_token}`);
+                      logQrRegistryPopulated(ticketData);
                     }
                   } catch (registryError) {
-                    // Fail silently - log error but don't block ticket generation
-                    console.error(`⚠️ Failed to populate QR registry for ticket ${ticketData.secure_token}:`, {
-                      error: registryError.message,
-                      stack: registryError.stack,
-                      usingServiceRole: !!supabaseService
+                    logQrRegistryFailure(ticketData, registryError, {
+                      usingServiceRole: !!supabaseService,
                     });
                   }
                 }

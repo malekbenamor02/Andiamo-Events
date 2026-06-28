@@ -2,6 +2,7 @@
  * Live preview for email campaigns — layout mirrors api/misc.js buildCampaignEmailHtml (keep in sync manually).
  */
 import React from 'react';
+import { sanitizeCmsHtml } from '@/lib/sanitizeHtml';
 
 /** Hero image width in sent email (misc.js buildCampaignEmailHtml img width="520"). */
 const HERO_WIDTH = 520;
@@ -55,7 +56,7 @@ export function EmailCampaignPreview({
   posterAttachmentLabel = ''
 }: EmailCampaignPreviewProps) {
   const emailSubject = subject.trim() || 'Update from Andiamo Events';
-  const content = body.replace(/\n/g, '<br>');
+  const content = sanitizeCmsHtml(body.replace(/\n/g, '<br>'));
   const showCta = showButton && Boolean(ctaUrl?.trim());
   const btnText = (ctaLabel || 'Learn more').trim() || 'Learn more';
   const hasHeader = showImage && Boolean(headerImageUrl?.trim());

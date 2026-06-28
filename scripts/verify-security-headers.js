@@ -15,6 +15,14 @@
 import https from 'https';
 import http from 'http';
 import { URL } from 'url';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { isValidCspPolicy } = require('../lib/csp-policy.cjs');
+
+function validateCspHeader(value) {
+  return isValidCspPolicy(value);
+}
 
 const REQUIRED_HEADERS = {
   'x-frame-options': 'DENY',
@@ -24,8 +32,8 @@ const REQUIRED_HEADERS = {
   'cross-origin-opener-policy': 'same-origin',
   'cross-origin-resource-policy': 'same-site',
   'strict-transport-security': (value) => value && value.includes('includeSubDomains') && value.includes('preload'),
-  'content-security-policy': (value) => value && value.includes('report-uri'),
-  'content-security-policy-report-only': (value) => value && value.includes('report-uri'),
+  'content-security-policy': validateCspHeader,
+  'content-security-policy-report-only': validateCspHeader,
 };
 
 const OPTIONAL_HEADERS = {
@@ -126,7 +134,36 @@ async function verifySecurityHeaders(url) {
         console.log(`    Value: ${result.value.substring(0, 100)}${result.value.length > 100 ? '...' : ''}`);
       }
     }
-    
+
+    const csp = headers['content-security-policy'];
+    const cspRo = headers['content-security-policy-report-only'];
+    if (csp && cspRo) {
+      if (csp === cspRo) {
+        console.log('  ✓ Content-Security-Policy and Report-Only policies are identical');
+      } else {
+        allValid = false;
+        console.log('  ✗ Content-Security-Policy and Report-Only policies differ');
+      }
+    }
+    if (csp && /[a-z-]+src'/.test(csp)) {
+      allValid = false;
+      console.log('  ✗ Content-Security-Policy has malformed directive spacing (e.g. style-src\'self\')');
+    }
+
+    console.log('\nCSP hardening review (warnings only — do not fail deploy):');
+    console.log('─'.repeat(60));
+    const cspValue = csp || '';
+    for (const [label, re] of [
+      ["'unsafe-inline' in script-src or default-src", /unsafe-inline/i],
+      ["'unsafe-eval' in script-src or default-src", /unsafe-eval/i],
+    ]) {
+      if (re.test(cspValue)) {
+        console.log(`  ⚠️  CSP contains ${label} — see security/csp-tightening-plan-2026-06-28.md`);
+      } else {
+        console.log(`  ✓ CSP does not contain ${label}`);
+      }
+    }
+
     console.log('\nOptional Headers:');
     console.log('─'.repeat(60));
     

@@ -90,11 +90,12 @@ async function handleTicketQrRequest(req, res, db) {
   try {
     const png = await generateTicketQrPngBuffer(secureToken);
     res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Cache-Control', 'no-store, private');
+    res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     return res.status(200).send(png);
-  } catch (err) {
+  } catch {
     console.error('[ticket-qr] generate failed');
     return res.status(500).json({ error: 'Failed to generate QR code' });
   }
@@ -105,8 +106,8 @@ function registerTicketQrRoute(app, getServiceDb) {
     try {
       const db = typeof getServiceDb === 'function' ? getServiceDb() : getServiceDb;
       return handleTicketQrRequest(req, res, db);
-    } catch (e) {
-      console.error('[ticket-qr] route error', e.message);
+    } catch {
+      console.error('[ticket-qr] route error');
       return res.status(500).json({ error: 'Server error' });
     }
   });

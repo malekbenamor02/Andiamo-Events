@@ -61,6 +61,7 @@ const AdminChangePassword = lazyWithChunkRecovery(() => import("./pages/admin/Ch
 import ProtectedAdminRoute from "./components/auth/ProtectedAdminRoute";
 const AmbassadorDashboard = lazyWithChunkRecovery(() => import("./pages/ambassador/Dashboard"));
 import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute";
+import ProtectedInfluencerRoute from "./components/auth/ProtectedInfluencerRoute";
 
 const AmbassadorApplication = lazyWithChunkRecovery(() => import("./pages/ambassador/Application"));
 const InfluencerAuth = lazyWithChunkRecovery(() => import("./pages/influencer/Auth"));
@@ -257,7 +258,14 @@ const AppContent = ({
               <Route path="/academy/terms" element={<AcademyTerms language={language} />} />
               <Route path="/influencer/auth" element={<InfluencerAuth language={language} />} />
               <Route path="/influencer/change-password" element={<InfluencerChangePassword language={language} />} />
-              <Route path="/influencer/dashboard" element={<InfluencerDashboard language={language} />} />
+              <Route
+                path="/influencer/dashboard"
+                element={
+                  <ProtectedInfluencerRoute language={language}>
+                    <InfluencerDashboard language={language} />
+                  </ProtectedInfluencerRoute>
+                }
+              />
               {/* Friendly URL route for event pass purchase: /event-slug */}
               <Route path="/:eventSlug" element={<PassPurchase language={language} />} />
               <Route path="*" element={<NotFound />} />

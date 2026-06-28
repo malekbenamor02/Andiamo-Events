@@ -115,9 +115,11 @@ function scanFile(absPath) {
   while ((m = dbClientCallRe.exec(content)) !== null) {
     if (!isLikelyAdminContext(content, m.index)) continue;
     if (isPublicException(rel, content, m.index)) continue;
-    const before = content.slice(Math.max(0, m.index - 3500), m.index);
+    const before = content.slice(Math.max(0, m.index - 8000), m.index);
     const hasAuth =
       /verifyAdminAuth\s*\(/.test(before) ||
+      /gateAdminPermission\s*\(/.test(before) ||
+      /authorizeCronOrAdminPermission\s*\(/.test(before) ||
       /requireAdmin\s*\(/.test(before) ||
       /verifySuperAdmin\s*\(/.test(before) ||
       /requireAdminAuth/.test(before) ||

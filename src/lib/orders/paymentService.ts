@@ -5,38 +5,36 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { PaymentOption } from '@/types/orders';
-import { OrderStatus, PaymentMethod, PaymentOptionType } from '@/lib/constants/orderStatuses';
+import { PaymentMethod, PaymentOptionType } from '@/lib/constants/orderStatuses';
+import { API_ROUTES } from '@/lib/api-routes';
+import { apiFetch, handleApiResponse } from '@/lib/api-client';
 
 /**
- * Fetch all payment options (admin)
+ * Fetch all payment options (admin) — server API with settings:manage gate.
  */
 export async function fetchAllPaymentOptions(): Promise<PaymentOption[]> {
-  const { data, error } = await supabase
-    .from('payment_options')
-    .select('*')
-    .order('option_type');
-  
-  if (error) {
-    throw new Error(`Failed to fetch payment options: ${error.message}`);
-  }
-  
-  return (data || []) as PaymentOption[];
+  const response = await apiFetch(API_ROUTES.ADMIN_PAYMENT_OPTIONS, {
+    credentials: 'include',
+  });
+  const payload = await handleApiResponse<{ success: boolean; data: PaymentOption[] }>(response);
+  return payload.data || [];
 }
 
 /**
- * Fetch enabled payment options (public)
+ * Fetch enabled payment options (public checkout).
+ * RLS allows anon SELECT only where enabled = true.
  */
 export async function fetchEnabledPaymentOptions(): Promise<PaymentOption[]> {
   const { data, error } = await supabase
     .from('payment_options')
-    .select('*')
+    .select('option_type, enabled, app_name, external_link, app_image, updated_at')
     .eq('enabled', true)
     .order('option_type');
-  
+
   if (error) {
     throw new Error(`Failed to fetch enabled payment options: ${error.message}`);
   }
-  
+
   return (data || []) as PaymentOption[];
 }
 
@@ -48,59 +46,14 @@ export async function isPaymentOptionEnabled(optionType: PaymentOptionType): Pro
     .from('payment_options')
     .select('enabled')
     .eq('option_type', optionType)
-    .single();
-  
+    .eq('enabled', true)
+    .maybeSingle();
+
   if (error || !data) {
     return false;
   }
-  
-  return data.enabled;
-}
 
-/**
- * Update payment option configuration (admin only)
- */
-export async function updatePaymentOption(
-  optionType: PaymentOptionType,
-  config: {
-    enabled?: boolean;
-    app_name?: string;
-    external_link?: string;
-    app_image?: string;
-  }
-): Promise<PaymentOption> {
-  const updateData: any = {
-    updated_at: new Date().toISOString()
-  };
-  
-  if (config.enabled !== undefined) {
-    updateData.enabled = config.enabled;
-  }
-  
-  if (optionType === PaymentOptionType.EXTERNAL_APP) {
-    if (config.app_name !== undefined) {
-      updateData.app_name = config.app_name;
-    }
-    if (config.external_link !== undefined) {
-      updateData.external_link = config.external_link;
-    }
-    if (config.app_image !== undefined) {
-      updateData.app_image = config.app_image;
-    }
-  }
-  
-  const { data, error } = await supabase
-    .from('payment_options')
-    .update(updateData)
-    .eq('option_type', optionType)
-    .select()
-    .single();
-  
-  if (error) {
-    throw new Error(`Failed to update payment option: ${error.message}`);
-  }
-  
-  return data as PaymentOption;
+  return data.enabled === true;
 }
 
 /**
@@ -113,18 +66,17 @@ export function validateExternalAppConfig(config: {
   if (!config.app_name || config.app_name.trim().length === 0) {
     return { valid: false, error: 'App name is required' };
   }
-  
+
   if (!config.external_link || config.external_link.trim().length === 0) {
     return { valid: false, error: 'External link is required' };
   }
-  
-  // Validate URL format
+
   try {
     new URL(config.external_link);
   } catch {
     return { valid: false, error: 'External link must be a valid URL' };
   }
-  
+
   return { valid: true };
 }
 
@@ -143,4 +95,3 @@ export function getPaymentMethodFromOptionType(optionType: PaymentOptionType): P
       throw new Error(`Invalid payment option type: ${optionType}`);
   }
 }
-

@@ -13,7 +13,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
-import ProtectedInfluencerRoute from '@/components/auth/ProtectedInfluencerRoute';
 import Loader from '@/components/ui/Loader';
 import { cn } from '@/lib/utils';
 import {
@@ -385,9 +384,5 @@ function DashboardContent({ language }: InfluencerDashboardProps) {
 }
 
 export default function InfluencerDashboard({ language }: InfluencerDashboardProps) {
-  return (
-    <ProtectedInfluencerRoute language={language}>
-      <DashboardContent language={language} />
-    </ProtectedInfluencerRoute>
-  );
+  return <DashboardContent language={language} />;
 }

@@ -48,6 +48,11 @@ const {
 } = require('./api/_lib/ambassador-selection-settings.cjs');
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./api/_lib/email-branding.cjs');
 const { uploadTicketQrToR2OrSupabase, buildTicketQrApiUrl } = require('./api/_lib/r2-media.cjs');
+const {
+  logQrRegistryPopulated,
+  logQrRegistryInsertError,
+  logQrRegistryFailure,
+} = require('./api/_lib/safe-ticket-log.cjs');
 const { computeOnlinePaymentFees } = require('./api/_lib/online-payment-fee.cjs');
 const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
 const {
@@ -168,6 +173,7 @@ const {
   requireAdminPermission,
   requireAdminRole,
 } = require('./api/_lib/admin-authorization-express.cjs');
+const { CSP_POLICY } = require('./lib/csp-policy.cjs');
 
 const { releaseOrderStock: releaseOrderStockCore } = require('./api/_lib/release-order-stock.cjs');
 
@@ -344,22 +350,8 @@ app.use((req, res, next) => {
   }
   
   // CSP: enforcing + Report-Only (parity with vercel.json; keep reporting during rollout)
-  const cspPolicy = [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "object-src 'none'",
-    "frame-ancestors 'none'",
-    "img-src 'self' https: data:",
-    "font-src 'self' https: data:",
-    "style-src 'self' 'unsafe-inline' https:",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https: https://www.clarity.ms https://scripts.clarity.ms",
-    "worker-src 'self' blob:",
-    "connect-src 'self' https: wss: *.supabase.co *.supabase.in *.google.com *.gstatic.com *.vercel-analytics.com *.vercel-insights.com *.sentry.io *.ingest.sentry.io *.clarity.ms https://c.bing.com *.clictopay.com test.clictopay.com",
-    "frame-src 'self' https: *.google.com *.clictopay.com test.clictopay.com",
-    "report-uri /api/csp-report"
-  ].join('; ');
-  res.setHeader('Content-Security-Policy', cspPolicy);
-  res.setHeader('Content-Security-Policy-Report-Only', cspPolicy);
+  res.setHeader('Content-Security-Policy', CSP_POLICY);
+  res.setHeader('Content-Security-Policy-Report-Only', CSP_POLICY);
   
   next();
 });
@@ -3644,129 +3636,8 @@ try {
   console.error(e.stack);
 }
 
-// Ticket validation endpoint
-app.post('/api/validate-ticket', async (req, res) => {
-  try {
-    const { qrCode, eventId, ambassadorId, deviceInfo, scanLocation } = req.body;
-
-    if (!qrCode || !eventId || !ambassadorId) {
-      return res.status(400).json({ 
-        error: 'Missing required fields: qrCode, eventId, ambassadorId' 
-      });
-    }
-
-    // Find the ticket by QR code
-    const { data: ticket, error: ticketError } = await supabase
-      .from('pass_purchases')
-      .select(`
-        *,
-        events (
-          id,
-          name,
-          date,
-          venue,
-          city
-        )
-      `)
-      .eq('qr_code', qrCode)
-      .single();
-
-    if (ticketError || !ticket) {
-      return res.status(404).json({
-        success: false,
-        result: 'invalid',
-        message: 'Ticket not found'
-      });
-    }
-
-    // Check if ticket is for the correct event
-    if (ticket.event_id !== eventId) {
-      return res.status(400).json({
-        success: false,
-        result: 'invalid',
-        message: 'Ticket is not valid for this event'
-      });
-    }
-
-    // Check if ticket is already scanned
-    const { data: existingScan, error: scanError } = await supabase
-      .from('scans')
-      .select('*')
-      .eq('ticket_id', ticket.id)
-      .eq('scan_result', 'valid')
-      .single();
-
-    if (existingScan) {
-      // Record the duplicate scan attempt
-      await supabase.from('scans').insert({
-        ticket_id: ticket.id,
-        event_id: eventId,
-        ambassador_id: ambassadorId,
-        scan_result: 'already_scanned',
-        device_info: deviceInfo,
-        scan_location: scanLocation,
-        notes: 'Duplicate scan attempt'
-      });
-
-      return res.status(200).json({
-        success: false,
-        result: 'already_scanned',
-        message: 'Ticket already scanned',
-        ticket: {
-          id: ticket.id,
-          customer_name: ticket.customer_name,
-          event_name: ticket.events.name,
-          ticket_type: ticket.pass_type,
-          scan_time: existingScan.scan_time
-        }
-      });
-    }
-
-    // Record the valid scan
-    const { data: scanRecord, error: recordError } = await supabase
-      .from('scans')
-      .insert({
-        ticket_id: ticket.id,
-        event_id: eventId,
-        ambassador_id: ambassadorId,
-        scan_result: 'valid',
-        device_info: deviceInfo,
-        scan_location: scanLocation,
-        notes: 'Valid ticket scan'
-      })
-      .select()
-      .single();
-
-    if (recordError) {
-      console.error('Error recording scan:', recordError);
-      return res.status(500).json({
-        success: false,
-        result: 'error',
-        message: 'Failed to record scan'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      result: 'valid',
-      message: 'Ticket validated successfully',
-      ticket: {
-        id: ticket.id,
-        customer_name: ticket.customer_name,
-        event_name: ticket.events.name,
-        ticket_type: ticket.pass_type,
-        scan_time: scanRecord.scan_time
-      }
-    });
-
-  } catch (error) {
-    console.error('Ticket validation error:', error);
-    res.status(500).json({ 
-      error: 'Internal server error', 
-      details: error.message 
-    });
-  }
-});
+// Legacy unauthenticated POST /api/validate-ticket removed (SEC-20260628-004).
+// Use POST /api/scanner/validate-ticket with scanner session instead.
 
 // ==================== SMS Marketing Routes ====================
 // Test endpoint to verify SMS routes are working
@@ -9217,23 +9088,15 @@ async function generateTicketsAndSendEmail(orderId) {
             const { data: registryData, error: registryInsertError } = await dbClient.from('qr_tickets').insert(registryEntry);
             
             if (registryInsertError) {
-              console.error(`❌ QR Registry Insert Error for ticket ${ticketData.secure_token}:`, {
-                error: registryInsertError.message,
-                code: registryInsertError.code,
-                details: registryInsertError.details,
-                hint: registryInsertError.hint,
+              logQrRegistryInsertError(ticketData, registryInsertError, {
                 usingServiceRole: !!supabaseService,
-                entry: registryEntry
               });
             } else {
-              console.log(`✅ QR Registry populated for ticket ${ticketData.secure_token}`);
+              logQrRegistryPopulated(ticketData);
             }
           } catch (registryError) {
-            // Fail silently - log error but don't block ticket generation
-            console.error(`⚠️ Failed to populate QR registry for ticket ${ticketData.secure_token}:`, {
-              error: registryError.message,
-              stack: registryError.stack,
-              usingServiceRole: !!supabaseService
+            logQrRegistryFailure(ticketData, registryError, {
+              usingServiceRole: !!supabaseService,
             });
           }
         }

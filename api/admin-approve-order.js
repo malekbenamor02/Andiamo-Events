@@ -25,6 +25,11 @@ const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./_lib/render-premiu
 const { buildTicketQrApiUrl } = requireCjs(path.join(__dirname, '_lib/ticket-qr-url.cjs'));
 const { prepareTicketsByPassTypeForEmail, mergeEmailAttachments } = requireCjs(path.join(__dirname, '_lib/ticket-qr-email.cjs'));
 const { randomUuid } = requireCjs(path.join(__dirname, '_lib/random-uuid.cjs'));
+const {
+  logQrRegistryPopulated,
+  logQrRegistryInsertError,
+  logQrRegistryFailure,
+} = requireCjs(path.join(__dirname, '_lib/safe-ticket-log.cjs'));
 
 // Helper function to format event time
 function formatEventTime(eventDate) {
@@ -395,24 +400,12 @@ export default async (req, res) => {
                 const { data: registryData, error: registryInsertError } = await dbClient.from('qr_tickets').insert(registryEntry);
                 
                 if (registryInsertError) {
-                  console.error(`❌ QR Registry Insert Error for ticket ${ticketData.secure_token}:`, {
-                    error: registryInsertError.message,
-                    code: registryInsertError.code,
-                    details: registryInsertError.details,
-                    hint: registryInsertError.hint,
-                    usingServiceRole: true,
-                    entry: registryEntry
-                  });
+                  logQrRegistryInsertError(ticketData, registryInsertError, { usingServiceRole: true });
                 } else {
-                  console.log(`✅ QR Registry populated for ticket ${ticketData.secure_token}`);
+                  logQrRegistryPopulated(ticketData);
                 }
               } catch (registryError) {
-                // Fail silently - log error but don't block ticket generation
-                console.error(`⚠️ Failed to populate QR registry for ticket ${ticketData.secure_token}:`, {
-                  error: registryError.message,
-                  stack: registryError.stack,
-                  usingServiceRole: true
-                });
+                logQrRegistryFailure(ticketData, registryError, { usingServiceRole: true });
               }
             }
           }

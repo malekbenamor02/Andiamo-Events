@@ -31,6 +31,7 @@
     "verify:order-fulfillment-migration": "node scripts/verify-order-fulfillment-migration.mjs",
     "test:login-security": "node --test api/_lib/scanner-auth.test.cjs api/_lib/scanner-login-rate-limit.test.cjs api/_lib/ambassador-auth.test.cjs",
     "test:supabase-remediation": "node --test api/_lib/supabase-remediation-migrations.test.cjs",
+    "test:security-remediation": "node --test api/_lib/no-sensitive-token-logs.test.cjs api/_lib/security-remediation-2026-06-28.test.cjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

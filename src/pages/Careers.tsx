@@ -26,6 +26,7 @@ import type { CareerDomain, CareerApplicationField } from "@/lib/career/types";
 import { mapPublicError } from "@/lib/userErrors";
 import { Briefcase, ArrowLeft, ArrowRight, CheckCircle, Upload, X, Search, Loader2, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { sanitizeCmsHtml } from "@/lib/sanitizeHtml";
 
 interface CareersProps {
   language: "en" | "fr";
@@ -870,13 +871,13 @@ export default function Careers({ language }: CareersProps) {
                 {(domain as { benefits?: string })?.benefits && (
                   <div
                     className={cn(CARD_SURFACE, "prose prose-invert prose-sm max-w-none p-5")}
-                    dangerouslySetInnerHTML={{ __html: (domain as { benefits: string }).benefits }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeCmsHtml((domain as { benefits: string }).benefits) }}
                   />
                 )}
                 {(domain as { job_details?: string })?.job_details && (
                   <div className={cn(CARD_SURFACE, "prose prose-invert prose-sm max-w-none p-5")}>
                     {(domain as { job_details: string }).job_details.trim().startsWith("<") ? (
-                      <div dangerouslySetInnerHTML={{ __html: (domain as { job_details: string }).job_details }} />
+                      <div dangerouslySetInnerHTML={{ __html: sanitizeCmsHtml((domain as { job_details: string }).job_details) }} />
                     ) : (
                       <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
                         {(domain as { job_details: string }).job_details}

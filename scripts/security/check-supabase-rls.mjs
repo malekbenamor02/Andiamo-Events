@@ -177,6 +177,22 @@ async function expectPublicEventsFiltered() {
   console.log(`OK  events: public filter holds (${(data || []).length} visible row(s))`);
 }
 
+async function expectPaymentOptionsDisabledHiddenFromAnon() {
+  const { data, error } = await supabase
+    .from('payment_options')
+    .select('option_type, enabled')
+    .eq('enabled', false);
+  if (error) {
+    console.log(`OK  payment_options: anon SELECT disabled rows denied (${error.code || 'error'})`);
+    return;
+  }
+  if ((data || []).length > 0) {
+    fail(`payment_options: anon can read ${data.length} disabled row(s)`);
+    return;
+  }
+  console.log('OK  payment_options: anon cannot read disabled rows');
+}
+
 async function expectAnonRpcBlocked() {
   const rpcArgs = {
     release_order_stock_internal: { order_id_param: '00000000-0000-0000-0000-000000000001' },
@@ -314,6 +330,9 @@ async function main() {
   console.log('\n--- Anon public location reads ---');
   await expectPublicReadAllowed('cities');
   await expectPublicReadAllowed('villes');
+
+  console.log('\n--- Anon payment_options (enabled only) ---');
+  await expectPaymentOptionsDisabledHiddenFromAnon();
 
   console.log('\n--- Anon write probes (must be denied) ---');
   await expectWriteDenied('cities', 'INSERT', () =>
