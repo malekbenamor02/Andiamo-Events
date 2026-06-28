@@ -2,27 +2,29 @@
 
 /**
  * Security Headers Verification Script
- * 
- * Verifies that all security headers are present and correctly configured.
- * 
+ *
+ * Uses curl raw output (same path as manual checks) and validates CSP formatting.
+ *
  * Usage:
  *   node scripts/verify-security-headers.js [url]
- * 
+ *
  * Example:
  *   node scripts/verify-security-headers.js https://www.andiamoevents.com
  */
 
+import { execFileSync } from 'child_process';
 import https from 'https';
 import http from 'http';
 import { URL } from 'url';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { isValidCspPolicy } = require('../lib/csp-policy.cjs');
-
-function validateCspHeader(value) {
-  return isValidCspPolicy(value);
-}
+const {
+  CSP_POLICY,
+  hasMalformedCspSpacing,
+  isValidCspPolicy,
+  cspPoliciesAreIdentical,
+} = require('../lib/csp-policy.cjs');
 
 const REQUIRED_HEADERS = {
   'x-frame-options': 'DENY',
@@ -31,54 +33,83 @@ const REQUIRED_HEADERS = {
   'permissions-policy': (value) => value && value.includes('geolocation=()'),
   'cross-origin-opener-policy': 'same-origin',
   'cross-origin-resource-policy': 'same-site',
-  'strict-transport-security': (value) => value && value.includes('includeSubDomains') && value.includes('preload'),
-  'content-security-policy': validateCspHeader,
-  'content-security-policy-report-only': validateCspHeader,
+  'strict-transport-security': (value) =>
+    value && value.includes('includeSubDomains') && value.includes('preload'),
 };
 
 const OPTIONAL_HEADERS = {
-  'x-xss-protection': null, // Legacy, not required
+  'x-xss-protection': null,
 };
 
 function checkHeader(headers, headerName, expectedValue) {
   const headerValue = headers[headerName.toLowerCase()];
-  
+
   if (!headerValue) {
     return { present: false, valid: false, message: `Missing ${headerName}` };
   }
-  
+
   if (typeof expectedValue === 'function') {
     const isValid = expectedValue(headerValue);
     return {
       present: true,
       valid: isValid,
       message: isValid ? `✓ ${headerName} is valid` : `✗ ${headerName} is invalid: ${headerValue}`,
-      value: headerValue
+      value: headerValue,
     };
   }
-  
+
   if (headerValue.toLowerCase() === expectedValue.toLowerCase()) {
     return {
       present: true,
       valid: true,
       message: `✓ ${headerName} is correct`,
-      value: headerValue
+      value: headerValue,
     };
   }
-  
+
   return {
     present: true,
     valid: false,
     message: `✗ ${headerName} is incorrect. Expected: ${expectedValue}, Got: ${headerValue}`,
-    value: headerValue
+    value: headerValue,
   };
 }
 
-function fetchHeaders(url) {
+/** Unfold RFC 7230 header continuation lines from curl -I output. */
+function parseCurlHeaders(raw) {
+  const unfolded = [];
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line) continue;
+    if (/^[\t ]/.test(line) && unfolded.length > 0) {
+      unfolded[unfolded.length - 1] += ` ${line.trim()}`;
+    } else if (line.includes(':')) {
+      unfolded.push(line);
+    }
+  }
+
+  const headers = {};
+  for (const line of unfolded) {
+    const idx = line.indexOf(':');
+    const key = line.slice(0, idx).trim().toLowerCase();
+    const value = line.slice(idx + 1).trim();
+    headers[key] = headers[key] ? `${headers[key]}, ${value}` : value;
+  }
+  return headers;
+}
+
+function fetchHeadersWithCurl(url) {
+  const raw = execFileSync('curl.exe', ['-sS', '-I', url], {
+    encoding: 'utf8',
+    maxBuffer: 2 * 1024 * 1024,
+  });
+  return parseCurlHeaders(raw);
+}
+
+function fetchHeadersNode(url) {
   return new Promise((resolve, reject) => {
     const parsedUrl = new URL(url);
     const client = parsedUrl.protocol === 'https:' ? https : http;
-    
+
     const options = {
       hostname: parsedUrl.hostname,
       port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
@@ -86,7 +117,7 @@ function fetchHeaders(url) {
       method: 'HEAD',
       timeout: 10000,
     };
-    
+
     const req = client.request(options, (res) => {
       const headers = {};
       for (const [key, value] of Object.entries(res.headers)) {
@@ -94,60 +125,131 @@ function fetchHeaders(url) {
       }
       resolve({ statusCode: res.statusCode, headers });
     });
-    
+
     req.on('error', reject);
     req.on('timeout', () => {
       req.destroy();
       reject(new Error('Request timeout'));
     });
-    
+
     req.end();
   });
 }
 
+function validateCspPair(enforcing, reportOnly) {
+  const issues = [];
+
+  if (!enforcing) {
+    issues.push('Missing Content-Security-Policy header');
+  }
+  if (!reportOnly) {
+    issues.push('Missing Content-Security-Policy-Report-Only header');
+  }
+
+  if (enforcing && hasMalformedCspSpacing(enforcing)) {
+    issues.push(
+      "Content-Security-Policy contains malformed spacing (e.g. style-src'self' or connect-src'self')"
+    );
+  }
+  if (reportOnly && hasMalformedCspSpacing(reportOnly)) {
+    issues.push('Content-Security-Policy-Report-Only contains malformed directive spacing');
+  }
+
+  if (enforcing && !isValidCspPolicy(enforcing)) {
+    issues.push('Content-Security-Policy failed directive validation');
+  }
+  if (reportOnly && !isValidCspPolicy(reportOnly)) {
+    issues.push('Content-Security-Policy-Report-Only failed directive validation');
+  }
+
+  if (enforcing && reportOnly && !cspPoliciesAreIdentical(enforcing, reportOnly)) {
+    issues.push('Content-Security-Policy and Content-Security-Policy-Report-Only differ');
+  }
+
+  if (enforcing && reportOnly && enforcing === reportOnly) {
+    issues.push(null);
+  }
+
+  return issues.filter(Boolean);
+}
+
+function snippetAroundStyleSrc(value) {
+  const idx = String(value || '').toLowerCase().indexOf('style-src');
+  if (idx === -1) return '(style-src not found)';
+  return String(value).slice(idx, idx + 40);
+}
+
 async function verifySecurityHeaders(url) {
   console.log(`\n🔒 Verifying security headers for: ${url}\n`);
-  
+
+  let allValid = true;
+
   try {
-    const { statusCode, headers } = await fetchHeaders(url);
-    
-    if (statusCode !== 200) {
-      console.warn(`⚠️  Warning: Received status code ${statusCode} (expected 200)`);
-    }
-    
-    console.log('Required Headers:');
-    console.log('─'.repeat(60));
-    
-    let allValid = true;
-    const results = {};
-    
-    for (const [headerName, expectedValue] of Object.entries(REQUIRED_HEADERS)) {
-      const result = checkHeader(headers, headerName, expectedValue);
-      results[headerName] = result;
-      
-      if (!result.valid) {
-        allValid = false;
-      }
-      
-      console.log(`  ${result.message}`);
-      if (result.value) {
-        console.log(`    Value: ${result.value.substring(0, 100)}${result.value.length > 100 ? '...' : ''}`);
+    let headers;
+    let usedCurl = false;
+    try {
+      headers = fetchHeadersWithCurl(url);
+      usedCurl = true;
+      console.log('Header source: curl.exe -sS -I (raw, unfolded)\n');
+    } catch (curlError) {
+      console.warn(`⚠️  curl unavailable (${curlError.message}); falling back to Node https\n`);
+      const nodeResult = await fetchHeadersNode(url);
+      headers = nodeResult.headers;
+      if (nodeResult.statusCode !== 200) {
+        console.warn(`⚠️  Warning: Received status code ${nodeResult.statusCode} (expected 200)`);
       }
     }
 
     const csp = headers['content-security-policy'];
     const cspRo = headers['content-security-policy-report-only'];
-    if (csp && cspRo) {
-      if (csp === cspRo) {
-        console.log('  ✓ Content-Security-Policy and Report-Only policies are identical');
-      } else {
-        allValid = false;
-        console.log('  ✗ Content-Security-Policy and Report-Only policies differ');
+
+    console.log('Required Headers:');
+    console.log('─'.repeat(60));
+
+    for (const [headerName, expectedValue] of Object.entries(REQUIRED_HEADERS)) {
+      const result = checkHeader(headers, headerName, expectedValue);
+      if (!result.valid) allValid = false;
+      console.log(`  ${result.message}`);
+      if (result.value) {
+        console.log(
+          `    Value: ${result.value.substring(0, 100)}${result.value.length > 100 ? '...' : ''}`
+        );
       }
     }
-    if (csp && /[a-z-]+src'/.test(csp)) {
+
+    console.log('\nContent-Security-Policy:');
+    console.log('─'.repeat(60));
+
+    const cspIssues = validateCspPair(csp, cspRo);
+    if (cspIssues.length === 0) {
+      console.log('  ✓ Content-Security-Policy is present and valid');
+      console.log('  ✓ Content-Security-Policy-Report-Only is present and valid');
+      console.log('  ✓ Enforcing and Report-Only policies are identical');
+      console.log(`    style-src fragment: ${snippetAroundStyleSrc(csp)}`);
+      console.log(`    connect-src fragment: ${String(csp).slice(
+        String(csp).toLowerCase().indexOf('connect-src'),
+        String(csp).toLowerCase().indexOf('connect-src') + 40
+      )}`);
+    } else {
       allValid = false;
-      console.log('  ✗ Content-Security-Policy has malformed directive spacing (e.g. style-src\'self\')');
+      for (const issue of cspIssues) {
+        console.log(`  ✗ ${issue}`);
+      }
+      if (csp) {
+        console.log(`    Enforcing style-src fragment: ${snippetAroundStyleSrc(csp)}`);
+      }
+      if (cspRo) {
+        console.log(`    Report-Only style-src fragment: ${snippetAroundStyleSrc(cspRo)}`);
+      }
+    }
+
+    if (usedCurl && csp && cspRo && csp === cspRo && hasMalformedCspSpacing(csp)) {
+      allValid = false;
+      console.log('  ✗ curl raw headers are byte-identical but still malformed');
+    }
+
+    if (CSP_POLICY && csp && !cspPoliciesAreIdentical(csp, CSP_POLICY)) {
+      console.log('  ⚠️  Live CSP differs from lib/csp-policy.cjs (deploy may be pending)');
     }
 
     console.log('\nCSP hardening review (warnings only — do not fail deploy):');
@@ -158,7 +260,7 @@ async function verifySecurityHeaders(url) {
       ["'unsafe-eval' in script-src or default-src", /unsafe-eval/i],
     ]) {
       if (re.test(cspValue)) {
-        console.log(`  ⚠️  CSP contains ${label} — see security/csp-tightening-plan-2026-06-28.md`);
+        console.log(`  ⚠️  CSP contains ${label}`);
       } else {
         console.log(`  ✓ CSP does not contain ${label}`);
       }
@@ -166,32 +268,45 @@ async function verifySecurityHeaders(url) {
 
     console.log('\nOptional Headers:');
     console.log('─'.repeat(60));
-    
+
     for (const [headerName] of Object.entries(OPTIONAL_HEADERS)) {
       const result = checkHeader(headers, headerName, null);
       if (result.present) {
         console.log(`  ℹ️  ${headerName} is present (legacy header, not required)`);
       }
     }
-    
-    // Check security.txt
+
     console.log('\nSecurity.txt:');
     console.log('─'.repeat(60));
-    
+
     try {
       const securityTxtUrl = new URL('/.well-known/security.txt', url).href;
-      const { statusCode: txtStatus } = await fetchHeaders(securityTxtUrl);
-      if (txtStatus === 200) {
-        console.log(`  ✓ Security.txt is accessible at ${securityTxtUrl}`);
+      if (usedCurl) {
+        const txtRaw = execFileSync('curl.exe', ['-sS', '-I', securityTxtUrl], {
+          encoding: 'utf8',
+        });
+        const statusLine = txtRaw.split(/\r?\n/)[0] || '';
+        const txtStatus = Number(statusLine.match(/\s(\d{3})\s/)?.[1] || 0);
+        if (txtStatus === 200) {
+          console.log(`  ✓ Security.txt is accessible at ${securityTxtUrl}`);
+        } else {
+          console.log(`  ✗ Security.txt returned status ${txtStatus}`);
+          allValid = false;
+        }
       } else {
-        console.log(`  ✗ Security.txt returned status ${txtStatus}`);
-        allValid = false;
+        const { statusCode: txtStatus } = await fetchHeadersNode(securityTxtUrl);
+        if (txtStatus === 200) {
+          console.log(`  ✓ Security.txt is accessible at ${securityTxtUrl}`);
+        } else {
+          console.log(`  ✗ Security.txt returned status ${txtStatus}`);
+          allValid = false;
+        }
       }
     } catch (error) {
       console.log(`  ✗ Security.txt check failed: ${error.message}`);
       allValid = false;
     }
-    
+
     console.log('\n' + '═'.repeat(60));
     if (allValid) {
       console.log('✅ All security headers are present and valid!');
@@ -200,18 +315,20 @@ async function verifySecurityHeaders(url) {
       console.log('   Please review the output above and fix any issues.');
     }
     console.log('═'.repeat(60) + '\n');
-    
-    return { allValid, results };
-    
+
+    if (!allValid) {
+      process.exit(1);
+    }
+
+    return { allValid };
   } catch (error) {
     console.error(`\n❌ Error verifying headers: ${error.message}\n`);
     process.exit(1);
   }
 }
 
-// Main
 const url = process.argv[2] || 'https://www.andiamoevents.com';
-verifySecurityHeaders(url).catch(error => {
+verifySecurityHeaders(url).catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });

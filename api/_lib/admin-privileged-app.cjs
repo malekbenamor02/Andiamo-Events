@@ -66,6 +66,9 @@ async function getAdminPrivilegedApp() {
     });
     registerAdminAuditLogsRoutes(app, adminRouteDeps);
 
+    const { registerReportsExportRoute } = require('./reports-export-route.cjs');
+    registerReportsExportRoute(app, adminRouteDeps);
+
     return app;
   })();
 
@@ -83,6 +86,7 @@ function isAdminPrivilegedPath(path) {
     path.startsWith('/api/admin/analytics/orders') ||
     path.startsWith('/api/admin/analytics/export-orders') ||
     path.startsWith('/api/admin/analytics/order-summaries') ||
+    path === '/api/admin/reports/export' ||
     path.startsWith('/api/admin/order-logs') ||
     path === '/api/admin/audit-log' ||
     path.startsWith('/api/admin/audit-logs')

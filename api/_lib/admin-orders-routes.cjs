@@ -263,13 +263,32 @@ function registerAdminOrdersRoutes(app, deps) {
   );
 
   const EXPORT_ORDER_SELECT = `
-    *,
-    order_passes (*),
-    ambassadors ( id, full_name, phone, email ),
+    id,
+    created_at,
+    updated_at,
+    event_id,
+    source,
+    user_name,
+    user_phone,
+    user_email,
+    city,
+    ville,
+    ambassador_id,
+    quantity,
+    total_price,
+    total_with_fees,
+    status,
+    payment_status,
+    payment_method,
+    order_number,
+    admin_notes,
+    completed_at,
+    order_passes ( id, order_id, pass_id, pass_type, quantity, price ),
+    ambassadors ( id, full_name, phone ),
     events ( id, name, date, venue, city )
   `;
 
-  // GET /api/admin/analytics/export-orders — paid orders for Excel export
+  // GET /api/admin/analytics/export-orders — legacy JSON order dump (prefer /api/admin/reports/export)
   app.get(
     '/api/admin/analytics/export-orders',
     requireAdminAuth,

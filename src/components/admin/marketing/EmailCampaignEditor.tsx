@@ -240,8 +240,8 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           title: t.error,
           description:
             language === 'en'
-              ? 'Institutional layout was not saved (server stored standard). Deploy the latest API, run migration 20260421120000-investor-email-campaigns on Supabase, set SUPABASE_SERVICE_ROLE_KEY for the API, and restart the backend.'
-              : 'La mise en page institutionnelle n’a pas été enregistrée. Déployez l’API à jour, exécutez la migration 20260421120000 sur Supabase, définissez SUPABASE_SERVICE_ROLE_KEY et redémarrez le serveur.',
+              ? 'Institutional layout was not saved. Email campaign backend configuration is incomplete. Contact your administrator.'
+              : 'La mise en page institutionnelle n’a pas été enregistrée. La configuration du service e-mail est incomplète. Contactez votre administrateur.',
           variant: 'destructive'
         });
         return;
@@ -310,8 +310,8 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           title: t.error,
           description:
             language === 'en'
-              ? 'Institutional layout was not saved (server stored standard). Deploy the latest API, run migration 20260421120000-investor-email-campaigns, set SUPABASE_SERVICE_ROLE_KEY, and restart.'
-              : 'La mise en page institutionnelle n’a pas été enregistrée. Déployez l’API, migration 20260421120000, SUPABASE_SERVICE_ROLE_KEY, redémarrage.',
+              ? 'Institutional layout was not saved. Email campaign backend configuration is incomplete. Contact your administrator.'
+              : 'La mise en page institutionnelle n’a pas été enregistrée. La configuration du service e-mail est incomplète. Contactez votre administrateur.',
           variant: 'destructive'
         });
         return;

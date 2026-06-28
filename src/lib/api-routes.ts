@@ -191,6 +191,7 @@ export const API_ROUTES = {
   ADMIN_ORDERS_POS_OVERVIEW: '/api/admin/orders/pos-overview',
   ADMIN_ANALYTICS_ORDERS: '/api/admin/analytics/orders',
   ADMIN_ANALYTICS_EXPORT_ORDERS: '/api/admin/analytics/export-orders',
+  ADMIN_REPORTS_EXPORT: '/api/admin/reports/export',
   ADMIN_ANALYTICS_ORDER_SUMMARIES: '/api/admin/analytics/order-summaries',
   ADMIN_ORDER_LOGS: '/api/admin/order-logs',
   ADMIN_ORDER_PAYMENT_STATUS: (id: string) =>
@@ -324,12 +325,19 @@ export const API_ROUTES = {
   CAREERS_ADMIN_APPLICATION_LOGS: (id: string) => `/api/admin/careers/applications/${id}/logs`,
   CAREERS_ADMIN_APPLICATIONS_COMPARE: '/api/admin/careers/applications/compare',
   CAREERS_ADMIN_APPLICATIONS_EXPORT: '/api/admin/careers/applications/export',
-
-  // Testing & Diagnostics
-  TEST: '/api/test',
-  TEST_SUPABASE: '/api/test-supabase',
-  SMS_TEST: '/api/sms-test',
 } as const;
+
+/**
+ * Local server diagnostics only (`server.cjs`). Not part of API_ROUTES so paths
+ * are not shipped in production frontend bundles. Use literal URLs in dev tools.
+ */
+export const DEV_ONLY_API_ROUTES = import.meta.env.DEV
+  ? ({
+      TEST: '/api/test',
+      TEST_SUPABASE: '/api/test-supabase',
+      SMS_TEST: '/api/sms-test',
+    } as const)
+  : ({} as const);
 
 /**
  * Type-safe API route helper

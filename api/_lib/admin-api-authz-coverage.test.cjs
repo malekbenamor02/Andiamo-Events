@@ -117,6 +117,14 @@ describe('special route fixes', () => {
       /\/api\/admin\/careers\/applications\/:id.*requireAdminPermission\('careers:manage'\)/s
     );
   });
+
+  it('reports excel export requires reports:view before loadReportsExportPayload', () => {
+    const src = read('api/_lib/reports-export-route.cjs');
+    const routeIdx = src.indexOf("'/api/admin/reports/export'");
+    const permIdx = src.indexOf("requireAdminPermission('reports:view')", routeIdx);
+    const loadIdx = src.indexOf('loadReportsExportPayload', routeIdx);
+    assert.ok(routeIdx >= 0 && permIdx > routeIdx && loadIdx > permIdx);
+  });
 });
 
 describe('server.cjs parity', () => {

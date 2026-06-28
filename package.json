@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm run build:reports-excel",
     "build": "vite build && npx vite-node scripts/prerender-academy-routes.ts",
+    "build:reports-excel": "npx esbuild api/_lib/reports-excel-server.src.ts --bundle --platform=node --format=cjs --outfile=api/_lib/reports-excel-export.cjs --packages=external --alias:@=./src --alias:@/lib/onlinePaymentFee=./api/_lib/online-payment-fee-shim.cjs",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -24,7 +26,7 @@
     "email:api:test-investor": "node scripts/send-brevo-smtp-test.cjs --via api",
     "email:ticket-poster-pdf": "node scripts/render-premium-ticket-poster-pdf.cjs",
     "test:purchase-channel": "node --test api/_lib/purchase-channel-label.test.cjs",
-    "test:admin-auth-order": "node --test api/_lib/admin-route-auth-order.test.cjs api/_lib/admin-permission-routes.test.cjs api/_lib/admin-effective-permission-gate.test.cjs api/_lib/admin-logout-http.test.cjs api/_lib/server-cjs-admin-login-parity.test.cjs api/_lib/admin-authorization.test.cjs api/_lib/admin-api-authz-coverage.test.cjs",
+    "test:admin-auth-order": "node --test api/_lib/admin-route-auth-order.test.cjs api/_lib/admin-permission-routes.test.cjs api/_lib/admin-effective-permission-gate.test.cjs api/_lib/admin-logout-http.test.cjs api/_lib/server-cjs-admin-login-parity.test.cjs api/_lib/admin-authorization.test.cjs api/_lib/admin-api-authz-coverage.test.cjs api/_lib/reports-export-route.test.cjs api/_lib/reports-excel-fee-parity.test.cjs",
     "test:admin-api-authz-coverage": "node --test api/_lib/admin-api-authz-coverage.test.cjs",
     "test:payment-fulfillment": "node --test api/_lib/payment-fulfillment.test.cjs api/_lib/ticket-qr-generate.test.cjs",
     "test:academy-payment": "node --test api/_lib/academy-payment.test.cjs api/_lib/academy-influencer-hardening.test.cjs api/_lib/academy-meta-db.test.cjs api/_lib/meta/academy-purchase-payload.test.cjs api/_lib/meta/academy-purchase-tracking.test.cjs",

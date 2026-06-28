@@ -3590,6 +3590,8 @@ try {
     ...adminRouteDeps,
     generateTicketsAndSendEmail: null,
   });
+  const { registerReportsExportRoute } = require('./api/_lib/reports-export-route.cjs');
+  registerReportsExportRoute(app, adminRouteDeps);
 } catch (adminRoutesErr) {
   console.error('Admin privileged routes registration failed:', adminRoutesErr.message);
 }
