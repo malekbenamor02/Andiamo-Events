@@ -2,7 +2,15 @@
 
 const { buildReportsExcelBuffer } = require('./reports-excel-export.cjs');
 const { loadReportsExportPayload } = require('./reports-export-data.cjs');
-const { writeAdminMutationAudit } = require('./admin-mutation-audit.js');
+
+let adminMutationAuditPromise = null;
+
+function getAdminMutationAudit() {
+  if (!adminMutationAuditPromise) {
+    adminMutationAuditPromise = import('./admin-mutation-audit.js');
+  }
+  return adminMutationAuditPromise;
+}
 
 function registerReportsExportRoute(app, deps) {
   const { supabaseService, requireAdminAuth, requireAdminPermission } = deps;
@@ -55,6 +63,7 @@ function registerReportsExportRoute(app, deps) {
           passStockRows: payload.passStockRows,
         });
 
+        const { writeAdminMutationAudit } = await getAdminMutationAudit();
         await writeAdminMutationAudit(db, {
           admin: req.admin,
           action: 'reports_excel_export',
@@ -72,6 +81,7 @@ function registerReportsExportRoute(app, deps) {
         return res.send(buffer);
       } catch (err) {
         console.error('[reports/export]', err?.message || err);
+        const { writeAdminMutationAudit } = await getAdminMutationAudit();
         await writeAdminMutationAudit(db, {
           admin: req.admin,
           action: 'reports_excel_export',
