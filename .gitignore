@@ -57,6 +57,13 @@ email-templates/previews/13-premium-desktop-ticket-poster.pdf
 # Supabase CLI local state (linked project, versions)
 supabase/.temp/
 
+# Local security evidence bundles (markdown reports live under security/)
+security-implementation-evidence-*/
+security-audit-supabase-*.zip
+security-remediation-supabase-*.zip
+security-post-deployment-validation-*.zip
+security-implementation-evidence-*.zip
+
 # Agent-generated Supabase staging migration batch tooling (local only)
 scripts/.staging-*
 scripts/.tmp-*

@@ -2,7 +2,7 @@
  * Shared admin JWT + DB verification (used by misc.js and presale-route-admin-codes).
  * Delegates to centralized verifyAdminSession.
  */
-import { verifyAdminSession } from './admin-authorization.mjs';
+import { verifyAdminSession, hasEffectivePermission } from './admin-authorization.mjs';
 
 export async function verifyAdminAuth(req) {
   const result = await verifyAdminSession(req);
@@ -27,4 +27,21 @@ export async function verifyAdminAuth(req) {
   };
 }
 
-export { hasPermission } from './admin-authorization.mjs';
+export { hasPermission, hasEffectivePermission } from './admin-authorization.mjs';
+
+/**
+ * Returns a 403 payload when auth lacks effective permission, else null.
+ * @param {{ permissions?: string[] }} auth — result from verifyAdminAuth when valid
+ * @param {string} permissionKey
+ */
+export function effectivePermissionDenied(auth, permissionKey) {
+  if (!hasEffectivePermission(auth?.permissions || [], permissionKey)) {
+    return {
+      statusCode: 403,
+      error: 'Forbidden',
+      details: `Permission required: ${permissionKey}`,
+      valid: false,
+    };
+  }
+  return null;
+}

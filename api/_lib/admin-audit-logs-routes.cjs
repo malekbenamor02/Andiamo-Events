@@ -7,7 +7,7 @@
 function registerAdminAuditLogsRoutes(app, deps) {
   const { supabaseService, requireAdminAuth, requireAdminPermission } = deps;
 
-  app.post('/api/admin/audit-log', requireAdminAuth, async (req, res) => {
+  app.post('/api/admin/audit-log', requireAdminAuth, requireAdminPermission('admins:manage'), async (req, res) => {
     try {
       if (!supabaseService) {
         return res.status(503).json({

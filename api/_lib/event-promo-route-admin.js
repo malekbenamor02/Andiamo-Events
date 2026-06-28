@@ -2,7 +2,7 @@
  * Admin event promo codes API (paths under /api/admin/event-promo/codes)
  */
 import '../../lib/sentry-server.js';
-import { verifyAdminAuth, hasPermission } from './admin-verify.js';
+import { verifyAdminAuth, effectivePermissionDenied } from './admin-verify.js';
 import { normalizeEventPromoCode, EVENT_PROMO_CODE_MAX_LEN } from './event-promo-code.js';
 import { validateEventPromoPassDiscounts } from './event-promo-discount.js';
 import { pickRandomPromoBadgeColor } from './event-promo-badge-color.js';
@@ -31,9 +31,10 @@ async function makeDb(res) {
   return createAdminDbClient(res);
 }
 
-function requireSuperAdmin(auth, res) {
-  if (!hasPermission(auth.admin?.role, 'events:manage')) {
-    res.status(403).json({ error: 'Forbidden', details: 'Permission required: events:manage' });
+function requireEventsManage(auth, res) {
+  const denied = effectivePermissionDenied(auth, 'events:manage');
+  if (denied) {
+    res.status(denied.statusCode).json(denied);
     return false;
   }
   return true;
@@ -136,7 +137,7 @@ export async function handleEventPromoAdminCodes(req, res) {
     if (!auth.valid) {
       return res.status(auth.statusCode || 401).json({ error: auth.error || 'Unauthorized' });
     }
-    if (!requireSuperAdmin(auth, res)) return;
+    if (!requireEventsManage(auth, res)) return;
 
     const path = getPathname(req);
     const method = req.method;

@@ -1386,7 +1386,7 @@ function registerCareerRoutes(app, deps) {
   const RESERVED_CAREER_APPLICATION_SEGMENTS = new Set(['compare', 'export']);
 
   // —— Admin: single application + audit log ———————————————————————————————
-  app.get('/api/admin/careers/applications/:id', requireAdminAuth, async (req, res, next) => {
+  app.get('/api/admin/careers/applications/:id', requireAdminAuth, requireAdminPermission('careers:manage'), async (req, res, next) => {
     try {
       if (RESERVED_CAREER_APPLICATION_SEGMENTS.has(String(req.params.id || '').toLowerCase())) {
         return next();

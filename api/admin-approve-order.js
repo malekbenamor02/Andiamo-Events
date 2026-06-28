@@ -10,7 +10,7 @@ import 'puppeteer-core';
 import '@sparticuz/chromium';
 import 'follow-redirects';
 import 'nodemailer';
-import { verifyAdminAuth } from './_lib/admin-verify.js';
+import { verifyAdminAuth, effectivePermissionDenied } from './_lib/admin-verify.js';
 import { createAdminDbClient } from './_lib/service-role-client.js';
 import { createRequire } from 'module';
 import path from 'path';
@@ -85,6 +85,11 @@ export default async (req, res) => {
         reason: authResult.reason || 'Authentication failed',
         valid: false
       });
+    }
+
+    const denied = effectivePermissionDenied(authResult, 'orders:manage');
+    if (denied) {
+      return res.status(denied.statusCode).json(denied);
     }
     
     // Parse request body

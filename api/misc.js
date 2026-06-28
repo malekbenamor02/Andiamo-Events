@@ -12,7 +12,9 @@ import 'puppeteer-core';
 import '@sparticuz/chromium';
 import 'follow-redirects';
 import 'nodemailer';
-import { verifyAdminAuth, hasPermission } from './_lib/admin-verify.js';
+import { verifyAdminAuth, effectivePermissionDenied } from './_lib/admin-verify.js';
+import { gateAdminPermission, authorizeCronOrAdminPermission } from './_lib/admin-permission-gate-http.js';
+import { handleAdminMissingRoutes } from './_lib/admin-missing-routes-http.js';
 import { handleVerifyAdmin } from './_lib/verify-admin-http.js';
 import { handleAdminDataRoutes, provisionAmbassadorForApplication } from './_lib/admin-data-routes.js';
 import { handleClientSiteLog } from './_lib/client-site-log.js';
@@ -24,6 +26,7 @@ import {
 import { hasEffectivePermission } from './_lib/admin-authorization.mjs';
 import { createAdminDbClient, createServiceRoleClient } from './_lib/service-role-client.js';
 import { writeAdminMutationAudit } from './_lib/admin-mutation-audit.js';
+import { handleAdminLogout } from './_lib/admin-logout-http.js';
 import { applyClearAdminTokenCookie } from './_lib/clear-admin-token-cookie.js';
 import { agentDebugLog } from './_lib/agent-debug-log.js';
 import { createRequire } from 'module';
@@ -1395,17 +1398,20 @@ export default async (req, res) => {
     console.log('[api/misc.js] Request received:', { method, originalUrl: req.url, normalizedPath: path });
   }
   
-  // Handle preflight requests
-  if (handlePreflight(req, res, { methods: 'GET, POST, PUT, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
-    return; // Preflight handled
-  }
-  
-  // Set CORS headers for actual requests
-  // If no Origin header (same-origin request), don't set CORS headers but allow the request
-  const hasOrigin = !!req.headers?.origin;
-  if (hasOrigin && !setCORSHeadersUtil(res, req, { methods: 'GET, POST, PUT, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
-    // Origin present but not allowed - reject
-    return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
+  // /api/verify-admin is GET-only; route handler sets CORS (GET, OPTIONS) — skip global preflight
+  const isVerifyAdminRoute = path === '/api/verify-admin';
+  if (!isVerifyAdminRoute) {
+    if (handlePreflight(req, res, { methods: 'GET, POST, PUT, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
+      return; // Preflight handled
+    }
+
+    // Set CORS headers for actual requests
+    // If no Origin header (same-origin request), don't set CORS headers but allow the request
+    const hasOrigin = !!req.headers?.origin;
+    if (hasOrigin && !setCORSHeadersUtil(res, req, { methods: 'GET, POST, PUT, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
+      // Origin present but not allowed - reject
+      return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
+    }
   }
   // No origin (same-origin) or origin allowed - proceed
 
@@ -1442,6 +1448,14 @@ export default async (req, res) => {
     parseBody,
   });
   if (adminDataHandled) {
+    return;
+  }
+
+  const missingAdminHandled = await handleAdminMissingRoutes(req, res, path, method, {
+    parseBody,
+    createAdminDbClient,
+  });
+  if (missingAdminHandled) {
     return;
   }
 
@@ -1572,7 +1586,7 @@ export default async (req, res) => {
         reason: marketingAuth.reason,
       });
     }
-    if (!hasPermission(marketingAuth.admin?.role, 'marketing:manage')) {
+    if (!hasEffectivePermission(marketingAuth.permissions || [], 'marketing:manage')) {
       return res.status(403).json({
         error: 'Forbidden',
         details: 'Permission required: marketing:manage',
@@ -1781,38 +1795,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // /api/admin-logout
     // ============================================
     if (path === '/api/admin-logout' && method === 'POST') {
-      try {
-        const isProduction = process.env.NODE_ENV === 'production' || 
-                             process.env.VERCEL === '1' || 
-                             !!process.env.VERCEL_URL;
-        const cookieParts = [
-          'adminToken=',
-          'HttpOnly',
-          'Path=/',
-          'Max-Age=0',
-          'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
-          isProduction ? 'Secure' : '',
-          'SameSite=Lax'
-        ].filter(Boolean);
-        
-        if (isProduction && process.env.COOKIE_DOMAIN) {
-          cookieParts.push(`Domain=${process.env.COOKIE_DOMAIN}`);
-        }
-        
-        res.setHeader('Set-Cookie', cookieParts.join('; '));
-        res.setHeader('Content-Type', 'application/json');
-        
-        return res.status(200).json({ 
-          success: true,
-          message: 'Logged out successfully. Please re-enter your credentials to continue.'
-        });
-      } catch (error) {
-        console.error('Admin logout error:', error);
-        return res.status(500).json({ 
-          error: 'Server error',
-          details: error.message
-        });
-      }
+      return handleAdminLogout(req, res);
     }
     
     // ============================================
@@ -2541,15 +2524,10 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // ============================================
     if (path === '/api/send-email' && method === 'POST') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
+        const authResult = await gateAdminPermission(req, res, 'marketing:manage');
+        if (!authResult) {
           applyClearAdminTokenCookie(res);
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication required',
-            valid: false
-          });
+          return;
         }
         
         const bodyData = await parseBody(req);
@@ -2688,14 +2666,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // DELETE /api/admin/events/:id   - delete event
     // ============================================
     if ((path === '/api/admin/events' && method === 'POST') || (path.startsWith('/api/admin/events/') && (method === 'PATCH' || method === 'DELETE'))) {
-      const authResult = await verifyAdminAuth(req);
-      if (!authResult.valid) {
-        return res.status(authResult.statusCode || 401).json({
-          error: authResult.error,
-          reason: authResult.reason || 'Authentication failed',
-          valid: false
-        });
-      }
+      const authResult = await gateAdminPermission(req, res, 'events:manage');
+      if (!authResult) return;
 
       if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
         return res.status(500).json({ error: 'Supabase service role not configured' });
@@ -2857,14 +2829,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // ============================================
     if (path === '/api/admin/passes/create' && method === 'POST') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false,
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'events:manage');
+        if (!authResult) return;
         if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
           return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required for pass creation' });
         }
@@ -2941,15 +2907,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // ============================================
     if (path.startsWith('/api/admin/passes/') && method === 'GET') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'events:manage');
+        if (!authResult) return;
 
         // #region agent log
         agentDebugLog({
@@ -3093,15 +3052,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // ============================================
     if (path.includes('/api/admin/passes/') && path.endsWith('/stock') && method === 'POST') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'events:manage');
+        if (!authResult) return;
         // Extract pass ID from path: /api/admin/passes/[id]/stock
         const pathParts = path.split('/');
         const passId = pathParts[pathParts.length - 2]; // Second to last part
@@ -3222,15 +3174,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // ============================================
     if (path.includes('/api/admin/passes/') && path.endsWith('/payment-methods') && method === 'PUT') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'events:manage');
+        if (!authResult) return;
         // Extract pass ID from path: /api/admin/passes/[id]/payment-methods
         const pathParts = path.split('/');
         const passId = pathParts[pathParts.length - 2]; // Second to last part
@@ -3359,15 +3304,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // ============================================
     if (path.includes('/api/admin/passes/') && path.endsWith('/description') && method === 'PUT') {
       try {
-        const authResult = await verifyAdminAuth(req);
-
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'events:manage');
+        if (!authResult) return;
         // Extract pass ID from path: /api/admin/passes/[id]/description
         const pathParts = path.split('/');
         const passId = pathParts[pathParts.length - 2]; // Second to last part
@@ -3461,15 +3399,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // ============================================
     if (path.includes('/api/admin/passes/') && path.endsWith('/activate') && method === 'POST') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'events:manage');
+        if (!authResult) return;
         // Extract pass ID from path: /api/admin/passes/[id]/activate
         const pathParts = path.split('/');
         const passId = pathParts[pathParts.length - 2]; // Second to last part
@@ -3577,15 +3508,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // ============================================
     if (path === '/api/admin-skip-ambassador-confirmation' && method === 'POST') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'orders:manage');
+        if (!authResult) return;
         const bodyData = await parseBody(req);
         const { orderId, reason } = bodyData;
         const adminId = authResult.admin?.id;
@@ -4156,15 +4080,8 @@ We Create Memories`;
     // ============================================
     if (path === '/api/admin/update-order-email' && method === 'POST') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'orders:manage');
+        if (!authResult) return;
         const bodyData = await parseBody(req);
         const { orderId, newEmail } = bodyData;
         const adminId = authResult.admin?.id;
@@ -4271,15 +4188,8 @@ We Create Memories`;
     // ============================================
     if ((path === '/api/admin/update-order-notes' || path === '/admin/update-order-notes') && method === 'POST') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'orders:manage');
+        if (!authResult) return;
         const bodyData = await parseBody(req);
         const { orderId, adminNotes } = bodyData;
         const adminId = authResult.admin?.id;
@@ -4494,15 +4404,8 @@ We Create Memories`;
       method === 'POST'
     ) {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'orders:manage');
+        if (!authResult) return;
         
         if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
           return res.status(503).json({
@@ -4877,31 +4780,8 @@ We Create Memories`;
     // ============================================
     if (path === '/api/auto-reject-expired-orders' && (method === 'GET' || method === 'POST')) {
       try {
-        // Optional: Check for CRON_SECRET (for external cron services)
-        const cronSecret = process.env.CRON_SECRET;
-        if (cronSecret) {
-          const providedSecret = req.headers['x-cron-secret'] || req.query.secret;
-          if (providedSecret !== cronSecret) {
-            // If secret is provided but doesn't match, require admin auth instead
-            // This allows manual triggers from admin dashboard
-            const authResult = await verifyAdminAuth(req);
-            if (!authResult.valid) {
-              return res.status(401).json({
-                error: 'Unauthorized',
-                details: 'Invalid cron secret or admin authentication required'
-              });
-            }
-          }
-        } else {
-          // If no CRON_SECRET is set, require admin authentication for security
-          const authResult = await verifyAdminAuth(req);
-          if (!authResult.valid) {
-            return res.status(authResult.statusCode || 401).json({
-              error: authResult.error || 'Unauthorized',
-              details: authResult.reason || 'Admin authentication required'
-            });
-          }
-        }
+        const cronAuth = await authorizeCronOrAdminPermission(req, res, 'orders:manage');
+        if (!cronAuth) return;
 
         if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
           return res.status(500).json({
@@ -4999,28 +4879,8 @@ We Create Memories`;
     // ============================================
     if (path === '/api/auto-fail-pending-online-orders' && (method === 'GET' || method === 'POST')) {
       try {
-        // Protect this endpoint with CRON_SECRET when configured; otherwise require admin auth
-        const cronSecret = process.env.CRON_SECRET;
-        if (cronSecret) {
-          const providedSecret = req.headers['x-cron-secret'] || req.query.secret;
-          if (providedSecret !== cronSecret) {
-            const authResult = await verifyAdminAuth(req);
-            if (!authResult.valid) {
-              return res.status(401).json({
-                error: 'Unauthorized',
-                details: 'Invalid cron secret or admin authentication required for auto-fail-pending-online-orders'
-              });
-            }
-          }
-        } else {
-          const authResult = await verifyAdminAuth(req);
-          if (!authResult.valid) {
-            return res.status(authResult.statusCode || 401).json({
-              error: authResult.error || 'Unauthorized',
-              details: authResult.reason || 'Admin authentication required for auto-fail-pending-online-orders'
-            });
-          }
-        }
+        const cronAuth = await authorizeCronOrAdminPermission(req, res, 'orders:manage');
+        if (!cronAuth) return;
 
         if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
           return res.status(500).json({
@@ -5134,26 +4994,16 @@ We Create Memories`;
     // ============================================
     if (path === '/api/admin/ambassador-sales/orders' && method === 'GET') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          // #region agent log
+        const authResult = await gateAdminPermission(req, res, 'ambassador_sales:manage');
+        if (!authResult) {
           agentDebugLog({
             runId: 'pre-fix',
             hypothesisId: 'H2',
             location: 'api/misc.js:ambassador-sales-auth-fail',
             message: 'ambassador orders auth failed',
-            data: {
-              statusCode: authResult.statusCode ?? null,
-              errSlug: authResult.error ? String(authResult.error).slice(0, 100) : null,
-            },
+            data: { statusCode: 401 },
           });
-          // #endregion
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
+          return;
         }
 
         // #region agent log
@@ -5306,15 +5156,8 @@ We Create Memories`;
     // ============================================
     if (path === '/api/admin-remove-order' && method === 'POST') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'orders:manage');
+        if (!authResult) return;
         const bodyData = await parseBody(req);
         const { orderId } = bodyData;
         const adminId = authResult.admin?.id;
@@ -5535,7 +5378,8 @@ We Create Memories`;
     // ============================================
     if (path === '/api/admin/order-expiration-settings' && method === 'GET') {
       try {
-        const authResult = await verifyAdminAuth(req);
+        const authResult = await gateAdminPermission(req, res, 'settings:manage');
+        if (!authResult) return;
 
         // #region agent log
         agentDebugLog({
@@ -5544,20 +5388,13 @@ We Create Memories`;
           location: 'api/misc.js:order-expiration-auth',
           message: 'order-expiration GET auth',
           data: {
-            valid: !!authResult.valid,
-            statusCode: authResult.statusCode ?? null,
-            errSlug: authResult.error ? String(authResult.error).slice(0, 100) : null,
+            valid: true,
+            statusCode: null,
+            errSlug: null,
           },
         });
         // #endregion
         
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
         const dbClient = await createAdminDbClient(res);
         if (!dbClient) return;
         
@@ -5601,15 +5438,8 @@ We Create Memories`;
     // ============================================
     if (path === '/api/admin/order-expiration-settings' && method === 'POST') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'settings:manage');
+        if (!authResult) return;
         const bodyData = await parseBody(req);
         const { settings } = bodyData;
         
@@ -5727,15 +5557,8 @@ We Create Memories`;
     // ============================================
     if (path === '/api/admin/set-order-expiration' && method === 'POST') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'settings:manage');
+        if (!authResult) return;
         const bodyData = await parseBody(req);
         const { orderId, expiresAt, reason } = bodyData;
         const adminId = authResult.admin?.id;
@@ -5821,15 +5644,8 @@ We Create Memories`;
     // ============================================
     if (path === '/api/admin/clear-order-expiration' && method === 'DELETE') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            reason: authResult.reason || 'Authentication failed',
-            valid: false
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'settings:manage');
+        if (!authResult) return;
         const bodyData = await parseBody(req);
         const { orderId } = bodyData;
         const adminId = authResult.admin?.id;
@@ -5887,14 +5703,8 @@ We Create Memories`;
     // /api/admin/aio-events-submissions (GET)
     if (path === '/api/admin/aio-events-submissions' && method === 'GET') {
       try {
-        // Verify admin authentication
-        const authResult = await verifyAdminAuth(req);
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            details: authResult.details || authResult.reason
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'marketing:manage');
+        if (!authResult) return;
         const dbClient = await createAdminDbClient(res);
         if (!dbClient) return;
 
@@ -6012,13 +5822,8 @@ We Create Memories`;
     // /api/admin/consultation-inquiries (GET)
     if (path === '/api/admin/consultation-inquiries' && method === 'GET') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            details: authResult.details || authResult.reason
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'consultation_inquiries:view');
+        if (!authResult) return;
 
         if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
           return res.status(500).json({
@@ -6796,13 +6601,8 @@ We Create Memories`;
     // ============================================
     if (path === '/api/admin/csp-reports' && method === 'GET') {
       try {
-        const authResult = await verifyAdminAuth(req);
-        if (!authResult.valid) {
-          return res.status(authResult.statusCode || 401).json({
-            error: authResult.error,
-            details: authResult.details || authResult.reason
-          });
-        }
+        const authResult = await gateAdminPermission(req, res, 'logs:view');
+        if (!authResult) return;
         if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
           return res.status(500).json({ error: 'Supabase not configured' });
         }
@@ -7827,6 +7627,10 @@ We Create Memories`;
             reason: authResult.reason || 'Authentication failed',
             valid: false
           });
+        }
+        const bulkSmsDenied = effectivePermissionDenied(authResult, 'marketing:manage');
+        if (bulkSmsDenied) {
+          return res.status(bulkSmsDenied.statusCode).json(bulkSmsDenied);
         }
         const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
         if (!WINSMS_API_KEY) {
@@ -8902,6 +8706,10 @@ We Create Memories`;
             valid: false
           });
         }
+        const sendSmsDenied = effectivePermissionDenied(authResult, 'marketing:manage');
+        if (sendSmsDenied) {
+          return res.status(sendSmsDenied.statusCode).json(sendSmsDenied);
+        }
         const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
         if (!WINSMS_API_KEY) {
           return res.status(500).json({ 
@@ -9027,6 +8835,10 @@ We Create Memories`;
             reason: authResult.reason || 'Authentication failed',
             valid: false
           });
+        }
+        const smsBalanceDenied = effectivePermissionDenied(authResult, 'marketing:manage');
+        if (smsBalanceDenied) {
+          return res.status(smsBalanceDenied.statusCode).json(smsBalanceDenied);
         }
 
         const WINSMS_API_KEY = process.env.WINSMS_API_KEY;

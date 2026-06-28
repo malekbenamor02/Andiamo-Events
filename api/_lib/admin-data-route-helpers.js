@@ -171,6 +171,98 @@ export async function resolveAmbassadorPasswordFromBody(body) {
   return { hash: null, temporaryPassword: null };
 }
 
+/** Ambassador PATCH fields mirrored to ambassador_applications (when both exist). */
+export const AMBASSADOR_TO_APPLICATION_SYNC_FIELDS = {
+  full_name: 'full_name',
+  phone: 'phone_number',
+  email: 'email',
+  city: 'city',
+  ville: 'ville',
+};
+
+export const ACTIVE_APPLICATION_CONTACT_STATUSES = ['pending', 'approved'];
+
+/**
+ * Build ambassador_applications patch from normalized ambassador row fields present in the update.
+ */
+export function buildApplicationSyncPatchFromAmbassadorRow(ambassadorRowPatch) {
+  if (!ambassadorRowPatch || typeof ambassadorRowPatch !== 'object') return {};
+  const patch = {};
+  for (const [ambField, appField] of Object.entries(AMBASSADOR_TO_APPLICATION_SYNC_FIELDS)) {
+    if (Object.prototype.hasOwnProperty.call(ambassadorRowPatch, ambField)) {
+      patch[appField] = ambassadorRowPatch[ambField];
+    }
+  }
+  return patch;
+}
+
+export function isPostgresUniqueViolation(error) {
+  if (!error) return false;
+  if (error.code === '23505') return true;
+  const msg = String(error.message || '');
+  return /unique constraint|duplicate key/i.test(msg);
+}
+
+export async function findLatestApprovedApplicationByPhone(db, phone) {
+  if (!phone) return null;
+  const { data, error } = await db
+    .from('ambassador_applications')
+    .select('id, phone_number, email, full_name, city, ville, status, created_at')
+    .eq('status', 'approved')
+    .eq('phone_number', phone)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Returns a conflicting application row id, if any, for pending/approved contact fields.
+ * @param {'email'|'phone'} field
+ */
+export async function findApplicationContactConflict(db, { field, value, excludeApplicationId }) {
+  const normalized = field === 'phone' ? String(value || '').replace(/\D/g, '') : String(value || '').trim().toLowerCase();
+  if (!normalized) return null;
+  const column = field === 'phone' ? 'phone_number' : 'email';
+  let query = db
+    .from('ambassador_applications')
+    .select('id')
+    .in('status', ACTIVE_APPLICATION_CONTACT_STATUSES)
+    .eq(column, normalized)
+    .limit(1);
+  if (excludeApplicationId) {
+    query = query.neq('id', excludeApplicationId);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
+export async function validateApplicationSyncConflicts(db, { syncPatch, linkedApplicationId }) {
+  if (syncPatch.email != null) {
+    const conflict = await findApplicationContactConflict(db, {
+      field: 'email',
+      value: syncPatch.email,
+      excludeApplicationId: linkedApplicationId,
+    });
+    if (conflict) {
+      return { ok: false, message: 'An application with this email already exists' };
+    }
+  }
+  if (syncPatch.phone_number != null) {
+    const conflict = await findApplicationContactConflict(db, {
+      field: 'phone',
+      value: syncPatch.phone_number,
+      excludeApplicationId: linkedApplicationId,
+    });
+    if (conflict) {
+      return { ok: false, message: 'An application with this phone number already exists' };
+    }
+  }
+  return { ok: true };
+}
+
 export async function buildAmbassadorWritePayload(body, { allowStatus = true, adminId = null } = {}) {
   const allowed = [...AMBASSADOR_WRITABLE_FIELDS, ...AMBASSADOR_PASSWORD_INPUT_FIELDS];
   const picked = pickAllowedFields(body, allowed);

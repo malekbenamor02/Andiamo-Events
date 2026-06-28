@@ -169,6 +169,8 @@ const {
   requireAdminRole,
 } = require('./api/_lib/admin-authorization-express.cjs');
 
+const { releaseOrderStock: releaseOrderStockCore } = require('./api/_lib/release-order-stock.cjs');
+
 const app = express();
 
 // CORS configuration - allow all origins in development, specific origins in production
@@ -341,7 +343,7 @@ app.use((req, res, next) => {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   }
   
-  // CSP Report-Only (will be switched to enforcing after monitoring)
+  // CSP: enforcing + Report-Only (parity with vercel.json; keep reporting during rollout)
   const cspPolicy = [
     "default-src 'self'",
     "base-uri 'self'",
@@ -352,10 +354,11 @@ app.use((req, res, next) => {
     "style-src 'self' 'unsafe-inline' https:",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https: https://www.clarity.ms https://scripts.clarity.ms",
     "worker-src 'self' blob:",
-    "connect-src 'self' https: wss: *.supabase.co *.supabase.in *.google.com *.gstatic.com *.vercel-analytics.com *.vercel-insights.com *.clarity.ms https://c.bing.com",
-    "frame-src 'self' https: *.google.com",
+    "connect-src 'self' https: wss: *.supabase.co *.supabase.in *.google.com *.gstatic.com *.vercel-analytics.com *.vercel-insights.com *.sentry.io *.ingest.sentry.io *.clarity.ms https://c.bing.com *.clictopay.com test.clictopay.com",
+    "frame-src 'self' https: *.google.com *.clictopay.com test.clictopay.com",
     "report-uri /api/csp-report"
   ].join('; ');
+  res.setHeader('Content-Security-Policy', cspPolicy);
   res.setHeader('Content-Security-Policy-Report-Only', cspPolicy);
   
   next();
@@ -1158,10 +1161,11 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     // Fetch admin by email (service role — admins table RLS denies anon)
     const loginDb = requireServiceRoleDb(res);
     if (!loginDb) return;
+    const emailNorm = email.toLowerCase().trim();
     const { data: admin, error } = await loginDb
       .from('admins')
-      .select('*')
-      .eq('email', email.toLowerCase().trim()) // Normalize email
+      .select('id, email, name, role, password, is_active, session_version, requires_password_change')
+      .eq('email', emailNorm)
       .single();
       
     if (error) {
@@ -1180,8 +1184,15 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     
     if (!admin) {
       console.error('❌ /api/admin-login: Admin not found:', {
-        email: email.toLowerCase().trim()
+        email: emailNorm
       });
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    if (admin.is_active === false) {
+      try {
+        await bcrypt.compare(String(password), '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy');
+      } catch (_) { /* timing normalization */ }
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
@@ -1225,7 +1236,16 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     let token;
     try {
       // 5 hour expiration - encoded in JWT, cannot be extended
-      token = jwt.sign({ id: admin.id, email: admin.email, role: admin.role }, jwtSecret || 'fallback-secret-dev-only', { expiresIn: '5h' });
+      token = jwt.sign(
+        {
+          id: admin.id,
+          email: admin.email,
+          role: admin.role,
+          session_version: admin.session_version ?? 1,
+        },
+        jwtSecret || 'fallback-secret-dev-only',
+        { expiresIn: '5h' }
+      );
     } catch (jwtError) {
       console.error('JWT signing error:', jwtError);
       return res.status(500).json({ error: 'Server error', details: 'Failed to generate token' });
@@ -1269,7 +1289,8 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
         email: admin.email,
         name: admin.name,
         role: admin.role
-      }
+      },
+      requiresPasswordChange: !!admin.requires_password_change,
     });
   } catch (error) {
     console.error('❌ /api/admin-login: Unexpected error:', {
@@ -1501,10 +1522,15 @@ app.post('/api/update-sales-settings', requireAdminAuth, requireAdminPermission(
   }
 });
 
-// Admin logout endpoint
-app.post('/api/admin-logout', adminLogoutLimiter, (req, res) => {
-  res.clearCookie('adminToken');
-  res.json({ success: true });
+// Admin logout endpoint — invalidates all JWTs for this admin via session_version bump
+app.post('/api/admin-logout', adminLogoutLimiter, async (req, res) => {
+  try {
+    const { handleAdminLogout } = await import('./api/_lib/admin-logout-http.js');
+    return handleAdminLogout(req, res);
+  } catch (error) {
+    console.error('Admin logout handler error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Admin verify endpoint
@@ -1613,7 +1639,7 @@ app.post('/api/scanner-logout', (req, res) => {
 });
 
 // PATCH /api/admin/scan-system-config — super_admin only. Body: { scan_enabled: boolean }
-app.patch('/api/admin/scan-system-config', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+app.patch('/api/admin/scan-system-config', requireAdminAuth, requireAdminPermission('scanners:manage'), async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const v = req.body && (req.body.scan_enabled ?? req.body.enabled);
@@ -1634,7 +1660,7 @@ app.patch('/api/admin/scan-system-config', requireAdminAuth, requireSuperAdmin, 
 });
 
 // GET /api/admin/scan-system-config — super_admin only, for Scanners tab (enabled, updated_at, updated_by)
-app.get('/api/admin/scan-system-config', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+app.get('/api/admin/scan-system-config', requireAdminAuth, requireAdminPermission('scanners:manage'), async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const db = requireServiceRoleDb(res);
@@ -1656,7 +1682,7 @@ app.get('/api/admin/scan-system-config', requireAdminAuth, requireSuperAdmin, as
 });
 
 // GET /api/admin/scanners — super_admin only
-app.get('/api/admin/scanners', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+app.get('/api/admin/scanners', requireAdminAuth, requireAdminPermission('scanners:manage'), async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const db = requireServiceRoleDb(res);
@@ -1675,7 +1701,7 @@ app.get('/api/admin/scanners', requireAdminAuth, requireSuperAdmin, async (req, 
 });
 
 // POST /api/admin/scanners — super_admin only. Body: { name, email, password, role? }
-app.post('/api/admin/scanners', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+app.post('/api/admin/scanners', requireAdminAuth, requireAdminPermission('scanners:manage'), async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const { name, email, password, role } = req.body || {};
@@ -1712,7 +1738,7 @@ app.post('/api/admin/scanners', requireAdminAuth, requireSuperAdmin, async (req,
 });
 
 // PATCH /api/admin/scanners/:id — super_admin only. Body: { name?, email?, is_active?, password?, role? } (password optional)
-app.patch('/api/admin/scanners/:id', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+app.patch('/api/admin/scanners/:id', requireAdminAuth, requireAdminPermission('scanners:manage'), async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const id = req.params.id;
@@ -1743,7 +1769,7 @@ app.patch('/api/admin/scanners/:id', requireAdminAuth, requireSuperAdmin, async 
 });
 
 // DELETE /api/admin/scanners/:id — super_admin only (soft: set is_active=false or hard delete)
-app.delete('/api/admin/scanners/:id', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+app.delete('/api/admin/scanners/:id', requireAdminAuth, requireAdminPermission('scanners:manage'), async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const id = req.params.id;
@@ -1987,7 +2013,7 @@ app.get('/api/scanner/event-statistics', requireScannerAuth, requireSupervisorAu
 });
 
 // GET /api/admin/scanners/:id/scans — super_admin
-app.get('/api/admin/scanners/:id/scans', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+app.get('/api/admin/scanners/:id/scans', requireAdminAuth, requireAdminPermission('scanners:manage'), async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const id = req.params.id;
@@ -2014,7 +2040,7 @@ app.get('/api/admin/scanners/:id/scans', requireAdminAuth, requireSuperAdmin, as
 });
 
 // GET /api/admin/scanners/:id/statistics — super_admin
-app.get('/api/admin/scanners/:id/statistics', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+app.get('/api/admin/scanners/:id/statistics', requireAdminAuth, requireAdminPermission('scanners:manage'), async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const id = req.params.id;
@@ -2046,7 +2072,7 @@ app.get('/api/admin/scanners/:id/statistics', requireAdminAuth, requireSuperAdmi
 
 // GET /api/admin/scan-history — super_admin. Filters: scanner_id, event_id, date_from, date_to, scan_result
 // Fallback: if qr_ticket_id/scanner_id are missing (migration 20250804000000 not run), use base columns only.
-app.get('/api/admin/scan-history', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+app.get('/api/admin/scan-history', requireAdminAuth, requireAdminPermission('scanners:manage'), async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const db = requireServiceRoleDb(res);
@@ -2101,7 +2127,7 @@ app.get('/api/admin/scan-history', requireAdminAuth, requireSuperAdmin, async (r
 
 // GET /api/admin/scan-statistics — super_admin
 // Fallback: if qr_ticket_id/scanner_id are missing (migration 20250804000000 not run), use scan_result only.
-app.get('/api/admin/scan-statistics', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+app.get('/api/admin/scan-statistics', requireAdminAuth, requireAdminPermission('scanners:manage'), async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const db = requireServiceRoleDb(res);
@@ -3302,7 +3328,7 @@ app.delete('/api/admin/official-invitations/:id', requireAdminAuth, requireSuper
 });
 
 // GET /api/admin/aio-events-submissions - Get AIO Events submissions (admin only)
-app.get('/api/admin/aio-events-submissions', requireAdminAuth, requireAdminPermission('aio_events:view'), async (req, res) => {
+app.get('/api/admin/aio-events-submissions', requireAdminAuth, requireAdminPermission('marketing:manage'), async (req, res) => {
   if (!supabase) {
     return res.status(500).json({ 
       error: 'Supabase not configured',
@@ -4089,7 +4115,7 @@ app.post('/api/send-sms', requireAdminAuth, requireAdminPermission('marketing:ma
 // ============================================
 // GET /api/sms-balance - Check WinSMS Account Balance
 // ============================================
-app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
+app.get('/api/sms-balance', requireAdminAuth, requireAdminPermission('marketing:manage'), async (req, res) => {
   try {
     if (!WINSMS_API_KEY) {
       return res.status(500).json({ 
@@ -4173,7 +4199,7 @@ app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
 // ============================================
 // POST /api/send-order-confirmation-sms - Send SMS to Client
 // ============================================
-app.post('/api/send-order-confirmation-sms', logSecurityRequest, smsLimiter, async (req, res) => {
+app.post('/api/send-order-confirmation-sms', logSecurityRequest, smsLimiter, requireCronSecretOrAdminPermission('orders:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
@@ -4308,7 +4334,7 @@ app.post('/api/send-order-confirmation-sms', logSecurityRequest, smsLimiter, asy
 // ============================================
 // POST /api/send-ambassador-order-sms - Send SMS to Ambassador
 // ============================================
-app.post('/api/send-ambassador-order-sms', smsLimiter, async (req, res) => {
+app.post('/api/send-ambassador-order-sms', smsLimiter, requireCronSecretOrAdminPermission('orders:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
@@ -5233,7 +5259,7 @@ app.get('/api/payment-options', async (req, res) => {
 });
 
 // GET /api/admin/payment-options - Get all payment options (admin)
-app.get('/api/admin/payment-options', requireAdminAuth, async (req, res) => {
+app.get('/api/admin/payment-options', requireAdminAuth, requireAdminPermission('settings:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -6907,8 +6933,29 @@ function requireCronSecret(req, res, next) {
   next();
 }
 
+/** Cron secret for jobs, or authenticated admin with effective permission for manual triggers. */
+function requireCronSecretOrAdminPermission(permissionKey) {
+  return (req, res, next) => {
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+      const authHdr = req.headers.authorization || req.headers.Authorization || '';
+      const bearer = typeof authHdr === 'string' && authHdr.startsWith('Bearer ') ? authHdr.slice(7).trim() : null;
+      const providedSecret =
+        req.headers['x-cron-secret'] ||
+        bearer ||
+        req.query?.secret ||
+        req.body?.secret;
+      if (providedSecret === cronSecret) return next();
+    }
+    requireAdminAuth(req, res, (authErr) => {
+      if (authErr) return;
+      requireAdminPermission(permissionKey)(req, res, next);
+    });
+  };
+}
+
 // GET/POST /api/auto-reject-expired-orders - cron or CRON_SECRET only
-app.get('/api/auto-reject-expired-orders', requireCronSecret, async (req, res) => {
+app.get('/api/auto-reject-expired-orders', requireCronSecretOrAdminPermission('orders:manage'), async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -6944,7 +6991,7 @@ app.get('/api/auto-reject-expired-orders', requireCronSecret, async (req, res) =
   }
 });
 
-app.post('/api/auto-reject-expired-orders', requireCronSecret, async (req, res) => {
+app.post('/api/auto-reject-expired-orders', requireCronSecretOrAdminPermission('orders:manage'), async (req, res) => {
   // Same handler as GET
   return app._router.handle({ ...req, method: 'GET' }, res);
 });
@@ -8588,7 +8635,7 @@ app.get('/api/qr-codes/:accessToken', logSecurityRequest, qrCodeAccessLimiter, a
   }
 });
 
-app.post('/api/generate-qr-code', async (req, res) => {
+app.post('/api/generate-qr-code', requireCronSecretOrAdminPermission('orders:manage'), async (req, res) => {
   try {
     const { token } = req.body;
     
@@ -10893,140 +10940,7 @@ function shuffleArray(array) {
 }
 
 async function releaseOrderStock(orderId, reason) {
-  const dbClient = getServiceRoleDbOrThrow();
-
-  // Step 1: Atomically check and set stock_released flag
-  // This prevents double-release from webhook retries, admin double-clicks, or race conditions
-  const { data: orderUpdate, error: updateError } = await dbClient
-    .from('orders')
-    .update({ stock_released: true })
-    .eq('id', orderId)
-    .eq('stock_released', false)  // Only update if NOT already released
-    .select('id, status')
-    .single();
-
-  // If update failed or no rows updated, stock was already released or order doesn't exist
-  if (updateError || !orderUpdate) {
-    if (updateError && updateError.code !== 'PGRST116') {
-      console.error('Error updating stock_released flag:', updateError);
-      throw new Error(`Failed to release stock: ${updateError.message}`);
-    }
-    // Order already has stock_released = true or doesn't exist
-    // This is OK - idempotent operation
-    return { released: false, message: 'Stock already released or order not found' };
-  }
-
-  // Step 2: Fetch order_passes (with or without pass_id)
-  const { data: orderPasses, error: passesError } = await dbClient
-    .from('order_passes')
-    .select('pass_id, pass_type, quantity')
-    .eq('order_id', orderId);
-
-  if (passesError) {
-    console.error('Error fetching order_passes:', passesError);
-    throw new Error(`Failed to fetch order passes: ${passesError.message}`);
-  }
-
-  if (!orderPasses || orderPasses.length === 0) {
-    // No passes found
-    console.warn(`Order ${orderId} has no order_passes - cannot release stock`);
-    return { released: false, message: 'No order_passes found' };
-  }
-
-  // Step 2b: Get event_id for fallback matching
-  const { data: order, error: orderError } = await dbClient
-    .from('orders')
-    .select('event_id')
-    .eq('id', orderId)
-    .single();
-
-  if (orderError || !order) {
-    console.error('Error fetching order:', orderError);
-    throw new Error(`Failed to fetch order: ${orderError?.message || 'Order not found'}`);
-  }
-
-  // Step 3: Decrement sold_quantity for each pass
-  // Use atomic UPDATE to prevent negative stock
-  // Handles both pass_id and pass_type matching (fallback)
-  let releasedCount = 0;
-  for (const orderPass of orderPasses) {
-    let passIdToUse = orderPass.pass_id;
-
-    // If pass_id is NULL, try to find it by matching pass_type
-    if (!passIdToUse && orderPass.pass_type && order.event_id) {
-      const { data: matchedPass, error: matchError } = await dbClient
-        .from('event_passes')
-        .select('id')
-        .eq('name', orderPass.pass_type)
-        .eq('event_id', order.event_id)
-        .limit(1)
-        .single();
-
-      if (!matchError && matchedPass) {
-        passIdToUse = matchedPass.id;
-        console.log(`Found pass_id ${passIdToUse} by matching pass_type "${orderPass.pass_type}"`);
-      } else {
-        console.warn(`Cannot find pass_id for pass_type "${orderPass.pass_type}" in event ${order.event_id} - skipping`);
-        continue;
-      }
-    }
-
-    if (!passIdToUse) {
-      console.warn(`Order pass has no pass_id and cannot match by pass_type - skipping`);
-      continue;
-    }
-
-    // Fetch current sold_quantity first
-    const { data: currentPass, error: fetchError } = await dbClient
-      .from('event_passes')
-      .select('sold_quantity')
-      .eq('id', passIdToUse)
-      .single();
-
-    if (fetchError || !currentPass) {
-      console.error(`Error fetching pass ${passIdToUse} for stock release:`, fetchError);
-      continue;
-    }
-
-    // Decrement stock atomically
-    const newSoldQuantity = Math.max(0, currentPass.sold_quantity - orderPass.quantity);
-    const { error: updateError } = await dbClient
-      .from('event_passes')
-      .update({ sold_quantity: newSoldQuantity })
-      .eq('id', passIdToUse)
-      .eq('sold_quantity', currentPass.sold_quantity);  // Ensure no one else updated it
-
-    if (updateError) {
-      console.error(`Error releasing stock for pass ${passIdToUse}:`, updateError);
-      // Continue with other passes even if one fails
-      continue;
-    }
-
-    releasedCount++;
-  }
-
-  // Step 4: Log stock release action
-  try {
-    await dbClient.from('order_logs').insert({
-      order_id: orderId,
-      action: 'stock_released',
-      performed_by: null,
-      performed_by_type: 'system',
-      details: {
-        reason: reason,
-        passes_released: releasedCount,
-        timestamp: new Date().toISOString()
-      }
-    });
-  } catch (logError) {
-    console.warn('Failed to log stock release (non-fatal):', logError);
-  }
-
-  return {
-    released: true,
-    passesReleased: releasedCount,
-    message: `Stock released for ${releasedCount} pass(es)`
-  };
+  return releaseOrderStockCore(getServiceRoleDbOrThrow(), orderId, reason);
 }
 
 // Helper: log order creation failure to security_audit_logs (for Logs tab)
@@ -11905,14 +11819,18 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
       setImmediate(async () => {
         try {
           const apiBase = process.env.API_URL || 'http://localhost:8082';
+          const cronHeaders = {
+            'Content-Type': 'application/json',
+            ...(process.env.CRON_SECRET ? { 'x-cron-secret': process.env.CRON_SECRET } : {}),
+          };
           await fetch(`${apiBase}/api/send-order-confirmation-sms`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: cronHeaders,
             body: JSON.stringify({ orderId: order.id })
           });
           await fetch(`${apiBase}/api/send-ambassador-order-sms`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: cronHeaders,
             body: JSON.stringify({ orderId: order.id })
           });
           

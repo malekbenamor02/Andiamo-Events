@@ -2,7 +2,7 @@
  * Admin presale codes API (paths under /api/admin/presale/codes)
  */
 import '../../lib/sentry-server.js';
-import { verifyAdminAuth, hasPermission } from './admin-verify.js';
+import { verifyAdminAuth, effectivePermissionDenied } from './admin-verify.js';
 import { hashPresaleCode, requirePresalePepperOr503 } from './presale-server.js';
 import { validateAdminPassDiscounts } from './presale-discount.js';
 import { createAdminDbClient } from './service-role-client.js';
@@ -103,8 +103,9 @@ export async function handlePresaleAdminCodes(req, res) {
     if (!auth.valid) {
       return res.status(auth.statusCode || 401).json({ error: auth.error || 'Unauthorized' });
     }
-    if (!hasPermission(auth.admin?.role, 'presale:manage')) {
-      return res.status(403).json({ error: 'Forbidden', details: 'Permission required: presale:manage' });
+    const denied = effectivePermissionDenied(auth, 'events:manage');
+    if (denied) {
+      return res.status(denied.statusCode).json(denied);
     }
 
     const path = getPathname(req);

@@ -24,6 +24,7 @@ const REQUIRED_HEADERS = {
   'cross-origin-opener-policy': 'same-origin',
   'cross-origin-resource-policy': 'same-site',
   'strict-transport-security': (value) => value && value.includes('includeSubDomains') && value.includes('preload'),
+  'content-security-policy': (value) => value && value.includes('report-uri'),
   'content-security-policy-report-only': (value) => value && value.includes('report-uri'),
 };
 

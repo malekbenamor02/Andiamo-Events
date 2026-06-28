@@ -13,7 +13,7 @@ import 'nodemailer';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { verifyAdminAuth, hasPermission } from './_lib/admin-verify.js';
+import { verifyAdminAuth, effectivePermissionDenied } from './_lib/admin-verify.js';
 import { createServiceRoleClient } from './_lib/service-role-client.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -752,9 +752,8 @@ export default async (req, res) => {
 
   const auth = await verifyAdminAuth(req);
   if (!auth.valid) return res.status(auth.statusCode || 401).json({ error: auth.error });
-  if (!hasPermission(auth.admin?.role, 'pos:manage')) {
-    return res.status(403).json({ error: 'Forbidden', details: 'Permission required: pos:manage' });
-  }
+  const denied = effectivePermissionDenied(auth, 'pos:manage');
+  if (denied) return res.status(denied.statusCode).json(denied);
 
   let sb;
   try { sb = await getSupabase(); } catch (e) { return res.status(500).json({ error: 'Supabase not configured' }); }

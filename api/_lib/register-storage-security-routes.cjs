@@ -110,7 +110,7 @@ function registerStorageSecurityRoutes(app, deps = {}) {
 
   registerTicketQrRoute(app, getDb);
 
-  app.post('/api/media/favicon/cleanup', requireAdminAuth, async (req, res) => {
+  app.post('/api/media/favicon/cleanup', requireAdminAuth, requireAdminPermission('settings:manage'), async (req, res) => {
     try {
       const faviconType = String(req.body?.faviconType || '').trim();
       if (!faviconType || !/^[a-z0-9_]+$/i.test(faviconType)) {
@@ -341,11 +341,11 @@ function registerStorageSecurityRoutes(app, deps = {}) {
     }
   }
 
-  app.post('/api/admin/media/upload', requireAdminAuth, multerSingle('file'), handleAdminMediaUpload);
-  app.post('/api/media/upload', requireAdminAuth, multerSingle('file'), handleAdminMediaUpload);
+  app.post('/api/admin/media/upload', requireAdminAuth, requireAdminPermission('settings:manage'), multerSingle('file'), handleAdminMediaUpload);
+  app.post('/api/media/upload', requireAdminAuth, requireAdminPermission('settings:manage'), multerSingle('file'), handleAdminMediaUpload);
 
-  app.post('/api/admin/media/delete', requireAdminAuth, handleAdminMediaDelete);
-  app.post('/api/media/delete', requireAdminAuth, handleAdminMediaDelete);
+  app.post('/api/admin/media/delete', requireAdminAuth, requireAdminPermission('settings:manage'), handleAdminMediaDelete);
+  app.post('/api/media/delete', requireAdminAuth, requireAdminPermission('settings:manage'), handleAdminMediaDelete);
 }
 
 module.exports = { registerStorageSecurityRoutes, getServiceDb, getPublicObjectUrl };

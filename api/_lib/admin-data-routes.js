@@ -14,6 +14,10 @@ import {
   rejectUnexpectedFields,
   requireAdmin,
   buildAmbassadorWritePayload,
+  buildApplicationSyncPatchFromAmbassadorRow,
+  findLatestApprovedApplicationByPhone,
+  validateApplicationSyncConflicts,
+  isPostgresUniqueViolation,
   jsonBadRequest,
   APPLICATION_SELECTION_WRITABLE_FIELDS,
   APPLICATION_SELECTION_ITEM_BULK_FIELDS,
@@ -193,6 +197,43 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
       });
       row.updated_at = new Date().toISOString();
 
+      const { data: currentAmbassador, error: loadAmbError } = await ctx.db
+        .from('ambassadors')
+        .select('id, phone, email, full_name, city, ville')
+        .eq('id', ambassadorId)
+        .single();
+      if (loadAmbError || !currentAmbassador) {
+        return res.status(404).json({ error: 'Ambassador not found' });
+      }
+
+      const applicationSyncPatch = buildApplicationSyncPatchFromAmbassadorRow(row);
+      const syncFieldKeys = Object.keys(applicationSyncPatch);
+      let linkedApplication = null;
+      let applicationSyncSkipped = false;
+
+      if (syncFieldKeys.length > 0) {
+        try {
+          linkedApplication = await findLatestApprovedApplicationByPhone(ctx.db, currentAmbassador.phone);
+        } catch (lookupErr) {
+          console.warn(
+            'ambassador PATCH: linked application lookup failed:',
+            lookupErr?.message || lookupErr,
+          );
+        }
+
+        if (linkedApplication) {
+          const conflictCheck = await validateApplicationSyncConflicts(ctx.db, {
+            syncPatch: applicationSyncPatch,
+            linkedApplicationId: linkedApplication.id,
+          });
+          if (!conflictCheck.ok) {
+            return jsonBadRequest(res, conflictCheck.message);
+          }
+        } else {
+          applicationSyncSkipped = true;
+        }
+      }
+
       const passwordChanged = !!row.password;
       const { data, error } = await ctx.db
         .from('ambassadors')
@@ -204,12 +245,58 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
       if (passwordChanged) {
         await revokeAllAmbassadorSessions(ctx.db, ambassadorId, 'admin_password_reset').catch(() => {});
       }
+
+      let syncedApplicationId = null;
+      let syncedApplicationFields = [];
+      if (linkedApplication && syncFieldKeys.length > 0) {
+        syncedApplicationFields = syncFieldKeys;
+        const appUpdatePayload = {
+          ...applicationSyncPatch,
+          updated_at: new Date().toISOString(),
+        };
+        const appResult = await ctx.db
+          .from('ambassador_applications')
+          .update(appUpdatePayload)
+          .eq('id', linkedApplication.id)
+          .select('id')
+          .single();
+
+        if (appResult.error) {
+          console.error(
+            'ambassador PATCH: application sync failed after ambassador update:',
+            appResult.error.message,
+          );
+          if (isPostgresUniqueViolation(appResult.error)) {
+            return res.status(400).json({
+              error:
+                'Ambassador was updated but the linked application could not be synced due to a duplicate email or phone number',
+            });
+          }
+          return res.status(500).json({
+            error: 'Ambassador was updated but failed to sync linked application',
+            details: 'Please verify the application record or retry the update',
+          });
+        }
+        syncedApplicationId = linkedApplication.id;
+      }
+
+      const auditDetails = {
+        fields: Object.keys(row),
+        passwordChanged,
+      };
+      if (syncedApplicationId) {
+        auditDetails.syncedApplicationId = syncedApplicationId;
+        auditDetails.syncedApplicationFields = syncedApplicationFields;
+      } else if (applicationSyncSkipped && syncFieldKeys.length > 0) {
+        auditDetails.applicationSyncSkipped = true;
+      }
+
       await writeAdminMutationAudit(ctx.db, {
         admin: ctx.auth.admin,
         action: 'ambassador.updated',
         targetType: 'ambassador',
         targetId: ambassadorId,
-        details: { fields: Object.keys(row), passwordChanged },
+        details: auditDetails,
       });
       return res.status(200).json({
         data,

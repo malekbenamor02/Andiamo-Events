@@ -1,7 +1,7 @@
 /**
  * Admin logs (served via api/misc.js — keeps Vercel serverless count ≤ 11).
  */
-import { verifyAdminAuth, hasPermission } from './admin-verify.js';
+import { verifyAdminAuth, effectivePermissionDenied } from './admin-verify.js';
 import { createAdminDbClient } from './service-role-client.js';
 
 let corsUtils = null;
@@ -41,11 +41,9 @@ export async function handleAdminLogs(req, res) {
     });
   }
 
-  if (!hasPermission(authResult.admin?.role, 'logs:view')) {
-    return res.status(403).json({
-      error: 'Forbidden',
-      details: 'Permission required: logs:view',
-    });
+  const denied = effectivePermissionDenied(authResult, 'logs:view');
+  if (denied) {
+    return res.status(denied.statusCode).json(denied);
   }
 
   try {

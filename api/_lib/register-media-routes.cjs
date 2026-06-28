@@ -57,12 +57,15 @@ function requireR2(req, res, next) {
   next();
 }
 
-function registerMediaRoutes(app, { requireAdminAuth }) {
+function registerMediaRoutes(app, { requireAdminAuth, requireAdminPermission }) {
+  if (!requireAdminAuth || !requireAdminPermission) {
+    throw new Error('registerMediaRoutes requires requireAdminAuth and requireAdminPermission');
+  }
   if (!isR2MediaEnabled()) {
     console.warn('[media] R2 env not set — /api/media/* returns 503 until R2_* and PUBLIC_ASSETS_BASE_URL are set.');
   }
 
-  app.post('/api/media/favicon/cleanup', requireAdminAuth, requireR2, async (req, res) => {
+  app.post('/api/media/favicon/cleanup', requireAdminAuth, requireAdminPermission('settings:manage'), requireR2, async (req, res) => {
     try {
       const faviconType = String(req.body?.faviconType || '').trim();
       if (!faviconType || !/^[a-z0-9_]+$/i.test(faviconType)) {
@@ -77,7 +80,7 @@ function registerMediaRoutes(app, { requireAdminAuth }) {
     }
   });
 
-  app.post('/api/media/upload', requireAdminAuth, requireR2, multerSingle('file'), async (req, res) => {
+  app.post('/api/media/upload', requireAdminAuth, requireAdminPermission('settings:manage'), requireR2, multerSingle('file'), async (req, res) => {
     try {
       if (!req.file?.buffer) return res.status(400).json({ error: 'No file' });
       const scope = String(req.body?.scope || '').trim();
@@ -195,7 +198,7 @@ function registerMediaRoutes(app, { requireAdminAuth }) {
     }
   });
 
-  app.post('/api/media/delete', requireAdminAuth, requireR2, async (req, res) => {
+  app.post('/api/media/delete', requireAdminAuth, requireAdminPermission('settings:manage'), requireR2, async (req, res) => {
     try {
       const key = String(req.body?.path || req.body?.key || '').trim();
       if (!key || key.includes('..')) return res.status(400).json({ error: 'Invalid path' });

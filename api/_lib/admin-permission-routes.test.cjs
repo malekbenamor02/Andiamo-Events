@@ -52,6 +52,71 @@ describe('super-admin-only routes enforce role before DB access', () => {
   });
 });
 
+describe('effective permission gates on admin API handlers', () => {
+  function assertNoRoleStaticPermission(src, label) {
+    assert.doesNotMatch(
+      src,
+      /hasPermission\s*\(\s*auth(?:Result)?\.admin\??\.(?:role|admin\?\.role)/,
+      `${label} must not use role-static hasPermission on auth.admin.role`
+    );
+  }
+
+  it('admin-pos.js uses effectivePermissionDenied for pos:manage', () => {
+    const src = read('api/admin-pos.js');
+    assert.match(src, /effectivePermissionDenied\(auth,\s*'pos:manage'\)/);
+    assertNoRoleStaticPermission(src, 'admin-pos.js');
+  });
+
+  it('admin-approve-order.js uses effectivePermissionDenied for orders:manage', () => {
+    const src = read('api/admin-approve-order.js');
+    assert.match(src, /effectivePermissionDenied\(authResult,\s*'orders:manage'\)/);
+    assertNoRoleStaticPermission(src, 'admin-approve-order.js');
+  });
+
+  it('misc.js SMS routes use marketing:manage effective gate', () => {
+    const src = read('api/misc.js');
+    const bulkBlock = src.slice(
+      src.indexOf("path === '/api/admin/bulk-sms/send'"),
+      src.indexOf("path === '/api/admin/bulk-sms/send'") + 1200
+    );
+    const sendBlock = src.slice(
+      src.indexOf("path === '/api/send-sms'"),
+      src.indexOf("path === '/api/send-sms'") + 1200
+    );
+    const balanceBlock = src.slice(
+      src.indexOf("path === '/api/sms-balance'"),
+      src.indexOf("path === '/api/sms-balance'") + 1200
+    );
+    assert.match(bulkBlock, /effectivePermissionDenied\(authResult,\s*'marketing:manage'\)/);
+    assert.match(sendBlock, /effectivePermissionDenied\(authResult,\s*'marketing:manage'\)/);
+    assert.match(balanceBlock, /effectivePermissionDenied\(authResult,\s*'marketing:manage'\)/);
+    const marketingGate = src.slice(
+      src.indexOf('const marketingAdminPath'),
+      src.indexOf('const marketingAdminPath') + 800
+    );
+    assert.match(marketingGate, /hasEffectivePermission\(marketingAuth\.permissions/);
+  });
+
+  it('presale-route-admin-codes.js uses events:manage not presale:manage', () => {
+    const src = read('api/_lib/presale-route-admin-codes.js');
+    assert.match(src, /effectivePermissionDenied\(auth,\s*'events:manage'\)/);
+    assert.doesNotMatch(src, /presale:manage/);
+  });
+
+  it('event-promo-route-admin.js uses events:manage effective gate', () => {
+    const src = read('api/_lib/event-promo-route-admin.js');
+    assert.match(src, /effectivePermissionDenied\(auth,\s*'events:manage'\)/);
+    assert.match(src, /requireEventsManage/);
+    assert.doesNotMatch(src, /requireSuperAdmin/);
+  });
+
+  it('admin-logs-route.js uses logs:view effective gate', () => {
+    const src = read('api/_lib/admin-logs-route.js');
+    assert.match(src, /effectivePermissionDenied\(authResult,\s*'logs:view'\)/);
+    assertNoRoleStaticPermission(src, 'admin-logs-route.js');
+  });
+});
+
 describe('server.cjs admin DB hardening', () => {
   it('has no supabaseService || supabase fallback', () => {
     const src = read('server.cjs');
