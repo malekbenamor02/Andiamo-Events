@@ -74,6 +74,7 @@ async function handleClicToPayConfirmPayment(ctx) {
     res,
     method,
     parseBody,
+    validatedOrderId,
     createServiceRoleClient,
     requireFromRoot,
     nodePath,
@@ -82,15 +83,17 @@ async function handleClicToPayConfirmPayment(ctx) {
   } = ctx;
 
   try {
-    let orderId = null;
-    if (method === 'POST') {
-      const bodyData = await parseBody(req).catch(() => ({}));
-      orderId = bodyData?.orderId || bodyData?.order_id;
-    } else {
-      const urlObj = new URL(req.url || '', 'http://localhost');
-      orderId = urlObj.searchParams.get('orderId') || urlObj.searchParams.get('order_id');
+    let orderId = validatedOrderId || null;
+    if (!orderId) {
+      if (method === 'POST') {
+        const bodyData = await parseBody(req).catch(() => ({}));
+        orderId = bodyData?.orderId || bodyData?.order_id;
+      } else {
+        const urlObj = new URL(req.url || '', 'http://localhost');
+        orderId = urlObj.searchParams.get('orderId') || urlObj.searchParams.get('order_id');
+      }
     }
-    if (!orderId) return res.status(400).json({ error: 'orderId is required' });
+    if (!orderId) return res.status(400).json({ error: 'invalid_request' });
 
     const dbClient = await createServiceRoleClient();
     const { data: order, error: orderError } = await loadOrderForConfirm(dbClient, orderId);

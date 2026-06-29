@@ -1,15 +1,14 @@
 // Clean, minimal admin login endpoint for Vercel
 // Using ES module syntax because package.json has "type": "module"
 
-import {
-  checkAdminLoginIpRateLimit,
-  checkAdminLoginEmailRateLimit,
-  getAdminLoginClientIp,
-} from './_lib/admin-login-rate-limit.js';
 import { createRequire } from 'module';
-import { checkAdminLoginDistributedLimits } from './_lib/admin-login-upstash.js';
 
 const requireCjs = createRequire(import.meta.url);
+const {
+  getClientIp,
+  enforceRateLimits,
+  respondToRateLimit,
+} = requireCjs('./_lib/rate-limit/index.cjs');
 const { ensureSupabaseServerEnv } = requireCjs('./_lib/supabase-env.cjs');
 ensureSupabaseServerEnv();
 
@@ -108,7 +107,14 @@ export default async (req, res) => {
 
     const recapTrim = sanitizeRecaptchaTokenForVerify(recaptchaToken);
 
-    const clientIp = getAdminLoginClientIp(req);
+    const clientIp = getClientIp(req);
+
+    const rl = await enforceRateLimits({
+      req,
+      policyId: 'LOGIN_ADMIN',
+      segments: { ip: clientIp, email: emailNorm },
+    });
+    if (respondToRateLimit(res, rl)) return;
 
     const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
     const recaptchaRequired =
@@ -190,17 +196,6 @@ export default async (req, res) => {
           return res.status(500).json({ error: 'reCAPTCHA verification service unavailable' });
         }
       }
-    }
-
-    if (!checkAdminLoginIpRateLimit(clientIp)) {
-      return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
-    }
-    if (!checkAdminLoginEmailRateLimit(emailNorm)) {
-      return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
-    }
-    const dist = await checkAdminLoginDistributedLimits(clientIp, emailNorm);
-    if (!dist.allowed) {
-      return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
     }
 
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {

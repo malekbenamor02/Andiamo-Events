@@ -8,7 +8,7 @@ import { createRequire } from 'module';
 import nodemailer from 'nodemailer';
 import querystring from 'querystring';
 import https from 'https';
-import { getClientIp, resolvePresaleForOrderCreate } from './_lib/presale-server.js';
+import { resolvePresaleForOrderCreate } from './_lib/presale-server.js';
 import {
   rejectForbiddenOrderCreateKeys,
   buildValidatedPassLineItem,
@@ -45,6 +45,13 @@ const { computeOnlinePaymentFees } = requireCjs('./_lib/online-payment-fee.cjs')
 const { sendTransactionalEmail } = requireCjs('./_lib/transactional-email.cjs');
 const { processConfirmedTicketPurchaseTracking } = requireCjs('./_lib/meta/ticket-purchase-tracking.cjs');
 const { parseAttributionFromBody } = requireCjs('./_lib/meta/attribution.cjs');
+const {
+  getClientIp,
+  enforceRateLimits,
+  respondToRateLimit,
+} = requireCjs('./_lib/rate-limit/index.cjs');
+
+const ORDER_CREATE_BODY_MAX_BYTES = 256 * 1024;
 
 async function runTicketMetaTrackingSafe(dbClient, orderId, req) {
   try {
@@ -73,46 +80,41 @@ async function releasePresaleSlotRpc(dbClient, presaleCodeId) {
   }
 }
 
-// Per-IP rate limit: 10 orders per hour per IP
-const orderRateByIp = new Map();
-const ORDER_IP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const ORDER_IP_MAX = 10;
-
-function checkOrderIpRateLimit(ip) {
-  const now = Date.now();
-  let rec = orderRateByIp.get(ip);
-  if (!rec || now > rec.resetAt) {
-    orderRateByIp.set(ip, { count: 1, resetAt: now + ORDER_IP_WINDOW_MS });
-    return true;
+async function parseOrderCreateBody(req) {
+  if (req.body !== undefined && req.body !== null) {
+    if (typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+      return { body: req.body };
+    }
+    const raw = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body);
+    if (Buffer.byteLength(raw, 'utf8') > ORDER_CREATE_BODY_MAX_BYTES) {
+      return { tooLarge: true };
+    }
+    try {
+      return { body: raw.trim() ? JSON.parse(raw) : {} };
+    } catch {
+      return { invalid: true };
+    }
   }
-  rec.count += 1;
-  if (rec.count > ORDER_IP_MAX) return false;
-  return true;
-}
 
-// Per-device/browser soft limit via X-Device-Id header: 3 orders per 10 minutes
-const orderRateByDevice = new Map();
-const ORDER_DEVICE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
-const ORDER_DEVICE_MAX = 3;
+  let raw = '';
+  for await (const chunk of req) {
+    raw += chunk.toString();
+    if (Buffer.byteLength(raw, 'utf8') > ORDER_CREATE_BODY_MAX_BYTES) {
+      return { tooLarge: true };
+    }
+  }
+  try {
+    return { body: raw.trim() ? JSON.parse(raw) : {} };
+  } catch {
+    return { invalid: true };
+  }
+}
 
 function getDeviceId(req) {
   const raw = req.headers['x-device-id'];
   if (!raw) return null;
   // Normalize and cap length to avoid abuse
   return String(Array.isArray(raw) ? raw[0] : raw).slice(0, 128) || null;
-}
-
-function checkOrderDeviceRateLimit(deviceId) {
-  if (!deviceId) return true; // cannot enforce device limit without identifier
-  const now = Date.now();
-  let rec = orderRateByDevice.get(deviceId);
-  if (!rec || now > rec.resetAt) {
-    orderRateByDevice.set(deviceId, { count: 1, resetAt: now + ORDER_DEVICE_WINDOW_MS });
-    return true;
-  }
-  rec.count += 1;
-  if (rec.count > ORDER_DEVICE_MAX) return false;
-  return true;
 }
 
 // Validate phone: 8 digits, first digit 2, 4, 5, or 9 (Tunisian format)
@@ -199,16 +201,37 @@ export default async (req, res) => {
   }
 
   try {
-    // --- Rate limiting: IP + device/browser (soft limit) ---
-    const ip = getClientIp(req);
-    if (!checkOrderIpRateLimit(ip)) {
-      return publicApiError(res, 429, PUBLIC_ERROR_CODES.TOO_MANY_ORDERS);
+    const parsedBody = await parseOrderCreateBody(req);
+    if (parsedBody.tooLarge) {
+      return publicApiError(res, 413, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, {
+        logDetails: 'Request body exceeds 256KB',
+      });
     }
+    if (parsedBody.invalid) {
+      return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, {
+        logDetails: 'Invalid JSON',
+      });
+    }
+    const bodyData = parsedBody.body;
 
+    const ip = getClientIp(req);
     const deviceId = getDeviceId(req);
-    if (!checkOrderDeviceRateLimit(deviceId)) {
-      return publicApiError(res, 429, PUBLIC_ERROR_CODES.TOO_MANY_ORDERS);
-    }
+    const emailRaw = bodyData?.customerInfo?.email;
+    const emailNorm =
+      emailRaw != null && String(emailRaw).trim() !== ''
+        ? String(emailRaw).trim().toLowerCase()
+        : null;
+
+    const segments = { ip };
+    if (emailNorm) segments.email = emailNorm;
+    if (deviceId) segments.device = deviceId;
+
+    const rl = await enforceRateLimits({
+      req,
+      policyId: 'ORDER_CREATE',
+      segments,
+    });
+    if (respondToRateLimit(res, rl)) return;
 
     // Check environment variables — service role required in production
     const isProduction =
@@ -237,18 +260,6 @@ export default async (req, res) => {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
     console.log('✅ Using service role key for order creation (bypasses RLS)');
-
-    // Parse request body
-    let bodyData;
-    if (req.body) {
-      bodyData = req.body;
-    } else {
-      let body = '';
-      for await (const chunk of req) {
-        body += chunk.toString();
-      }
-      bodyData = JSON.parse(body);
-    }
 
     const forbiddenBody = rejectForbiddenOrderCreateKeys(bodyData);
     if (!forbiddenBody.ok) {

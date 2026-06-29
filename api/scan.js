@@ -23,9 +23,9 @@ const {
 } = require(join(__dirname, '_lib/scanner-auth.cjs'));
 const { requireScannerAdminAuth } = require(join(__dirname, '_lib/scanner-admin-auth.cjs'));
 const {
-  isScannerLoginRateLimited,
-  recordFailedScannerLogin,
-  clearScannerLoginRateLimit,
+  enforceScannerLoginLimits,
+  getClientIp,
+  respondToRateLimit,
 } = require(join(__dirname, '_lib/scanner-login-rate-limit.cjs'));
 const { validateScannerTicketAtomic } = require(join(__dirname, '_lib/scanner-validate-ticket.cjs'));
 import jwt from 'jsonwebtoken';
@@ -33,10 +33,6 @@ import bcrypt from 'bcryptjs';
 
 function getDb() {
   return createScannerDbClient();
-}
-
-function getClientIp(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.headers['x-real-ip'] || 'unknown';
 }
 
 function clearScannerCookie(res, req) {
@@ -171,25 +167,20 @@ export default async function handler(req, res) {
       const em = (typeof body.email === 'string' ? body.email.trim().toLowerCase() : '') || '';
       const pw = typeof body.password === 'string' ? body.password : '';
       if (!em || !pw) return res.status(400).json({ error: 'Email and password required' });
-      if (isScannerLoginRateLimited(ip, em)) {
-        return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
-      }
+      const rl = await enforceScannerLoginLimits(req, ip, em);
+      if (respondToRateLimit(res, rl)) return;
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'Invalid credentials' });
       if (pw.length < 6) {
-        recordFailedScannerLogin(ip, em);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       const { data: sc, error: e } = await db.from('scanners').select('id, email, name, password_hash, is_active, role').eq('email', em).single();
       if (e || !sc || !sc.is_active) {
-        recordFailedScannerLogin(ip, em);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       const ok = await bcrypt.compare(pw, sc.password_hash || '');
       if (!ok) {
-        recordFailedScannerLogin(ip, em);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
-      clearScannerLoginRateLimit(ip, em);
       const secret = getJwtSecret();
       const scannerRole = sc.role === 'supervisor' ? 'supervisor' : 'scanner';
       const token = jwt.sign({ scannerId: sc.id, email: sc.email, type: 'scanner', scannerRole }, secret, { expiresIn: '8h' });

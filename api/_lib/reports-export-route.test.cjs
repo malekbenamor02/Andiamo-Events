@@ -65,6 +65,25 @@ async function httpGet(port, path) {
   });
 }
 
+describe('reports export route — ESM/CJS interop', () => {
+  it('reports-export-route.cjs can be required without throwing', () => {
+    const routePath = require.resolve('./reports-export-route.cjs');
+    delete require.cache[routePath];
+    assert.doesNotThrow(() => require(routePath));
+  });
+
+  it('uses dynamic import for admin-mutation-audit.js (no require)', () => {
+    const src = read('api/_lib/reports-export-route.cjs');
+    assert.doesNotMatch(src, /require\(['"]\.\/admin-mutation-audit\.js['"]\)/);
+    assert.match(src, /import\(['"]\.\/admin-mutation-audit\.js['"]\)/);
+  });
+
+  it('can dynamically load admin-mutation-audit.js', async () => {
+    const mod = await import('./admin-mutation-audit.js');
+    assert.equal(typeof mod.writeAdminMutationAudit, 'function');
+  });
+});
+
 describe('reports export route — authZ before data access', () => {
   const src = read('api/_lib/reports-export-route.cjs');
 

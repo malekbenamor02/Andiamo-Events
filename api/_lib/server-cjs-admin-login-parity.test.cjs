@@ -13,10 +13,25 @@ function read(rel) {
 
 describe('server.cjs admin login parity with Vercel', () => {
   const src = read('server.cjs');
-  const loginStart = src.indexOf("app.post('/api/admin-login'");
-  assert.ok(loginStart >= 0, 'admin-login route must exist');
-  const loginBlock = src.slice(loginStart, loginStart + 9000);
 
+  it('delegates /api/admin-login to api/admin-login.js', () => {
+    assert.match(src, /app\.post\('\/api\/admin-login', forwardAdminLogin\)/);
+    assert.match(src, /admin-login\.js/);
+  });
+
+  it('does not use express authLimiter on admin-login', () => {
+    assert.doesNotMatch(src, /app\.post\('\/api\/admin-login', authLimiter/);
+  });
+});
+
+describe('admin-login.js session parity', () => {
+  const handlerSrc = read('api/admin-login.js');
+  const loginBlock = handlerSrc.slice(0, 12000);
+
+  it('admin-login handler source is available', () => {
+    assert.ok(read('server.cjs').includes('forwardAdminLogin'));
+    assert.ok(handlerSrc.length > 0);
+  });
   it('includes session_version in JWT sign payload', () => {
     assert.match(loginBlock, /session_version:\s*admin\.session_version/);
   });
@@ -28,11 +43,13 @@ describe('server.cjs admin login parity with Vercel', () => {
   it('returns requiresPasswordChange in login response', () => {
     assert.match(loginBlock, /requiresPasswordChange:\s*!!admin\.requires_password_change/);
   });
+});
 
-  it('selects session_version and is_active from admins', () => {
-    assert.match(loginBlock, /session_version/);
-    assert.match(loginBlock, /is_active/);
-    assert.match(loginBlock, /requires_password_change/);
+describe('admin-login.js uses shared rate-limit module', () => {
+  it('imports enforceRateLimits from rate-limit/index.cjs', () => {
+    const src = read('api/admin-login.js');
+    assert.match(src, /rate-limit\/index\.cjs/);
+    assert.match(src, /enforceRateLimits/);
   });
 });
 

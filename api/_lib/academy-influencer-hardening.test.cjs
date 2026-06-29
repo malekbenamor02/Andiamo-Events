@@ -3,12 +3,11 @@
 const { describe, it, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  isLoginRateLimited,
-  recordFailedLogin,
-  clearLoginRateLimit,
-  MAX_FAILED,
-  _resetLoginRateLimitsForTests,
+  enforceInfluencerLoginLimits,
+  setFetchForTests,
+  resetFetchForTests,
 } = require('./academy-influencer-login-rate-limit.cjs');
+const { getPolicy } = require('./rate-limit/index.cjs');
 const {
   buildInfluencerAttributionOrFilter,
   registrationAttributedToInfluencer,
@@ -19,36 +18,39 @@ const { loadActiveInfluencerById } = require('./academy-influencer-auth.cjs');
 
 describe('academy-influencer hardening', () => {
   beforeEach(() => {
-    _resetLoginRateLimitsForTests();
+    process.env.RATE_LIMIT_KEY_PEPPER = 'test-pepper-32-chars-minimum!!!!';
+    resetFetchForTests();
   });
 
   describe('login rate limiting', () => {
-    it('allows attempts below the threshold', () => {
-      const ip = '1.2.3.4';
-      const email = 'a@example.com';
-      for (let i = 0; i < MAX_FAILED - 1; i++) {
-        recordFailedLogin(ip, email);
-      }
-      assert.equal(isLoginRateLimited(ip, email), false);
+    it('allows attempts below the threshold', async () => {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://example.upstash.io';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+      setFetchForTests(async () => ({
+        ok: true,
+        json: async () => ({ result: 1 }),
+      }));
+
+      const req = { headers: {}, socket: { remoteAddress: '1.2.3.4' }, method: 'POST' };
+      const result = await enforceInfluencerLoginLimits(req, '1.2.3.4', 'a@example.com');
+      assert.equal(result.allowed, true);
     });
 
-    it('blocks after max failed attempts for email+ip', () => {
-      const ip = '1.2.3.4';
-      const email = 'a@example.com';
-      for (let i = 0; i < MAX_FAILED; i++) {
-        recordFailedLogin(ip, email);
-      }
-      assert.equal(isLoginRateLimited(ip, email), true);
-    });
+    it('blocks after max attempts (every-attempt consumption)', async () => {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://example.upstash.io';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+      const policy = getPolicy('LOGIN_INFLUENCER');
+      const ipMax = policy.buckets.find((b) => b.dimension === 'ip').max;
 
-    it('clears limit after successful login pattern', () => {
-      const ip = '1.2.3.4';
-      const email = 'a@example.com';
-      for (let i = 0; i < MAX_FAILED; i++) {
-        recordFailedLogin(ip, email);
-      }
-      clearLoginRateLimit(ip, email);
-      assert.equal(isLoginRateLimited(ip, email), false);
+      setFetchForTests(async () => ({
+        ok: true,
+        json: async () => ({ result: ipMax + 1 }),
+      }));
+
+      const req = { headers: {}, socket: { remoteAddress: '1.2.3.4' }, method: 'POST' };
+      const result = await enforceInfluencerLoginLimits(req, '1.2.3.4', 'a@example.com');
+      assert.equal(result.allowed, false);
+      assert.equal(result.statusCode, 429);
     });
   });
 

@@ -13,6 +13,11 @@ const { sendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/transac
 const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, '_lib/can-send-transactional-email.cjs'));
 const { ensureSupabaseServerEnv, getSupabaseEnv } = requireCjs(path.join(__dirname, '_lib/supabase-env.cjs'));
 const { isProductionRuntime, allowDevAnonFallback } = requireCjs(path.join(__dirname, '_lib/scanner-db.cjs'));
+const {
+  getClientIp,
+  enforceRateLimits,
+  respondToRateLimit,
+} = requireCjs(path.join(__dirname, '_lib/rate-limit/index.cjs'));
 import querystring from 'querystring';
 
 // Import shared CORS utility (using dynamic import for ES modules)
@@ -46,10 +51,6 @@ async function parseBody(req) {
   let body = '';
   for await (const chunk of req) body += chunk.toString();
   return JSON.parse(body || '{}');
-}
-
-function getClientIp(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown';
 }
 
 function formatPhoneNumber(phone) {
@@ -140,27 +141,7 @@ async function getOutletBySlug(supabase, slug) {
   return data;
 }
 
-// In-memory rate limit for login: 6 attempts per 15 min per IP (resets on cold start in serverless)
-const loginAttempts = new Map();
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const LOGIN_MAX = 6;
-
-function checkLoginRateLimit(ip) {
-  const now = Date.now();
-  let rec = loginAttempts.get(ip);
-  if (!rec) {
-    loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
-    return true;
-  }
-  if (now > rec.resetAt) {
-    rec = { count: 1, resetAt: now + LOGIN_WINDOW_MS };
-    loginAttempts.set(ip, rec);
-    return true;
-  }
-  rec.count += 1;
-  if (rec.count > LOGIN_MAX) return false;
-  return true;
-}
+// --- Route handlers ---
 
 /**
  * requirePosAuth: resolve outlet by slug, verify posToken cookie (JWT with pos_user_id, pos_outlet_id),
@@ -199,18 +180,27 @@ async function requirePosAuth(req, supabase, outlet) {
   return { valid: true, posUser: pu, outlet };
 }
 
-// --- Route handlers ---
-
 async function handleLogin(req, res, supabase, outletSlug) {
   const ip = getClientIp(req);
-  if (!checkLoginRateLimit(ip)) {
-    return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
-  }
+  const ipRl = await enforceRateLimits({
+    req,
+    policyId: 'LOGIN_POS',
+    segments: { ip },
+  });
+  if (respondToRateLimit(res, ipRl)) return;
 
   let body;
   try { body = await parseBody(req); } catch (e) { return res.status(400).json({ error: 'Invalid JSON' }); }
   const { email, password } = body || {};
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+  const emailNorm = String(email).trim().toLowerCase();
+  const emailRl = await enforceRateLimits({
+    req,
+    policyId: 'LOGIN_POS',
+    segments: { email: emailNorm },
+  });
+  if (respondToRateLimit(res, emailRl)) return;
 
   const outlet = await getOutletBySlug(supabase, outletSlug);
   if (!outlet) return res.status(404).json({ error: 'Outlet not found or inactive' });
@@ -219,7 +209,7 @@ async function handleLogin(req, res, supabase, outletSlug) {
     .from('pos_users')
     .select('id, name, email, password_hash, is_active, is_paused')
     .eq('pos_outlet_id', outlet.id)
-    .ilike('email', email.trim())
+    .ilike('email', emailNorm)
     .single();
   if (uErr || !user) return res.status(401).json({ error: 'Invalid credentials' });
   if (!user.is_active || user.is_paused) return res.status(403).json({ error: 'Account paused or inactive' });
@@ -342,10 +332,28 @@ async function handlePasses(req, res, supabase, outletSlug, eventId) {
 
 /** POST /api/pos/:outletSlug/orders/create – create POS order; reserve from principal stock (event_passes), same as online/ambassador. Release on reject/remove via trigger. */
 async function handleOrdersCreate(req, res, supabase, outletSlug) {
+  const ip = getClientIp(req);
+  const preAuthRl = await enforceRateLimits({
+    req,
+    policyId: 'ORDER_POS_CREATE',
+    segments: { ip },
+  });
+  if (respondToRateLimit(res, preAuthRl)) return;
+
   const outlet = await getOutletBySlug(supabase, outletSlug);
   if (!outlet) return res.status(404).json({ error: 'Outlet not found or inactive' });
   const auth = await requirePosAuth(req, supabase, outlet);
   if (!auth.valid) return res.status(auth.statusCode || 401).json({ error: auth.error });
+
+  const posRl = await enforceRateLimits({
+    req,
+    policyId: 'ORDER_POS_CREATE',
+    segments: {
+      pos_user: auth.posUser.id,
+      outlet: auth.outlet.id,
+    },
+  });
+  if (respondToRateLimit(res, posRl)) return;
 
   let body;
   try { body = await parseBody(req); } catch (e) { return res.status(400).json({ error: 'Invalid JSON' }); }

@@ -2,27 +2,11 @@
 
 const { isValidSecureToken } = require('./ticket-qr-url.cjs');
 const { generateTicketQrPngBuffer } = require('./ticket-qr-generate.cjs');
-
-const RATE_WINDOW_MS = 60 * 1000;
-const RATE_MAX = 60;
-const rateByIp = new Map();
-
-function getClientIp(req) {
-  const xf = req.headers['x-forwarded-for'];
-  if (xf) return String(xf).split(',')[0].trim();
-  return req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown';
-}
-
-function checkRateLimit(ip) {
-  const now = Date.now();
-  let rec = rateByIp.get(ip);
-  if (!rec || now > rec.resetAt) {
-    rateByIp.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return true;
-  }
-  rec.count += 1;
-  return rec.count <= RATE_MAX;
-}
+const {
+  getClientIp,
+  enforceRateLimits,
+  respondToRateLimit,
+} = require('./rate-limit/index.cjs');
 
 async function findActiveTicketByToken(db, secureToken) {
   const { data: ticket } = await db
@@ -62,7 +46,7 @@ function extractSecureTokenFromRequest(req) {
   return fromQuery ? String(fromQuery).trim() : '';
 }
 
-async function handleTicketQrRequest(req, res, db) {
+async function handleTicketQrRequest(req, res, getServiceDb) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
     return res.status(405).json({ error: 'Method not allowed' });
@@ -74,10 +58,14 @@ async function handleTicketQrRequest(req, res, db) {
   }
 
   const ip = getClientIp(req);
-  if (!checkRateLimit(ip)) {
-    return res.status(429).json({ error: 'Too many requests' });
-  }
+  const rl = await enforceRateLimits({
+    req,
+    policyId: 'QR_TICKET',
+    segments: { ip, token: secureToken },
+  });
+  if (respondToRateLimit(res, rl)) return;
 
+  const db = typeof getServiceDb === 'function' ? getServiceDb() : getServiceDb;
   if (!db) {
     return res.status(503).json({ error: 'Service unavailable' });
   }
@@ -104,8 +92,7 @@ async function handleTicketQrRequest(req, res, db) {
 function registerTicketQrRoute(app, getServiceDb) {
   app.get('/api/tickets/qr/:secureToken', async (req, res) => {
     try {
-      const db = typeof getServiceDb === 'function' ? getServiceDb() : getServiceDb;
-      return handleTicketQrRequest(req, res, db);
+      return handleTicketQrRequest(req, res, getServiceDb);
     } catch {
       console.error('[ticket-qr] route error');
       return res.status(500).json({ error: 'Server error' });

@@ -109,6 +109,13 @@ const {
   handleAmbassadorConfirmCash,
 } = requireFromRoot(nodePath.join(__dirname, '_lib', 'ambassador-routes.cjs'));
 
+const {
+  getClientIp,
+  enforceRateLimits,
+  respondToRateLimit,
+  isValidUuid,
+} = requireFromRoot(nodePath.join(__dirname, '_lib', 'rate-limit', 'index.cjs'));
+
 async function runTicketMetaTrackingSafe(dbClient, orderId, req) {
   try {
     return await processConfirmedTicketPurchaseTracking(dbClient, orderId, { req });
@@ -210,24 +217,6 @@ function applyOrdersMarketingFilters(query, f = {}) {
   if (f.source) query = query.eq('source', f.source);
   if (f.event_id) query = query.eq('event_id', f.event_id);
   return query;
-}
-
-// In-memory rate limits (serverless best-effort; resets on cold start)
-// Ambassador login: 5 attempts per 15 minutes per IP
-const ambassadorLoginAttempts = new Map();
-const AMB_LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const AMB_LOGIN_MAX = 5;
-
-function checkAmbassadorLoginRateLimit(ip) {
-  const now = Date.now();
-  let rec = ambassadorLoginAttempts.get(ip);
-  if (!rec || now > rec.resetAt) {
-    ambassadorLoginAttempts.set(ip, { count: 1, resetAt: now + AMB_LOGIN_WINDOW_MS });
-    return true;
-  }
-  rec.count += 1;
-  if (rec.count > AMB_LOGIN_MAX) return false;
-  return true;
 }
 
 // Ambassador application: 5 applications per hour per IP (mirrors server.cjs applicationLimiter)
@@ -1972,8 +1961,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     if (path === '/api/ambassador-login' && method === 'POST') {
       return handleAmbassadorLogin(req, res, {
         parseBody,
-        getClientIp,
-        checkAmbassadorLoginRateLimit,
       });
     }
 
@@ -2596,6 +2583,17 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             details: `The email address "${to}" is not valid. Please verify the email address and try again.` 
           });
         }
+
+        const recipientNorm = String(to).trim().toLowerCase();
+        const emailRl = await enforceRateLimits({
+          req,
+          policyId: 'EMAIL_SEND',
+          segments: {
+            admin: authResult.admin?.id,
+            recipient: recipientNorm,
+          },
+        });
+        if (respondToRateLimit(res, emailRl)) return;
         
         if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
           console.error('Email configuration missing: EMAIL_USER or EMAIL_PASS not set');
@@ -4403,15 +4401,7 @@ We Create Memories`;
       try {
         const authResult = await gateAdminPermission(req, res, 'orders:manage');
         if (!authResult) return;
-        
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          return res.status(503).json({
-            error: 'Server configuration error',
-            details:
-              'SUPABASE_SERVICE_ROLE_KEY is required for admin ticket resend so orders are readable under RLS. Add it to Vercel (or server) environment variables.',
-          });
-        }
-        
+
         const bodyData = await parseBody(req);
         const rawOrderId =
           bodyData.orderId ?? bodyData.order_id ?? bodyData.id ?? bodyData.OrderId;
@@ -4423,13 +4413,56 @@ We Create Memories`;
               : '';
         const adminId = authResult.admin?.id;
         const adminEmail = authResult.admin?.email;
-        
+
         if (!orderId) {
           return res.status(400).json({ error: 'Order ID is required' });
         }
-        
+        if (!isValidUuid(orderId)) {
+          return res.status(400).json({ error: 'invalid_request' });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(503).json({
+            error: 'Server configuration error',
+            details:
+              'SUPABASE_SERVICE_ROLE_KEY is required for admin ticket resend so orders are readable under RLS. Add it to Vercel (or server) environment variables.',
+          });
+        }
+
         const { createClient } = await import('@supabase/supabase-js');
         const dbClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+        const { data: orderEmailRow, error: orderEmailError } = await dbClient
+          .from('orders')
+          .select('id, user_email')
+          .eq('id', orderId)
+          .single();
+
+        if (orderEmailError || !orderEmailRow) {
+          return res.status(404).json({
+            error: 'Order not found',
+            details: orderEmailError?.message || 'No order matches this id',
+          });
+        }
+
+        if (!orderEmailRow.user_email) {
+          return res.status(400).json({
+            error: 'Customer email is required',
+            details: 'Order does not have a customer email address',
+          });
+        }
+
+        const recipientNorm = String(orderEmailRow.user_email).trim().toLowerCase();
+        const resendRl = await enforceRateLimits({
+          req,
+          policyId: 'EMAIL_RESEND_TICKET',
+          segments: {
+            admin: adminId,
+            order: orderId,
+            recipient: recipientNorm,
+          },
+        });
+        if (respondToRateLimit(res, resendRl)) return;
         
         // Step 1: Verify order exists and is PAID (service role bypasses RLS)
         const { data: order, error: orderError } = await dbClient
@@ -7629,6 +7662,17 @@ We Create Memories`;
         if (bulkSmsDenied) {
           return res.status(bulkSmsDenied.statusCode).json(bulkSmsDenied);
         }
+
+        const bulkRl = await enforceRateLimits({
+          req,
+          policyId: 'SMS_BULK',
+          segments: {
+            admin: authResult.admin?.id,
+            ip: getClientIp(req),
+          },
+        });
+        if (respondToRateLimit(res, bulkRl)) return;
+
         const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
         if (!WINSMS_API_KEY) {
           return res.status(500).json({ 
@@ -8707,13 +8751,6 @@ We Create Memories`;
         if (sendSmsDenied) {
           return res.status(sendSmsDenied.statusCode).json(sendSmsDenied);
         }
-        const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
-        if (!WINSMS_API_KEY) {
-          return res.status(500).json({ 
-            success: false, 
-            error: 'SMS service not configured. WINSMS_API_KEY environment variable is required.' 
-          });
-        }
 
         const bodyData = await parseBody(req);
         const { phoneNumbers, message } = bodyData;
@@ -8724,6 +8761,21 @@ We Create Memories`;
 
         if (!phoneNumbers || !Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
           return res.status(400).json({ success: false, error: 'Phone numbers array is required' });
+        }
+
+        const smsRl = await enforceRateLimits({
+          req,
+          policyId: 'SMS_SEND',
+          segments: { admin: authResult.admin?.id },
+        });
+        if (respondToRateLimit(res, smsRl)) return;
+
+        const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
+        if (!WINSMS_API_KEY) {
+          return res.status(500).json({ 
+            success: false, 
+            error: 'SMS service not configured. WINSMS_API_KEY environment variable is required.' 
+          });
         }
 
         const dbClient = await createAdminDbClient(res);
