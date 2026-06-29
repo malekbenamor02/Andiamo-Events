@@ -17,6 +17,34 @@ if (!base) {
 const VALID_UUID = '00000000-0000-4000-8000-000000000001';
 const INVALID_TOKEN = 'not-a-valid-token';
 
+let cachedBypassSecret = null;
+let bypassLookupAttempted = false;
+
+function resolveProtectionBypass() {
+  if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()) {
+    return process.env.VERCEL_AUTOMATION_BYPASS_SECRET.trim();
+  }
+  if (cachedBypassSecret) return cachedBypassSecret;
+  if (bypassLookupAttempted) return null;
+  bypassLookupAttempted = true;
+  const r = spawnSync(
+    'npx',
+    ['vercel', 'project', 'protection', 'andiamo-events'],
+    { encoding: 'utf8', shell: process.platform === 'win32' }
+  );
+  const raw = `${r.stdout || ''}${r.stderr || ''}`;
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart < 0) return null;
+  try {
+    const data = JSON.parse(raw.slice(jsonStart));
+    const keys = Object.keys(data.protectionBypass || {});
+    cachedBypassSecret = keys[0] || null;
+    return cachedBypassSecret;
+  } catch {
+    return null;
+  }
+}
+
 function parseVercelCurlOutput(out) {
   const combined = String(out || '');
   let status = 0;
@@ -69,24 +97,24 @@ function parseVercelCurlOutput(out) {
 
 function vercelCurl(path, opts = {}) {
   const method = opts.method || 'GET';
-  const args = [
-    'vercel@latest',
-    'curl',
-    '--deployment',
-    base,
-    '--yes',
-    '-X',
-    method,
-    '-w',
-    '\n__HTTP_STATUS__:%{http_code}\n',
-    '-s',
-    '-D',
-    '-',
-  ];
-  if (opts.body != null) {
-    args.push('-H', 'Content-Type: application/json', '-d', JSON.stringify(opts.body));
+  const apiPath = path.startsWith('/') ? path : `/${path}`;
+  const args = ['vercel@latest', 'curl', apiPath, '--deployment', base, '--yes'];
+  const bypass = resolveProtectionBypass();
+  if (bypass) {
+    args.push('--protection-bypass', bypass);
   }
-  args.push(path.startsWith('/') ? path : `/${path}`);
+  args.push(
+    '--',
+    '--silent',
+    '--include',
+    '--write-out',
+    '\n__HTTP_STATUS__:%{http_code}\n',
+    '--request',
+    method
+  );
+  if (opts.body != null) {
+    args.push('--header', 'Content-Type: application/json', '--data', JSON.stringify(opts.body));
+  }
 
   const r = spawnSync('npx', args, {
     encoding: 'utf8',
@@ -96,7 +124,13 @@ function vercelCurl(path, opts = {}) {
   if (r.error) throw r.error;
   const out = `${r.stdout || ''}${r.stderr || ''}`;
   const parsed = parseVercelCurlOutput(out);
-  return { ...parsed, exitCode: r.status ?? 0, spawnError: r.error ? String(r.error.message) : null };
+  const isCheckpoint = out.includes('Vercel Security Checkpoint');
+  return {
+    ...parsed,
+    exitCode: r.status ?? 0,
+    spawnError: r.error ? String(r.error.message) : null,
+    blockedByCheckpoint: isCheckpoint,
+  };
 }
 
 function row(name, pass, detail, skipped = false, meta = null) {
@@ -108,18 +142,22 @@ const results = [];
 async function main() {
   // Sanity: deployment reachable (not 302/0)
   const ping = vercelCurl('/api/clictopay-confirm-payment');
-  if (ping.status === 0 || ping.status === 302) {
+  if (ping.status === 0 || ping.status === 302 || ping.blockedByCheckpoint) {
     console.log(
       JSON.stringify(
         {
           base,
           blocked: true,
-          detail: `Deployment not reachable via vercel curl (status=${ping.status})`,
+          detail: ping.blockedByCheckpoint
+            ? 'Vercel Security Checkpoint blocked vercel curl'
+            : `Deployment not reachable via vercel curl (status=${ping.status})`,
           parseMeta: {
             hadStatusMarker: ping.hadStatusMarker,
             outputBytes: ping.outputBytes,
             parseError: ping.parseError,
             exitCode: ping.exitCode,
+            blockedByCheckpoint: !!ping.blockedByCheckpoint,
+            bypassConfigured: !!resolveProtectionBypass(),
           },
           results: [],
         },
