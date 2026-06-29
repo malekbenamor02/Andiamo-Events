@@ -1,7 +1,6 @@
 'use strict';
 
 const { isValidSecureToken } = require('./ticket-qr-url.cjs');
-const { generateTicketQrPngBuffer } = require('./ticket-qr-generate.cjs');
 const {
   getClientIp,
   enforceRateLimits,
@@ -46,46 +45,66 @@ function extractSecureTokenFromRequest(req) {
   return fromQuery ? String(fromQuery).trim() : '';
 }
 
+function sendJson(res, status, body) {
+  if (typeof res.status === 'function' && typeof res.json === 'function') {
+    return res.status(status).json(body);
+  }
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
+}
+
 async function handleTicketQrRequest(req, res, getServiceDb) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
-    return res.status(405).json({ error: 'Method not allowed' });
+    return sendJson(res, 405, { error: 'Method not allowed' });
   }
 
   const secureToken = extractSecureTokenFromRequest(req);
   if (!isValidSecureToken(secureToken)) {
-    return res.status(400).json({ error: 'Invalid token' });
+    return sendJson(res, 400, { error: 'Invalid token' });
   }
 
   const ip = getClientIp(req);
-  const rl = await enforceRateLimits({
-    req,
-    policyId: 'QR_TICKET',
-    segments: { ip, token: secureToken },
-  });
+  let rl;
+  try {
+    rl = await enforceRateLimits({
+      req,
+      policyId: 'QR_TICKET',
+      segments: { ip, token: secureToken },
+    });
+  } catch (err) {
+    console.error('[ticket-qr] rate limit error', err instanceof Error ? err.message : 'unknown');
+    return sendJson(res, 503, { error: 'service_unavailable' });
+  }
   if (respondToRateLimit(res, rl)) return;
 
   const db = typeof getServiceDb === 'function' ? getServiceDb() : getServiceDb;
   if (!db) {
-    return res.status(503).json({ error: 'Service unavailable' });
+    return sendJson(res, 503, { error: 'Service unavailable' });
   }
 
   const row = await findActiveTicketByToken(db, secureToken);
   if (!row) {
-    return res.status(404).json({ error: 'Not found' });
+    return sendJson(res, 404, { error: 'Not found' });
   }
 
   try {
+    const { generateTicketQrPngBuffer } = require('./ticket-qr-generate.cjs');
     const png = await generateTicketQrPngBuffer(secureToken);
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'no-store, private');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    return res.status(200).send(png);
+    if (typeof res.status === 'function') {
+      return res.status(200).send(png);
+    }
+    res.statusCode = 200;
+    return res.end(png);
   } catch {
     console.error('[ticket-qr] generate failed');
-    return res.status(500).json({ error: 'Failed to generate QR code' });
+    return sendJson(res, 500, { error: 'Failed to generate QR code' });
   }
 }
 
@@ -95,7 +114,7 @@ function registerTicketQrRoute(app, getServiceDb) {
       return handleTicketQrRequest(req, res, getServiceDb);
     } catch {
       console.error('[ticket-qr] route error');
-      return res.status(500).json({ error: 'Server error' });
+      return sendJson(res, 500, { error: 'Server error' });
     }
   });
 }

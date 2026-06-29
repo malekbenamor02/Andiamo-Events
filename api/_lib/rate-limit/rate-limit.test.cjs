@@ -39,17 +39,18 @@ describe('rate-limit upstash Lua EVAL', () => {
     await incrFixedWindow('ae:rl:v1:test:ip:abc123', 5, 900);
 
     assert.ok(captured);
-    assert.equal(captured.url, 'https://example.upstash.io/eval');
+    assert.equal(captured.url, 'https://example.upstash.io');
     assert.equal(captured.init.method, 'POST');
     assert.match(String(captured.init.headers?.Authorization), /Bearer test-token/);
 
     const body = JSON.parse(String(captured.init.body));
-    assert.equal(body[0], getLuaScriptForTests());
-    assert.equal(body[1], 1);
-    assert.equal(body[2], 'ae:rl:v1:test:ip:abc123');
-    assert.equal(body[3], '900');
-    assert.match(body[0], /INCR/);
-    assert.match(body[0], /EXPIRE/);
+    assert.equal(body[0], 'EVAL');
+    assert.equal(body[1], getLuaScriptForTests());
+    assert.equal(body[2], 1);
+    assert.equal(body[3], 'ae:rl:v1:test:ip:abc123');
+    assert.equal(body[4], '900');
+    assert.match(body[1], /INCR/);
+    assert.match(body[1], /EXPIRE/);
     assert.doesNotMatch(String(captured.init.body), /pipeline/i);
   });
 

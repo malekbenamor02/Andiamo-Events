@@ -17,6 +17,56 @@ if (!base) {
 const VALID_UUID = '00000000-0000-4000-8000-000000000001';
 const INVALID_TOKEN = 'not-a-valid-token';
 
+function parseVercelCurlOutput(out) {
+  const combined = String(out || '');
+  let status = 0;
+  const statusMarker = combined.match(/__HTTP_STATUS__:(\d{3})/);
+  if (statusMarker) {
+    status = Number(statusMarker[1]);
+  } else {
+    const patterns = [
+      /^(\d{3})\s/m,
+      /HTTP\/\d(?:\.\d)?\s+(\d{3})/m,
+      /status[:\s]+(\d{3})/i,
+    ];
+    for (const re of patterns) {
+      const m = combined.match(re);
+      if (m) {
+        status = Number(m[1]);
+        break;
+      }
+    }
+  }
+
+  const withoutMarker = combined.replace(/__HTTP_STATUS__:\d{3}\s*/g, '');
+  const headerBlocks = withoutMarker.split(/\r?\n\r?\n/);
+  const headerBlock = headerBlocks[0] || '';
+  const retryAfter = (headerBlock.match(/^retry-after:\s*(.+)$/im) || [])[1]?.trim() || null;
+  const policy = (headerBlock.match(/^x-ratelimit-policy:\s*(.+)$/im) || [])[1]?.trim() || null;
+
+  const bodyRaw = headerBlocks.length > 1 ? headerBlocks.slice(1).join('\n\n') : withoutMarker;
+  const jsonBody = bodyRaw.trim();
+  let json = null;
+  let parseError = null;
+  try {
+    const start = jsonBody.indexOf('{');
+    json = start >= 0 ? JSON.parse(jsonBody.slice(start)) : null;
+  } catch (e) {
+    parseError = e instanceof Error ? e.message.slice(0, 80) : 'parse_failed';
+    json = { _raw: jsonBody.slice(0, 120) };
+  }
+
+  return {
+    status,
+    retryAfter,
+    policy,
+    json,
+    parseError,
+    outputBytes: combined.length,
+    hadStatusMarker: !!statusMarker,
+  };
+}
+
 function vercelCurl(path, opts = {}) {
   const method = opts.method || 'GET';
   const args = [
@@ -45,25 +95,12 @@ function vercelCurl(path, opts = {}) {
   });
   if (r.error) throw r.error;
   const out = `${r.stdout || ''}${r.stderr || ''}`;
-  const statusMatch = out.match(/__HTTP_STATUS__:(\d{3})/);
-  const status = statusMatch ? Number(statusMatch[1]) : 0;
-  const headerBlock = out.split('\r\n\r\n')[0] || out.split('\n\n')[0] || '';
-  const retryAfter = (headerBlock.match(/^retry-after:\s*(.+)$/im) || [])[1]?.trim() || null;
-  const policy = (headerBlock.match(/^x-ratelimit-policy:\s*(.+)$/im) || [])[1]?.trim() || null;
-  const bodyRaw = out.replace(/__HTTP_STATUS__:\d{3}\s*$/, '').split('\r\n\r\n').pop() || '';
-  const jsonBody = bodyRaw.split('\n\n').pop()?.trim() || '';
-  let json = null;
-  try {
-    const start = jsonBody.indexOf('{');
-    json = start >= 0 ? JSON.parse(jsonBody.slice(start)) : null;
-  } catch {
-    json = { _raw: jsonBody.slice(0, 120) };
-  }
-  return { status, retryAfter, policy, json, exitCode: r.status };
+  const parsed = parseVercelCurlOutput(out);
+  return { ...parsed, exitCode: r.status ?? 0, spawnError: r.error ? String(r.error.message) : null };
 }
 
-function row(name, pass, detail, skipped = false) {
-  return { name, pass, detail, skipped: !!skipped };
+function row(name, pass, detail, skipped = false, meta = null) {
+  return { name, pass, detail, skipped: !!skipped, meta };
 }
 
 const results = [];
@@ -78,6 +115,12 @@ async function main() {
           base,
           blocked: true,
           detail: `Deployment not reachable via vercel curl (status=${ping.status})`,
+          parseMeta: {
+            hadStatusMarker: ping.hadStatusMarker,
+            outputBytes: ping.outputBytes,
+            parseError: ping.parseError,
+            exitCode: ping.exitCode,
+          },
           results: [],
         },
         null,
@@ -109,7 +152,9 @@ async function main() {
       row(
         'Admin login over-limit → 429 rate_limited + Retry-After',
         ok,
-        `lastStatus=${last.status} error=${last.json?.error} retryAfter=${last.retryAfter}`
+        `lastStatus=${last.status} error=${last.json?.error} retryAfter=${last.retryAfter}`,
+        false,
+        last.status === 0 ? { hadStatusMarker: last.hadStatusMarker, outputBytes: last.outputBytes } : null
       )
     );
   }

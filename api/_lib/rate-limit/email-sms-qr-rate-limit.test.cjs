@@ -154,7 +154,7 @@ describe('QR ticket rate limit wiring (ticket-qr-route.cjs)', () => {
     assert.doesNotMatch(src, /rateByIp/);
     assert.doesNotMatch(src, /checkRateLimit/);
     const handler = src.slice(src.indexOf('async function handleTicketQrRequest'));
-    const invalidIdx = handler.indexOf("return res.status(400).json({ error: 'Invalid token' })");
+    const invalidIdx = handler.indexOf("sendJson(res, 400, { error: 'Invalid token' })");
     const rlIdx = handler.indexOf("policyId: 'QR_TICKET'");
     const dbIdx = handler.indexOf('findActiveTicketByToken');
     assert.ok(invalidIdx >= 0);

@@ -69,7 +69,7 @@ describe('PAYMENT_CONFIRM rate limit behavior', () => {
     setFetchForTests(async (_url, init) => {
       evalCalls += 1;
       const body = JSON.parse(String(init.body));
-      assert.match(body[2], /^ae:rl:v1:payment\.confirm:ip:/);
+      assert.match(body[3], /^ae:rl:v1:payment\.confirm:ip:/);
       return { ok: true, json: async () => ({ result: 1 }) };
     });
 
@@ -97,7 +97,7 @@ describe('PAYMENT_CONFIRM rate limit behavior', () => {
     const dimensions = [];
     setFetchForTests(async (_url, init) => {
       const body = JSON.parse(String(init.body));
-      dimensions.push(body[2]);
+      dimensions.push(body[3]);
       return { ok: true, json: async () => ({ result: 1 }) };
     });
 

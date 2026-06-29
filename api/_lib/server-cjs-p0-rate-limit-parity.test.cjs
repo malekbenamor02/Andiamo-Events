@@ -83,9 +83,11 @@ describe('no active legacy non-atomic Upstash path for P0', () => {
 
   it('upstash.cjs uses atomic Lua EVAL only', () => {
     const src = read('api/_lib/rate-limit/upstash.cjs');
-    assert.match(src, /\/eval/);
+    assert.match(src, /\[['"]EVAL['"]/);
+    assert.match(src, /buildEvalBody/);
     assert.doesNotMatch(src, /\/incr\b/i);
     assert.doesNotMatch(src, /\/expire\b/i);
+    assert.doesNotMatch(src, /\/pipeline/i);
   });
 
   it('admin-login.js does not import legacy upstash module', () => {

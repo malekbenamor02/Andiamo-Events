@@ -5,6 +5,7 @@ const { getPolicy } = require('./policies.cjs');
 const { hashRateLimitSegment, buildRateLimitKey } = require('./hash-key.cjs');
 const { incrFixedWindow } = require('./upstash.cjs');
 const { logRateLimitExceeded } = require('./audit.cjs');
+const { logRateLimitRedisFailure } = require('./upstash-diagnostics.cjs');
 
 /**
  * Build explicit buckets from policy + segment map.
@@ -73,6 +74,14 @@ async function enforceRateLimits(ctx) {
 
   for (const { bucket, result } of results) {
     if (result.reason === 'redis_missing' && !result.allowed) {
+      logRateLimitRedisFailure({
+        route: bucket.route,
+        policyId: bucket.policyId,
+        dimension: bucket.dimension,
+        category: result.errorCategory || 'missing_env',
+        httpStatus: result.httpStatus,
+        req: ctx.req,
+      });
       return {
         allowed: false,
         statusCode: 503,
@@ -83,6 +92,14 @@ async function enforceRateLimits(ctx) {
       };
     }
     if (result.reason === 'redis_error' && !result.allowed) {
+      logRateLimitRedisFailure({
+        route: bucket.route,
+        policyId: bucket.policyId,
+        dimension: bucket.dimension,
+        category: result.errorCategory || 'unknown',
+        httpStatus: result.httpStatus,
+        req: ctx.req,
+      });
       return {
         allowed: false,
         statusCode: 503,
