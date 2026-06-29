@@ -28,6 +28,15 @@ ensureSupabaseServerEnv();
 const { handleClicToPayConfirmPayment } = requireFromRoot(
   nodePath.join(__dirname, '_lib', 'clictopay-confirm-payment.cjs')
 );
+const {
+  getClientIp,
+  enforceRateLimits,
+  respondToRateLimit,
+} = requireFromRoot(nodePath.join(__dirname, '_lib', 'rate-limit', 'index.cjs'));
+const {
+  extractPaymentConfirmOrderId,
+  isValidPaymentConfirmOrderId,
+} = requireFromRoot(nodePath.join(__dirname, '_lib', 'rate-limit', 'payment-confirm-extract.cjs'));
 const { processConfirmedTicketPurchaseTracking } = requireFromRoot(
   nodePath.join(__dirname, '_lib', 'meta', 'ticket-purchase-tracking.cjs')
 );
@@ -100,10 +109,35 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const clientIp = getClientIp(req);
+  const ipRl = await enforceRateLimits({
+    req,
+    policyId: 'PAYMENT_CONFIRM',
+    segments: { ip: clientIp },
+  });
+  if (respondToRateLimit(res, ipRl)) return;
+
+  let bodyData = {};
+  if (method === 'POST') {
+    bodyData = await parseBody(req);
+  }
+  const orderId = extractPaymentConfirmOrderId(method, bodyData, req.url);
+  if (!orderId || !isValidPaymentConfirmOrderId(orderId)) {
+    return res.status(400).json({ error: 'invalid_request' });
+  }
+
+  const orderRl = await enforceRateLimits({
+    req,
+    policyId: 'PAYMENT_CONFIRM',
+    segments: { order: orderId },
+  });
+  if (respondToRateLimit(res, orderRl)) return;
+
   return handleClicToPayConfirmPayment({
     req,
     res,
     method,
+    validatedOrderId: orderId,
     parseBody,
     createServiceRoleClient,
     requireFromRoot,

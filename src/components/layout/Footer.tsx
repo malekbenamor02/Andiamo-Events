@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { logFormSubmission, logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
+import { NewsletterSuccessScreen } from "@/components/layout/NewsletterSuccessScreen";
 
 interface FooterProps {
   language: 'en' | 'fr';
@@ -35,6 +36,7 @@ interface NewsletterContent {
 const Footer = ({ language }: FooterProps) => {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [socialLinks, setSocialLinks] = useState<SocialLinks>({});
   const [contactInfo, setContactInfo] = useState<ContactInfo>({});
   const [newsletterContent, setNewsletterContent] = useState<NewsletterContent>({});
@@ -159,11 +161,8 @@ const Footer = ({ language }: FooterProps) => {
         details: { email, language }
       });
 
-      toast({
-        title: content[language].subscribed,
-        description: content[language].newsletter,
-      });
       setEmail("");
+      setShowSuccess(true);
     } catch (error) {
       const duplicate = isDuplicateEmailError(error);
       const errorMessage = getNewsletterErrorMessage(error);
@@ -188,6 +187,12 @@ const Footer = ({ language }: FooterProps) => {
   };
 
   return (
+    <>
+    <NewsletterSuccessScreen
+      open={showSuccess}
+      onClose={() => setShowSuccess(false)}
+      language={language}
+    />
     <footer className="border-t border-border/60 bg-background">
       <div className="mx-auto max-w-5xl px-4 py-12 sm:px-5 sm:py-14">
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] lg:gap-8">
@@ -374,6 +379,7 @@ const Footer = ({ language }: FooterProps) => {
         </div>
       </div>
     </footer>
+    </>
   );
 };
 

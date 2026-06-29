@@ -1,43 +1,20 @@
 /**
- * Best-effort IP + email rate limits for POST /api/admin-login (Vercel serverless).
- * Resets on cold start; combine with Upstash (api/lib/admin-login-upstash.js) for distributed limits.
+ * @deprecated PR-1b — use api/_lib/rate-limit/index.cjs via createRequire in admin-login.js.
+ * Kept for import-compat tests only; no in-memory Maps.
  */
+import { createRequire } from 'module';
 
-const adminLoginIpAttempts = new Map();
-const adminLoginEmailAttempts = new Map();
-const WINDOW_MS = 15 * 60 * 1000;
+const requireCjs = createRequire(import.meta.url);
+const rl = requireCjs('./rate-limit/index.cjs');
 
-function maxAttempts() {
-  const n = Number.parseInt(process.env.ADMIN_LOGIN_MAX_ATTEMPTS || '5', 10);
-  return Number.isFinite(n) && n > 0 ? n : 5;
-}
+export const getAdminLoginClientIp = rl.getClientIp;
 
-export function getAdminLoginClientIp(req) {
-  return (
-    (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
-    req.headers['x-real-ip'] ||
-    req.socket?.remoteAddress ||
-    'unknown'
-  );
-}
-
-function bump(map, key) {
-  const now = Date.now();
-  const max = maxAttempts();
-  let rec = map.get(key);
-  if (!rec || now > rec.resetAt) {
-    map.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return true;
-  }
-  rec.count += 1;
-  if (rec.count > max) return false;
+/** @deprecated no-op — production uses enforceRateLimits */
+export function checkAdminLoginIpRateLimit() {
   return true;
 }
 
-export function checkAdminLoginIpRateLimit(ip) {
-  return bump(adminLoginIpAttempts, `ip:${ip}`);
-}
-
-export function checkAdminLoginEmailRateLimit(emailNormalized) {
-  return bump(adminLoginEmailAttempts, `em:${emailNormalized}`);
+/** @deprecated no-op — production uses enforceRateLimits */
+export function checkAdminLoginEmailRateLimit() {
+  return true;
 }

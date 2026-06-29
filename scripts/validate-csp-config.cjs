@@ -67,13 +67,18 @@ if (hasMalformedCspSpacing(CSP_POLICY)) {
   fail('lib/csp-policy.cjs CSP_POLICY contains style-src\'self\' / connect-src\'self\' patterns');
 }
 
-// Regression guard: validator must reject the live bug pattern
-const malformedSample = "default-src 'self'; style-src'self' 'unsafe-inline' https:; connect-src'self' https:; report-uri /api/csp-report;";
-if (!hasMalformedCspSpacing(malformedSample) || isValidCspPolicy(malformedSample)) {
-  fail('CSP validator does not reject style-src\'self\' malformed spacing');
-} else {
-  ok('CSP validator rejects style-src\'self\' malformed spacing');
+// Regression guards: validator must reject live merged-token patterns
+const malformedSamples = [
+  "default-src 'self'; style-src'self' 'unsafe-inline' https:; connect-src'self' https:; report-uri /api/csp-report;",
+  "default-src 'self'; script-src'self' 'unsafe-inline' https:; style-src 'self'; connect-src 'self'; report-uri /api/csp-report;",
+];
+
+for (const [index, malformedSample] of malformedSamples.entries()) {
+  if (!hasMalformedCspSpacing(malformedSample) || isValidCspPolicy(malformedSample)) {
+    fail(`CSP validator does not reject malformed spacing sample ${index + 1}`);
+  }
 }
+ok('CSP validator rejects style-src\'self\' / script-src\'self\' malformed spacing');
 
 const distIndex = path.join(__dirname, '..', 'dist', 'index.html');
 if (fs.existsSync(distIndex)) {

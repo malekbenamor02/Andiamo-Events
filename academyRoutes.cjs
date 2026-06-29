@@ -48,6 +48,16 @@ const { getFormulaBasePrice, FORMULA_IDS, registrationAmountsAreValid } = requir
 const { normalizeAcademyPromoCode } = require('./api/_lib/academy-registration-validation.cjs');
 const { cancelExpiredAcademyPendingRegistrations } = require('./api/_lib/academy-expire-pending.cjs');
 const { requireCronSecret } = require('./api/_lib/cron-auth.cjs');
+const {
+  getClientIp,
+  enforceRateLimits,
+  respondToRateLimit,
+  isValidUuid,
+} = require('./api/_lib/rate-limit/index.cjs');
+const {
+  extractAcademyConfirmRegistrationId,
+  isValidAcademyConfirmRegistrationId,
+} = require('./api/_lib/rate-limit/payment-confirm-extract.cjs');
 const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
 const { getEmailTransporter } = require('./api/_lib/get-email-transporter.cjs');
 const { processConfirmedAcademyPurchaseTracking } = require('./api/_lib/meta/academy-purchase-tracking.cjs');
@@ -84,12 +94,6 @@ function multerSingle(field) {
 const rateByIp = new Map();
 const IP_WINDOW = 60 * 60 * 1000;
 const IP_MAX = 5;
-
-function getClientIp(req) {
-  const xf = req.headers['x-forwarded-for'];
-  if (xf) return String(xf).split(',')[0].trim();
-  return req.ip || req.socket?.remoteAddress || 'unknown';
-}
 
 function buildAcademyMetaAttribution(req, body) {
   const metaEventId = body?.metaEventId || body?.meta_event_id;
@@ -679,11 +683,23 @@ function registerAcademyRoutes(app, deps) {
 
   app.post('/api/academy/clictopay-generate-payment', async (req, res) => {
     try {
+      const registrationIdRaw = req.body?.registrationId || req.body?.registration_id;
+      if (!registrationIdRaw) return res.status(400).json({ error: 'registrationId is required' });
+      const registrationId = String(registrationIdRaw).trim();
+      if (!isValidUuid(registrationId)) {
+        return res.status(400).json({ error: 'invalid_request' });
+      }
+
+      const clientIp = getClientIp(req);
+      const rl = await enforceRateLimits({
+        req,
+        policyId: 'PAYMENT_ACADEMY_GENERATE',
+        segments: { ip: clientIp, registration: registrationId },
+      });
+      if (respondToRateLimit(res, rl)) return;
+
       const db = getServiceDb();
       if (!db) return academyServiceError(res, 503, 'Database not configured');
-      const registrationId = req.body?.registrationId || req.body?.registration_id;
-      if (!registrationId) return res.status(400).json({ error: 'registrationId is required' });
-
       const { data: reg, error } = await db
         .from('academy_registrations')
         .select('*')
@@ -773,10 +789,28 @@ function registerAcademyRoutes(app, deps) {
 
   app.post('/api/academy/clictopay-confirm-payment', async (req, res) => {
     try {
+      const clientIp = getClientIp(req);
+      const ipRl = await enforceRateLimits({
+        req,
+        policyId: 'PAYMENT_ACADEMY_CONFIRM',
+        segments: { ip: clientIp },
+      });
+      if (respondToRateLimit(res, ipRl)) return;
+
+      const registrationId = extractAcademyConfirmRegistrationId('POST', req.body || {}, req.url);
+      if (!registrationId || !isValidAcademyConfirmRegistrationId(registrationId)) {
+        return res.status(400).json({ error: 'invalid_request' });
+      }
+
+      const regRl = await enforceRateLimits({
+        req,
+        policyId: 'PAYMENT_ACADEMY_CONFIRM',
+        segments: { registration: registrationId },
+      });
+      if (respondToRateLimit(res, regRl)) return;
+
       const db = getServiceDb();
       if (!db) return academyServiceError(res, 503, 'Database not configured');
-      const registrationId = req.body?.registrationId || req.body?.registration_id;
-      if (!registrationId) return res.status(400).json({ error: 'registrationId is required' });
 
       const { data: reg, error } = await db
         .from('academy_registrations')

@@ -10,6 +10,22 @@ const {
   revokeAmbassadorSession,
   revokeAllAmbassadorSessions,
 } = require('./ambassador-auth.cjs');
+const {
+  getClientIp,
+  enforceRateLimits,
+  respondToRateLimit,
+  isValidUuid,
+} = require('./rate-limit/index.cjs');
+
+async function enforceAmbassadorOrderActionRateLimit(req, res, ambassadorId, orderId) {
+  const rl = await enforceRateLimits({
+    req,
+    policyId: 'ORDER_AMBASSADOR_ACTION',
+    segments: { ambassador: ambassadorId, order: orderId },
+  });
+  if (respondToRateLimit(res, rl)) return false;
+  return true;
+}
 
 function normalizePhone(phoneNum) {
   if (!phoneNum) return '';
@@ -73,12 +89,15 @@ async function findAmbassadorByPhone(db, phone) {
 }
 
 async function handleAmbassadorLogin(req, res, deps) {
-  const { parseBody, getClientIp, checkAmbassadorLoginRateLimit } = deps;
+  const { parseBody } = deps;
   try {
     const ip = getClientIp(req);
-    if (checkAmbassadorLoginRateLimit && !checkAmbassadorLoginRateLimit(ip)) {
-      return res.status(429).json({ error: 'Too many login attempts, please try again later.' });
-    }
+    const ipRl = await enforceRateLimits({
+      req,
+      policyId: 'LOGIN_AMBASSADOR',
+      segments: { ip },
+    });
+    if (respondToRateLimit(res, ipRl)) return;
 
     const bodyData = await parseBody(req);
     const { phone, password, recaptchaToken } = bodyData || {};
@@ -86,6 +105,21 @@ async function handleAmbassadorLogin(req, res, deps) {
     if (!phone || !password) {
       return res.status(400).json({ error: 'Phone number and password are required' });
     }
+
+    const normalizedPhone = normalizePhone(phone);
+    if (!/^[2459]\d{7}$/.test(normalizedPhone)) {
+      return res.status(400).json({
+        error: 'Invalid phone number format',
+        details: 'Phone number must be 8 digits starting with 2, 4, 5, or 9',
+      });
+    }
+
+    const phoneRl = await enforceRateLimits({
+      req,
+      policyId: 'LOGIN_AMBASSADOR',
+      segments: { phone: normalizedPhone },
+    });
+    if (respondToRateLimit(res, phoneRl)) return;
 
     if (!process.env.SUPABASE_URL) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -97,14 +131,6 @@ async function handleAmbassadorLogin(req, res, deps) {
     }
 
     const db = getAmbassadorDb();
-    const normalizedPhone = normalizePhone(phone);
-    if (!/^[2459]\d{7}$/.test(normalizedPhone)) {
-      return res.status(400).json({
-        error: 'Invalid phone number format',
-        details: 'Phone number must be 8 digits starting with 2, 4, 5, or 9',
-      });
-    }
-
     const { data: directMatch, error: lookupError } = await db
       .from('ambassadors')
       .select('*')
@@ -502,11 +528,18 @@ async function handleAmbassadorCancelOrder(req, res, deps) {
         details: 'orderId and reason are required',
       });
     }
+    const orderIdNorm = String(orderId).trim();
+    if (!isValidUuid(orderIdNorm)) {
+      return res.status(400).json({ error: 'invalid_request' });
+    }
+    if (!(await enforceAmbassadorOrderActionRateLimit(req, res, auth.ambassador.id, orderIdNorm))) {
+      return null;
+    }
 
     const { data: order, error: orderError } = await db
       .from('orders')
       .select('id, ambassador_id, status')
-      .eq('id', orderId)
+      .eq('id', orderIdNorm)
       .single();
 
     if (orderError || !order) {
@@ -535,21 +568,21 @@ async function handleAmbassadorCancelOrder(req, res, deps) {
         cancelled_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', orderId);
+      .eq('id', orderIdNorm);
 
     if (updateError) {
       return res.status(500).json({ error: 'Failed to cancel order', details: updateError.message });
     }
 
     try {
-      await db.rpc('release_order_stock_internal', { order_id_param: orderId });
+      await db.rpc('release_order_stock_internal', { order_id_param: orderIdNorm });
     } catch (stockError) {
       console.warn('Failed to release stock on ambassador cancel:', stockError);
     }
 
     try {
       await db.from('order_logs').insert({
-        order_id: orderId,
+        order_id: orderIdNorm,
         action: 'cancelled',
         performed_by: auth.ambassador.id,
         performed_by_type: 'ambassador',
@@ -579,11 +612,18 @@ async function handleAmbassadorConfirmCash(req, res, deps) {
     if (!orderId) {
       return res.status(400).json({ error: 'orderId is required' });
     }
+    const orderIdNorm = String(orderId).trim();
+    if (!isValidUuid(orderIdNorm)) {
+      return res.status(400).json({ error: 'invalid_request' });
+    }
+    if (!(await enforceAmbassadorOrderActionRateLimit(req, res, auth.ambassador.id, orderIdNorm))) {
+      return null;
+    }
 
     const { data: order, error: orderError } = await db
       .from('orders')
       .select('id, ambassador_id, status, user_name, total_price')
-      .eq('id', orderId)
+      .eq('id', orderIdNorm)
       .single();
 
     if (orderError || !order) {
@@ -607,7 +647,7 @@ async function handleAmbassadorConfirmCash(req, res, deps) {
         status: 'PENDING_ADMIN_APPROVAL',
         updated_at: new Date().toISOString(),
       })
-      .eq('id', orderId);
+      .eq('id', orderIdNorm);
 
     if (updateError) {
       return res.status(500).json({ error: 'Failed to confirm cash payment', details: updateError.message });
@@ -615,7 +655,7 @@ async function handleAmbassadorConfirmCash(req, res, deps) {
 
     try {
       await db.from('order_logs').insert({
-        order_id: orderId,
+        order_id: orderIdNorm,
         action: 'cash_confirmed',
         performed_by: auth.ambassador.id,
         performed_by_type: 'ambassador',

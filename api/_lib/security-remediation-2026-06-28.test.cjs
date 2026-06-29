@@ -25,9 +25,14 @@ describe('ticket QR route security (phase 1)', () => {
     assert.doesNotMatch(src, /console\.(log|error).*secure_token/);
   });
 
-  it('includes rate limiting helper', () => {
-    assert.match(src, /checkRateLimit/);
-    assert.match(src, /429/);
+  it('includes shared rate limiting (validate token → RL → DB)', () => {
+    assert.match(src, /enforceRateLimits/);
+    assert.match(src, /respondToRateLimit/);
+    assert.match(src, /QR_TICKET/);
+    const validateIdx = src.indexOf('isValidSecureToken');
+    const rlIdx = src.indexOf('enforceRateLimits');
+    const dbIdx = src.indexOf('findActiveTicketByToken');
+    assert.ok(validateIdx >= 0 && rlIdx > validateIdx && dbIdx > rlIdx);
   });
 });
 

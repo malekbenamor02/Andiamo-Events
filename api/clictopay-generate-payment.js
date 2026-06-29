@@ -6,8 +6,14 @@ import { createRequire } from 'module';
 import { createServiceRoleClient } from './_lib/service-role-client.js';
 import { publicApiError, PUBLIC_ERROR_CODES } from './_lib/public-api-error.js';
 
-const requireFee = createRequire(import.meta.url);
-const { computeOnlinePaymentFees } = requireFee('./_lib/online-payment-fee.cjs');
+const requireCjs = createRequire(import.meta.url);
+const { computeOnlinePaymentFees } = requireCjs('./_lib/online-payment-fee.cjs');
+const {
+  getClientIp,
+  enforceRateLimits,
+  respondToRateLimit,
+  isValidUuid,
+} = requireCjs('./_lib/rate-limit/index.cjs');
 
 let corsUtils = null;
 async function getCorsUtils() {
@@ -29,6 +35,29 @@ export default async function handler(req, res) {
     return publicApiError(res, 405, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, { logDetails: 'Method not allowed' });
   }
 
+  let body;
+  try {
+    body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+  } catch {
+    body = {};
+  }
+  const { orderId: rawOrderId } = body;
+  if (!rawOrderId) {
+    return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, { logDetails: 'orderId required' });
+  }
+  const orderId = String(rawOrderId).trim();
+  if (!isValidUuid(orderId)) {
+    return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, { logDetails: 'invalid orderId UUID' });
+  }
+
+  const clientIp = getClientIp(req);
+  const rl = await enforceRateLimits({
+    req,
+    policyId: 'PAYMENT_GENERATE',
+    segments: { ip: clientIp, order: orderId },
+  });
+  if (respondToRateLimit(res, rl)) return;
+
   const apiUser = process.env.CLICTOPAY_API_USER;
   const apiPassword = process.env.CLICTOPAY_API_PASSWORD;
   // In production, require explicit base URL so we never accidentally use test gateway
@@ -46,17 +75,6 @@ export default async function handler(req, res) {
     return publicApiError(res, 500, PUBLIC_ERROR_CODES.PAYMENT_UNAVAILABLE, undefined, {
       logDetails: 'CLICTOPAY_BASE_URL missing in production',
     });
-  }
-
-  let body;
-  try {
-    body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
-  } catch {
-    body = {};
-  }
-  const { orderId } = body;
-  if (!orderId) {
-    return publicApiError(res, 400, PUBLIC_ERROR_CODES.INVALID_REQUEST, undefined, { logDetails: 'orderId required' });
   }
 
   let dbClient;

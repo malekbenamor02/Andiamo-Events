@@ -15,9 +15,8 @@ const {
 } = require('./academy-influencer-auth.cjs');
 const {
   getClientIp,
-  isLoginRateLimited,
-  recordFailedLogin,
-  clearLoginRateLimit,
+  enforceInfluencerLoginLimits,
+  respondToRateLimit,
 } = require('./academy-influencer-login-rate-limit.cjs');
 const { writeAcademyInfluencerAudit, diffPromoAssignment } = require('./academy-influencer-audit.cjs');
 const { buildInfluencerAttributionOrFilter } = require('./academy-influencer-attribution.cjs');
@@ -656,19 +655,16 @@ function registerAcademyInfluencerRoutes(app, deps) {
         return res.status(400).json({ error: 'Email and password are required' });
       }
 
-      if (isLoginRateLimited(clientIp, email)) {
-        return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
-      }
+      const rl = await enforceInfluencerLoginLimits(req, clientIp, email);
+      if (respondToRateLimit(res, rl)) return;
 
       const influencer = await loadInfluencerByEmail(db, email);
       if (!influencer || !influencer.password_hash || !influencer.is_active) {
-        recordFailedLogin(clientIp, email);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
       const ok = await bcrypt.compare(password, influencer.password_hash);
       if (!ok) {
-        recordFailedLogin(clientIp, email);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
@@ -682,8 +678,6 @@ function registerAcademyInfluencerRoutes(app, deps) {
             'Your temporary password has expired. Please contact your administrator for a new invitation.',
         });
       }
-
-      clearLoginRateLimit(clientIp, email);
 
       const token = signInfluencerToken({ influencerId: influencer.id, email: influencer.email });
       setInfluencerTokenCookie(req, res, token);

@@ -61,6 +61,13 @@ describe('payment fulfillment static guards', () => {
     assert.doesNotMatch(src, /\.from\(['"]order_passes['"]\)[\s\S]{0,80}order_pass_id/);
     assert.match(src, /verifyClicToPayForOrder/);
     assert.match(src, /validateClicToPayPaymentForOrder/);
+    assert.doesNotMatch(src, /enforceRateLimits/);
+  });
+
+  it('payment confirm rate limits live in entrypoint only (no double-count)', () => {
+    const entry = read('api/clictopay-confirm-payment.js');
+    assert.match(entry, /enforceRateLimits/);
+    assert.match(entry, /validatedOrderId/);
   });
 
   it('ORDER_CONFIRM_SELECT uses total_price (not total_amount — column does not exist on orders)', () => {

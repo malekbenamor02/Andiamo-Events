@@ -148,7 +148,7 @@ function validateCspPair(enforcing, reportOnly) {
 
   if (enforcing && hasMalformedCspSpacing(enforcing)) {
     issues.push(
-      "Content-Security-Policy contains malformed spacing (e.g. style-src'self' or connect-src'self')"
+      "Content-Security-Policy contains malformed spacing (e.g. script-src'self', style-src'self', connect-src'self')"
     );
   }
   if (reportOnly && hasMalformedCspSpacing(reportOnly)) {
@@ -166,17 +166,17 @@ function validateCspPair(enforcing, reportOnly) {
     issues.push('Content-Security-Policy and Content-Security-Policy-Report-Only differ');
   }
 
-  if (enforcing && reportOnly && enforcing === reportOnly) {
-    issues.push(null);
+  if (enforcing && reportOnly && enforcing !== reportOnly) {
+    issues.push('Content-Security-Policy and Content-Security-Policy-Report-Only are not byte-identical');
   }
 
-  return issues.filter(Boolean);
+  return issues;
 }
 
-function snippetAroundStyleSrc(value) {
-  const idx = String(value || '').toLowerCase().indexOf('style-src');
-  if (idx === -1) return '(style-src not found)';
-  return String(value).slice(idx, idx + 40);
+function snippetAroundDirective(value, directive) {
+  const idx = String(value || '').toLowerCase().indexOf(directive);
+  if (idx === -1) return `(${directive} not found)`;
+  return String(value).slice(idx, idx + 48);
 }
 
 async function verifySecurityHeaders(url) {
@@ -225,27 +225,50 @@ async function verifySecurityHeaders(url) {
       console.log('  ✓ Content-Security-Policy is present and valid');
       console.log('  ✓ Content-Security-Policy-Report-Only is present and valid');
       console.log('  ✓ Enforcing and Report-Only policies are identical');
-      console.log(`    style-src fragment: ${snippetAroundStyleSrc(csp)}`);
-      console.log(`    connect-src fragment: ${String(csp).slice(
-        String(csp).toLowerCase().indexOf('connect-src'),
-        String(csp).toLowerCase().indexOf('connect-src') + 40
-      )}`);
+      console.log(`    style-src fragment: ${snippetAroundDirective(csp, 'style-src')}`);
+      console.log(`    script-src fragment: ${snippetAroundDirective(csp, 'script-src')}`);
+      console.log(`    connect-src fragment: ${snippetAroundDirective(csp, 'connect-src')}`);
     } else {
       allValid = false;
       for (const issue of cspIssues) {
         console.log(`  ✗ ${issue}`);
       }
       if (csp) {
-        console.log(`    Enforcing style-src fragment: ${snippetAroundStyleSrc(csp)}`);
+        console.log(`    Enforcing style-src fragment: ${snippetAroundDirective(csp, 'style-src')}`);
+        console.log(`    Enforcing script-src fragment: ${snippetAroundDirective(csp, 'script-src')}`);
+        console.log(`    Enforcing connect-src fragment: ${snippetAroundDirective(csp, 'connect-src')}`);
       }
       if (cspRo) {
-        console.log(`    Report-Only style-src fragment: ${snippetAroundStyleSrc(cspRo)}`);
+        console.log(`    Report-Only style-src fragment: ${snippetAroundDirective(cspRo, 'style-src')}`);
+        console.log(`    Report-Only script-src fragment: ${snippetAroundDirective(cspRo, 'script-src')}`);
+        console.log(`    Report-Only connect-src fragment: ${snippetAroundDirective(cspRo, 'connect-src')}`);
       }
     }
 
-    if (usedCurl && csp && cspRo && csp === cspRo && hasMalformedCspSpacing(csp)) {
-      allValid = false;
-      console.log('  ✗ curl raw headers are byte-identical but still malformed');
+    if (usedCurl && csp && cspRo) {
+      const probes = [];
+      for (let i = 1; i <= 3; i += 1) {
+        try {
+          const probeHeaders = fetchHeadersWithCurl(`${url}${url.includes('?') ? '&' : '?'}csp_probe=${i}`);
+          probes.push({
+            enforcing: probeHeaders['content-security-policy'],
+            reportOnly: probeHeaders['content-security-policy-report-only'],
+          });
+        } catch {
+          // optional probes
+        }
+      }
+
+      for (const [index, probe] of probes.entries()) {
+        const probeIssues = validateCspPair(probe.enforcing, probe.reportOnly);
+        if (probeIssues.length > 0) {
+          allValid = false;
+          console.log(`  ✗ CSP probe ${index + 1} failed: ${probeIssues.join('; ')}`);
+          if (probe.enforcing) {
+            console.log(`    Probe script-src fragment: ${snippetAroundDirective(probe.enforcing, 'script-src')}`);
+          }
+        }
+      }
     }
 
     if (CSP_POLICY && csp && !cspPoliciesAreIdentical(csp, CSP_POLICY)) {
