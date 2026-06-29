@@ -85,6 +85,12 @@ describe('reports export route — authZ before data access', () => {
     assert.match(src, /res\.send\(buffer\)/);
   });
 
+  it('loads admin-mutation-audit via dynamic import (ESM), not require()', () => {
+    assert.doesNotMatch(src, /require\(['"]\.\/admin-mutation-audit\.js['"]\)/);
+    assert.match(src, /import\(['"]\.\/admin-mutation-audit\.js['"]\)/);
+    assert.match(src, /getAdminMutationAudit/);
+  });
+
   it('audit logs export without embedding order payload', () => {
     assert.match(src, /writeAdminMutationAudit/);
     assert.match(src, /reports_excel_export/);
