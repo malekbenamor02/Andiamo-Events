@@ -2,6 +2,7 @@
  * HTTP admin auth + effective permission gate for Vercel handlers.
  */
 import { verifyAdminAuth, effectivePermissionDenied } from './admin-verify.js';
+import { applyClearAdminTokenCookie } from './clear-admin-token-cookie.js';
 
 /**
  * @returns {Promise<object|null>} auth result when allowed; null after response sent
@@ -9,6 +10,7 @@ import { verifyAdminAuth, effectivePermissionDenied } from './admin-verify.js';
 export async function gateAdminPermission(req, res, permissionKey) {
   const authResult = await verifyAdminAuth(req);
   if (!authResult.valid) {
+    applyClearAdminTokenCookie(res);
     res.status(authResult.statusCode || 401).json({
       error: authResult.error,
       reason: authResult.reason || 'Authentication failed',

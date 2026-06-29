@@ -27,7 +27,6 @@ import { hasEffectivePermission } from './_lib/admin-authorization.mjs';
 import { createAdminDbClient, createServiceRoleClient } from './_lib/service-role-client.js';
 import { writeAdminMutationAudit } from './_lib/admin-mutation-audit.js';
 import { handleAdminLogout } from './_lib/admin-logout-http.js';
-import { applyClearAdminTokenCookie } from './_lib/clear-admin-token-cookie.js';
 import { agentDebugLog } from './_lib/agent-debug-log.js';
 import { createRequire } from 'module';
 import nodePath from 'path';
@@ -2530,10 +2529,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     if (path === '/api/send-email' && method === 'POST') {
       try {
         const authResult = await gateAdminPermission(req, res, 'marketing:manage');
-        if (!authResult) {
-          applyClearAdminTokenCookie(res);
-          return;
-        }
+        if (!authResult) return;
         
         const bodyData = await parseBody(req);
         const {
@@ -2639,10 +2635,14 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         return res.status(200).json({ success: true });
       } catch (error) {
         console.error('Email sending failed:', error);
-        
+
+        if (res.headersSent) {
+          return;
+        }
+
         let errorMessage = 'Failed to send email';
         let errorDetails = error.message || 'Unknown error occurred';
-        
+
         if (error.code === 'EAUTH' || error.responseCode === 535) {
           errorMessage = 'Email authentication failed';
           errorDetails = 'The email server credentials are invalid. Please contact the administrator.';
@@ -2656,10 +2656,10 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           errorMessage = 'Invalid email address';
           errorDetails = `The email address "${req.body?.to || 'unknown'}" is invalid. Please verify the email address and try again.`;
         }
-        
-        return res.status(500).json({ 
-          error: errorMessage, 
-          details: errorDetails 
+
+        return res.status(500).json({
+          error: errorMessage,
+          details: errorDetails,
         });
       }
     }
@@ -8936,9 +8936,14 @@ We Create Memories`;
     });
     // #endregion
     console.error('API Router Error:', error);
+
+    if (res.headersSent) {
+      return;
+    }
+
     return res.status(500).json({
       error: 'Internal Server Error',
-      details: error.message
+      details: error.message,
     });
   }
 };
