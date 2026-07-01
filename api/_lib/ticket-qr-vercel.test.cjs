@@ -41,22 +41,19 @@ function expressRes() {
 }
 
 describe('ticket-qr Vercel routing', () => {
-  it('vercel.json routes QR to dedicated function, not misc.js', () => {
+  it('misc.js dispatches QR directly instead of storage Express sub-app', () => {
+    const src = read('api/misc.js');
+    assert.match(src, /path\.startsWith\('\/api\/tickets\/qr\/'\)/);
+    assert.match(src, /handleTicketQrRequest/);
+    const storageBlock = src.slice(src.indexOf('const storageSecurityPath'));
+    assert.doesNotMatch(storageBlock.split('if (storageSecurityPath)')[0], /tickets\/qr/);
+  });
+
+  it('vercel.json keeps QR rewrite on misc.js (Hobby function budget)', () => {
     const cfg = JSON.parse(read('vercel.json'));
     const rule = cfg.rewrites.find((r) => r.source === '/api/tickets/qr/:secureToken');
     assert.ok(rule);
-    assert.equal(rule.destination, '/api/tickets/qr/[secureToken]');
-    assert.notEqual(rule.destination, '/api/misc.js');
-  });
-
-  it('dedicated entrypoint file exists', () => {
-    assert.ok(fs.existsSync(path.join(ROOT, 'api/tickets/qr/[secureToken].js')));
-  });
-
-  it('entrypoint documents misc.js rewrite pitfall', () => {
-    const src = read('api/tickets/qr/[secureToken].js');
-    assert.match(src, /do not route through misc\.js rewrite/i);
-    assert.match(src, /handleTicketQrRequest/);
+    assert.equal(rule.destination, '/api/misc.js');
   });
 });
 

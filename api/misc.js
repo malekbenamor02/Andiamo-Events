@@ -146,14 +146,6 @@ function getCreateOfficialInvitationEmailHTML() {
   return _createOfficialInvitationEmailHTML;
 }
 
-// Basic client IP helper
-function getClientIp(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-    || req.headers['x-real-ip']
-    || req.socket?.remoteAddress
-    || 'unknown';
-}
-
 /** Apply newsletter_subscribers filters (dates + import label). */
 function applyNewsletterSubscriberEmailFilters(query, f = {}) {
   if (f.dateFrom) query = query.gte('subscribed_at', f.dateFrom);
@@ -1452,8 +1444,33 @@ export default async (req, res) => {
     return;
   }
 
+  if (path.startsWith('/api/tickets/qr/')) {
+    try {
+      const { handleTicketQrRequest } = requireFromRoot(
+        nodePath.join(__dirname, '_lib', 'ticket-qr-route.cjs')
+      );
+      const { getServiceDb } = requireFromRoot(
+        nodePath.join(__dirname, '_lib', 'register-storage-security-routes.cjs')
+      );
+      const secureToken = decodeURIComponent(path.slice('/api/tickets/qr/'.length)).split('/')[0].trim();
+      req.params = { ...(req.params || {}), secureToken };
+      await handleTicketQrRequest(req, res, getServiceDb);
+      return;
+    } catch (err) {
+      console.error('[misc] ticket QR dispatch error', err instanceof Error ? err.message : 'unknown');
+      if (!res.headersSent) {
+        if (typeof res.status === 'function' && typeof res.json === 'function') {
+          return res.status(503).json({ error: 'service_unavailable' });
+        }
+        res.statusCode = 503;
+        res.setHeader('Content-Type', 'application/json');
+        return res.end(JSON.stringify({ error: 'service_unavailable' }));
+      }
+      return;
+    }
+  }
+
   const storageSecurityPath =
-    path.startsWith('/api/tickets/qr/') ||
     path === '/api/careers/upload-document' ||
     path === '/api/admin/media/upload' ||
     path === '/api/admin/media/delete' ||
