@@ -24,7 +24,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getApiBaseUrl, API_ROUTES } from "@/lib/api-routes";
 import type { Event, EventPass } from "../types";
 import { formatDateDMY, toDatetimeLocalValue } from "@/lib/date-utils";
-import { cn } from "@/lib/utils";
+import { cn, sanitizePresaleCodeInput } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EventPromoCodesPanel, clearEventPromoCodesPanelCache } from "./EventPromoCodesPanel";
@@ -1775,7 +1775,10 @@ export function EventsTab(p: EventsTabProps) {
                                             autoCapitalize="characters"
                                             spellCheck={false}
                                             onChange={(e) =>
-                                              setNewPresale((s) => ({ ...s, code: e.target.value.toUpperCase() }))
+                                              setNewPresale((s) => ({
+                                                ...s,
+                                                code: sanitizePresaleCodeInput(e.target.value),
+                                              }))
                                             }
                                           />
                                           <Input

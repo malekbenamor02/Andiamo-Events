@@ -10,6 +10,11 @@ export function sanitizePhoneInput(value: string): string {
   return value.replace(/\s/g, '')
 }
 
+/** Remove whitespace and uppercase presale code input (paste e.g. "ya ma" → "YAMA"). */
+export function sanitizePresaleCodeInput(value: string): string {
+  return value.replace(/\s+/g, '').toUpperCase()
+}
+
 /** Known misspellings of gmail.com / icloud.com → correct domain (local part unchanged). */
 const EMAIL_DOMAIN_TYPOS: Record<string, 'gmail.com' | 'icloud.com'> = {
   // Gmail — letter swaps / missing / doubled

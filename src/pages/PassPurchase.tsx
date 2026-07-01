@@ -10,7 +10,7 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { getApiBaseUrl, API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
 import { formatDateDMY, isPassPurchaseWindowClosed } from '@/lib/date-utils';
-import { cn, generateSlug, normalizeCommonEmailTypos } from '@/lib/utils';
+import { cn, generateSlug, normalizeCommonEmailTypos, sanitizePresaleCodeInput } from '@/lib/utils';
 import { isLocalhostClient } from '@/lib/localhost';
 import { computeOnlinePaymentFeesDisplay } from '@/lib/onlinePaymentFee';
 import { savePaymentReturnPath } from '@/lib/orders/paymentReturnPath';
@@ -666,7 +666,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   };
 
   const handlePresaleCodeChange = useCallback((value: string) => {
-    setPresaleCodeDraft(value);
+    setPresaleCodeDraft(sanitizePresaleCodeInput(value));
     setPresaleInlineError(null);
   }, []);
 

@@ -7,7 +7,7 @@ import { ArrowLeft, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { PresaleInlineError } from "@/lib/presale/presaleRedeemFeedback";
-import { cn } from "@/lib/utils";
+import { cn, sanitizePresaleCodeInput } from "@/lib/utils";
 
 export interface PresalePortalScreenProps {
   language: "en" | "fr";
@@ -143,7 +143,7 @@ export function PresalePortalScreen({
               value={code}
               autoCapitalize="characters"
               spellCheck={false}
-              onChange={(e) => onCodeChange(e.target.value.toUpperCase())}
+              onChange={(e) => onCodeChange(sanitizePresaleCodeInput(e.target.value))}
               placeholder={copy.placeholder}
               disabled={isSubmitting}
               aria-invalid={inlineError ? true : undefined}
