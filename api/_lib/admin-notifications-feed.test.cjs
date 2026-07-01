@@ -444,4 +444,17 @@ describe('admin-notifications-feed', () => {
     assert.match(block, /PERM\.DASHBOARD_BOOTSTRAP/);
     assert.match(block, /buildAdminNotificationsFeed/);
   });
+
+  it('vercel.json rewrites /api/admin/notifications/feed to misc.js', () => {
+    const vercel = read('vercel.json');
+    assert.match(vercel, /"source":\s*"\/api\/admin\/notifications\/feed"/);
+    const idx = vercel.indexOf('"/api/admin/notifications/feed"');
+    const slice = vercel.slice(idx, idx + 200);
+    assert.match(slice, /"destination":\s*"\/api\/misc\.js"/);
+  });
+
+  it('misc.js bundles admin-notifications-feed for Vercel', () => {
+    const misc = read('api/misc.js');
+    assert.match(misc, /admin-notifications-feed\.cjs/);
+  });
 });
