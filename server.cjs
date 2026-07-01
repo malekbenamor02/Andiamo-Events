@@ -4226,6 +4226,7 @@ app.get('/api/admin/phone-numbers/counts', requireAdminAuth, requireAdminPermiss
 app.post('/api/site-logs', forwardMiscApi);
 app.get('/api/admin/dashboard/bootstrap', forwardMiscApi);
 app.get('/api/admin/dashboard/activity', forwardMiscApi);
+app.post('/api/admin-ambassador-application-resend-email', forwardMiscApi);
 
 /* Legacy inline counts handler – use api/misc.js
 app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) => {

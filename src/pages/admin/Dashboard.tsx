@@ -21,7 +21,7 @@ const loadHeroMediaPreprocess = () => import("@/lib/hero-media-preprocess");
 import { useToast } from "@/hooks/use-toast";
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import { supabase } from "@/integrations/supabase/client";
-import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, sendEmailWithDetails, createAdminCredentialsEmail } from "@/lib/email";
+import { generatePassword, sendEmailWithDetails, createAdminCredentialsEmail } from "@/lib/email";
 import { fetchSalesSettings, updateSalesSettings } from "@/lib/salesSettings";
 import { upsertSiteContentViaApi } from "@/lib/adminSiteContent";
 import { adminApi } from "@/lib/adminApi";
@@ -5291,13 +5291,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         );
       }
 
-      const allAmb = (await adminApi.listAmbassadors()) as Ambassador[];
-      const matchedAmbassador = findAmbassadorInList(allAmb, {
-        phone: application.phone_number,
-        email: application.email,
-      });
-      const ambassadorId = matchedAmbassador?.id || application.id;
-
       // Store credentials for potential resend (before email attempt)
       setAmbassadorCredentials(prev => ({
         ...prev,
@@ -5313,54 +5306,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         [application.id]: 'pending'
       }));
 
-      // Send approval email with credentials (plain password)
-      let emailSent = false;
-      let emailError: string | null = null;
-      
-      try {
-      const emailConfig = createApprovalEmail(
-        {
-          fullName: application.full_name,
-          phone: application.phone_number,
-          email: application.email,
-          city: application.city,
-          password: serverPassword // Send plain password for email only
-        },
-        `${window.location.origin}/ambassador/auth`,
-        ambassadorId // Pass ambassador ID for tracking
-      );
+      // Approval email sent server-side (applications:manage — not marketing /api/send-email)
+      const emailSent = result.approvalEmailSent === true;
+      const emailError: string | null = result.approvalEmailError || null;
 
-        emailSent = await sendEmail(emailConfig);
-
-        if (emailSent) {
-          // Track successful email
-          setEmailSentApplications(prev => new Set([...prev, application.id]));
-          setEmailFailedApplications(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(application.id);
-            return newSet;
-          });
-          setEmailStatus(prev => ({
-        ...prev,
-            [application.id]: 'sent'
-      }));
-        } else {
-          // Track failed email
-        setEmailFailedApplications(prev => new Set([...prev, application.id]));
-          setEmailSentApplications(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(application.id);
-            return newSet;
-          });
-          setEmailStatus(prev => ({
-            ...prev,
-            [application.id]: 'failed'
-          }));
-          emailError = 'Email delivery failed. Please use the Resend Email button to retry.';
-        }
-      } catch (error) {
-        // Track failed email with error details
-        emailError = error instanceof Error ? error.message : 'Unknown error occurred';
+      if (emailSent) {
+        setEmailSentApplications(prev => new Set([...prev, application.id]));
+        setEmailFailedApplications(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(application.id);
+          return newSet;
+        });
+        setEmailStatus(prev => ({
+          ...prev,
+          [application.id]: 'sent',
+        }));
+      } else {
         setEmailFailedApplications(prev => new Set([...prev, application.id]));
         setEmailSentApplications(prev => {
           const newSet = new Set(prev);
@@ -5369,9 +5330,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
         setEmailStatus(prev => ({
           ...prev,
-          [application.id]: 'failed'
+          [application.id]: 'failed',
         }));
-        console.error('Error sending approval email:', error);
       }
 
       // Show appropriate toast notification
@@ -5386,9 +5346,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           description: emailError || "Application approved, but email failed to send. Use 'Resend Email' button to retry.",
           variant: "default",
         });
-        // Show additional warning toast
         toast({
-          title: language === 'en' ? 'âš ï¸ Email Delivery Failed' : 'âš ï¸ Échec de l\'envoi de l\'email',
+          title: language === 'en' ? 'Email failed to send' : "Échec de l'envoi de l'email",
           description: language === 'en' 
             ? `The approval email could not be sent to ${application.email || application.phone_number}. Please use the 'Resend Email' button to retry.`
             : `L'email d'approbation n'a pas pu être envoyé à ${application.email || application.phone_number}. Veuillez utiliser le bouton 'Renvoyer l'email' pour réessayer.`,
@@ -5650,57 +5609,33 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const resendEmail = async (application: AmbassadorApplication) => {
     setProcessingId(application.id);
-    
-    try {
-      const normalizedPhone = normalizePhoneForLookup(application.phone_number);
-      const allAmbList = (await adminApi.listAmbassadors()) as Ambassador[];
-      const ambassador = findAmbassadorInList(allAmbList, {
-        phone: application.phone_number,
-        email: application.email,
-      });
 
-      if (!ambassador) {
-        console.error('âŒ Ambassador not found for resend email:', {
-          applicationId: application.id,
-          phoneNumber: application.phone_number,
-          normalizedPhone: normalizedPhone,
-          email: application.email,
-          applicationStatus: application.status,
-          fullName: application.full_name
-        });
-        
+    try {
+      if (application.status !== 'approved') {
         toast({
           title: t.error,
-          description: language === 'en' 
-            ? `Ambassador not found for phone ${application.phone_number}. Please verify the ambassador exists and try again, or approve the application again if needed.` 
-            : `Ambassadeur introuvable pour le téléphone ${application.phone_number}. Veuillez vérifier que l'ambassadeur existe et réessayer, ou approuver à nouveau la candidature si nécessaire.`,
-          variant: "destructive",
+          description: language === 'en'
+            ? 'Only approved applications can have approval emails resent.'
+            : 'Seules les candidatures approuvées peuvent recevoir un nouvel email.',
+          variant: 'destructive',
         });
-        setProcessingId(null);
-        return;
-      }
-      
-      // Determine the email address to use - prefer application email, fallback to ambassador email
-      const emailToUse = application.email || ambassador.email;
-      
-      // Validate that we have an email address
-      if (!emailToUse || !emailToUse.trim()) {
-        toast({
-          title: language === 'en' ? "âŒ Email Address Required" : "âŒ Adresse email requise",
-          description: language === 'en' 
-            ? "No email address found for this ambassador. Please add an email address to the ambassador record or application before resending."
-            : "Aucune adresse email trouvée pour cet ambassadeur. Veuillez ajouter une adresse email à l'enregistrement de l'ambassadeur ou à la candidature avant de renvoyer.",
-          variant: "destructive",
-        });
-        setProcessingId(null);
         return;
       }
 
-      // Check if this is a manually added ambassador
-      const isManual = application.manually_added;
-      // For manually added, we need to find the actual application record
+      const emailToUse = application.email?.trim();
+      if (!emailToUse) {
+        toast({
+          title: language === 'en' ? 'Email address required' : 'Adresse email requise',
+          description: language === 'en'
+            ? 'No email address found for this application. Add an email before resending.'
+            : "Aucune adresse email pour cette candidature. Ajoutez un email avant de renvoyer.",
+          variant: 'destructive',
+        });
+        return;
+      }
+
       let actualApplicationId = application.id;
-      if (isManual) {
+      if (application.manually_added) {
         const manualApp = applications.find(
           (app) =>
             app.phone_number === application.phone_number &&
@@ -5712,129 +5647,33 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
       }
 
-      // Check if we have credentials in state, if not, generate new ones
-      let credentials = ambassadorCredentials[actualApplicationId];
-      let password = credentials?.password;
-      let needsPasswordUpdate = false;
-
-      if (!credentials || !password) {
-        // Generate new credentials
-        password = generatePassword();
-        
-        const resetResult = await adminApi.updateAmbassador(ambassador.id, {
-          generatePassword: true,
-        });
-        password = resetResult.temporaryPassword || password;
-
-        // Store new credentials in state
-        credentials = {
-          username: application.phone_number,
-          password: password
-        };
-        setAmbassadorCredentials(prev => ({
-          ...prev,
-          [actualApplicationId]: credentials!
-        }));
-        needsPasswordUpdate = true;
-      }
-
-      // Set status to pending
       setEmailStatus(prev => ({
         ...prev,
-        [actualApplicationId]: 'pending'
+        [actualApplicationId]: 'pending',
       }));
 
-      const emailConfig = createApprovalEmail(
-        {
-          fullName: application.full_name,
-          phone: application.phone_number,
-          email: emailToUse, // Use the validated email address
-          city: application.city,
-          password: password
-        },
-        `${window.location.origin}/ambassador/auth`,
-        ambassador.id
-      );
+      await adminApi.resendAmbassadorApplicationApprovalEmail({
+        applicationId: actualApplicationId,
+      });
 
-      let emailSent = false;
-      let emailError: string | null = null;
+      setEmailSentApplications(prev => new Set([...prev, actualApplicationId]));
+      setEmailFailedApplications(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(actualApplicationId);
+        return newSet;
+      });
+      setEmailStatus(prev => ({
+        ...prev,
+        [actualApplicationId]: 'sent',
+      }));
 
-      try {
-        const emailResult = await sendEmailWithDetails(emailConfig);
-        emailSent = emailResult.success;
-        emailError = emailResult.error || null;
-
-        if (emailSent) {
-          // Update status to sent
-          setEmailSentApplications(prev => new Set([...prev, actualApplicationId]));
-          setEmailFailedApplications(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(actualApplicationId);
-            return newSet;
-          });
-          setEmailStatus(prev => ({
-            ...prev,
-            [actualApplicationId]: 'sent'
-          }));
-
-          toast({
-            title: language === 'en' ? "âœ… Email Sent Successfully" : "âœ… Email envoyé avec succès",
-            description: language === 'en' 
-              ? needsPasswordUpdate
-                ? `Approval email with new credentials has been successfully delivered to ${emailToUse}`
-                : `Approval email has been successfully delivered to ${emailToUse}`
-              : needsPasswordUpdate
-                ? `L'email d'approbation avec de nouvelles identifiants a été envoyé avec succès à ${emailToUse}`
-                : `L'email d'approbation a été envoyé avec succès à ${emailToUse}`,
-          });
-        } else {
-          // Update status to failed
-          setEmailFailedApplications(prev => new Set([...prev, actualApplicationId]));
-          setEmailSentApplications(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(actualApplicationId);
-            return newSet;
-          });
-          setEmailStatus(prev => ({
-            ...prev,
-            [actualApplicationId]: 'failed'
-          }));
-
-          // Use the actual error message from the server if available
-          const errorMessage = emailError || 'Email delivery failed. Please check the email address and try again.';
-
-          toast({
-            title: language === 'en' ? "âŒ Email Failed to Send" : "âŒ Échec de l'envoi de l'email",
-            description: language === 'en' 
-              ? `The email could not be sent to ${emailToUse}. ${errorMessage}`
-              : `L'email n'a pas pu être envoyé à ${emailToUse}. ${errorMessage}`,
-            variant: "destructive",
-          });
-        }
-      } catch (error) {
-        emailError = error instanceof Error ? error.message : 'Unknown error occurred';
-        setEmailFailedApplications(prev => new Set([...prev, actualApplicationId]));
-        setEmailSentApplications(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(actualApplicationId);
-          return newSet;
-        });
-        setEmailStatus(prev => ({
-          ...prev,
-          [actualApplicationId]: 'failed'
-        }));
-
-        toast({
-          title: language === 'en' ? "âŒ Email Error" : "âŒ Erreur d'email",
-          description: language === 'en' 
-            ? `Failed to send email: ${emailError}`
-            : `Échec de l'envoi de l'email : ${emailError}`,
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: language === 'en' ? 'Email sent successfully' : 'Email envoyé avec succès',
+        description: language === 'en'
+          ? `Approval email has been sent to ${emailToUse}`
+          : `L'email d'approbation a été envoyé à ${emailToUse}`,
+      });
     } catch (error) {
-      console.error('Error resending email:', error);
-      // Try to find the actual application ID for manually added
       let actualApplicationId = application.id;
       if (application.manually_added) {
         const manualApp = applications.find(
@@ -5849,15 +5688,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
       setEmailStatus(prev => ({
         ...prev,
-        [actualApplicationId]: 'failed'
+        [actualApplicationId]: 'failed',
       }));
+      const emailError = error instanceof Error ? error.message : 'Unknown error occurred';
       toast({
-        title: t.error,
-        description: language === 'en' 
-          ? "An unexpected error occurred while resending the email. Please try again."
-          : "Une erreur inattendue s'est produite lors de la nouvelle tentative d'envoi. Veuillez réessayer.",
-        variant: "destructive",
+        title: language === 'en' ? 'Email failed to send' : "Échec de l'envoi de l'email",
+        description: language === 'en'
+          ? `Failed to send email: ${emailError}`
+          : `Échec de l'envoi de l'email : ${emailError}`,
+        variant: 'destructive',
       });
+      console.error('Error resending email:', error);
     } finally {
       setProcessingId(null);
     }
@@ -6119,24 +5960,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const reapplyDelayDate = new Date();
       reapplyDelayDate.setDate(reapplyDelayDate.getDate() + REAPPLY_DELAY_DAYS);
 
-      await adminApi.updateApplication({
+      const result = await adminApi.updateApplication({
         applicationId: application.id,
         status: 'rejected',
         reapply_delay_date: reapplyDelayDate.toISOString(),
       });
 
-      const emailConfig = createRejectionEmail({
-        fullName: application.full_name,
-        phone: application.phone_number,
-        email: application.email,
-        city: application.city
-      });
-
-      const emailSent = await sendEmail(emailConfig);
+      const emailSent = result.rejectionEmailSent === true;
+      const emailError = result.rejectionEmailError;
 
       toast({
         title: t.rejectionSuccess,
-        description: emailSent ? t.emailSent : "Rejection successful, but email failed to send",
+        description: emailSent
+          ? t.emailSent
+          : emailError || 'Rejection successful, but email failed to send',
       });
 
       // Update the application in the local state immediately for instant UI feedback
@@ -6778,26 +6615,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         [applicationId]: 'pending'
       }));
 
-      // Send approval email
+      // Send approval email via server-side resend endpoint (applications:manage)
       let emailSent = false;
       let emailError: string | null = null;
 
-      try {
-        const emailConfig = createApprovalEmail(
-          {
-            fullName: newAmbassadorForm.full_name.trim(),
-            phone: cleanedPhone,
-            email: newAmbassadorForm.email.trim().toLowerCase(),
-            city: newAmbassadorForm.city.trim(),
-            password: issuedPassword
-          },
-          `${window.location.origin}/ambassador/auth`,
-          newAmbassador.id
-        );
-
-        emailSent = await sendEmail(emailConfig);
-
-        if (emailSent) {
+      if (createdApp?.id) {
+        try {
+          await adminApi.resendAmbassadorApplicationApprovalEmail({
+            applicationId: createdApp.id,
+          });
+          emailSent = true;
           setEmailSentApplications(prev => new Set([...prev, applicationId]));
           setEmailFailedApplications(prev => {
             const newSet = new Set(prev);
@@ -6806,9 +6633,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           });
           setEmailStatus(prev => ({
             ...prev,
-            [applicationId]: 'sent'
+            [applicationId]: 'sent',
           }));
-      } else {
+        } catch (error) {
+          emailError = error instanceof Error ? error.message : 'Unknown error occurred';
           setEmailFailedApplications(prev => new Set([...prev, applicationId]));
           setEmailSentApplications(prev => {
             const newSet = new Set(prev);
@@ -6817,24 +6645,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           });
           setEmailStatus(prev => ({
             ...prev,
-            [applicationId]: 'failed'
+            [applicationId]: 'failed',
           }));
-          emailError = 'Email delivery failed. Please use the Resend Email button to retry.';
+          console.error('Error sending approval email:', error);
         }
-      } catch (error) {
-        emailError = error instanceof Error ? error.message : 'Unknown error occurred';
+      } else {
+        emailError = 'No application record found to send approval email.';
         setEmailFailedApplications(prev => new Set([...prev, applicationId]));
         setEmailStatus(prev => ({
           ...prev,
-          [applicationId]: 'failed'
+          [applicationId]: 'failed',
         }));
-        console.error('Error sending approval email:', error);
       }
 
       // Show appropriate toast notifications
       if (emailSent) {
         toast({
-          title: language === 'en' ? "âœ… Ambassador Added Successfully" : "âœ… Ambassadeur ajouté avec succès",
+          title: language === 'en' ? 'Ambassador added successfully' : 'Ambassadeur ajouté avec succès',
           description: language === 'en' 
             ? `Ambassador created and approval email sent to ${newAmbassadorForm.email}`
             : `Ambassadeur créé et email d'approbation envoyé à ${newAmbassadorForm.email}`,

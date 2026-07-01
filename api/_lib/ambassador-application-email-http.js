@@ -50,10 +50,12 @@ export async function handleAmbassadorApplicationResendEmail(req, res, deps) {
       });
     }
 
-    const regeneratePassword =
-      bodyData.regeneratePassword === true ||
-      bodyData.regeneratePassword === 'true' ||
-      bodyData.regeneratePassword === 1;
+    const explicitNoRegenerate =
+      bodyData.regeneratePassword === false ||
+      bodyData.regeneratePassword === 'false' ||
+      bodyData.regeneratePassword === 0;
+    // Default regenerate on resend (plaintext password is not stored server-side).
+    const regeneratePassword = !explicitNoRegenerate;
 
     const { createClient } = await import('@supabase/supabase-js');
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -77,7 +79,7 @@ export async function handleAmbassadorApplicationResendEmail(req, res, deps) {
         application,
         plainPassword: null,
         req,
-        regeneratePassword: regeneratePassword || true,
+        regeneratePassword,
       });
     } catch (emailErr) {
       const statusCode = emailErr.statusCode || 500;
