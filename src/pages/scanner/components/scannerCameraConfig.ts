@@ -4,8 +4,10 @@ import {
   type Html5QrcodeConfigs,
 } from "html5-qrcode";
 
-export const SCANNER_SESSION_TIMEOUT_MS = 90_000;
+export const SCANNER_SESSION_TIMEOUT_MS = 60_000;
 export const STATS_REFRESH_DEBOUNCE_MS = 1_500;
+export const SCANNER_BATTERY_PAUSE_MESSAGE =
+  "Camera paused to save battery. Tap Scan to continue.";
 
 export function buildHtml5QrcodeConfig(): Html5QrcodeConfigs {
   return {

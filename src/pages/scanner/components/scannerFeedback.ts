@@ -1,4 +1,15 @@
+import type { ScanResult } from "./scannerTypes";
+
 const SUCCESS_SOUND_URL = "/sounds/scan-success.wav";
+
+/** Gate valid success or supervisor inspect lookup success — not failed scans. */
+export function shouldPlayScanSuccessSound(result: ScanResult | null | undefined): boolean {
+  if (!result?.success) return false;
+  return (
+    (result.result === "valid" && result.lookup !== true) ||
+    (result.result === "ok" && result.lookup === true)
+  );
+}
 
 let successAudio: HTMLAudioElement | null = null;
 let audioPreloaded = false;

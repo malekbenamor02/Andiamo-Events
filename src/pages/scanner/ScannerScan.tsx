@@ -6,7 +6,12 @@ import { API_ROUTES } from "@/lib/api-routes";
 import Loader from "@/components/ui/Loader";
 import { RotateCw, PenLine, Square, ScanLine } from "lucide-react";
 import type { InspectPanel, OrderPassRow, ScanResult, ScanRow, ScanStats, SelectedEvent } from "./components/scannerTypes";
-import { triggerHaptic, preloadScanSuccessSound, playScanSuccessSound } from "./components/scannerFeedback";
+import {
+  triggerHaptic,
+  preloadScanSuccessSound,
+  playScanSuccessSound,
+  shouldPlayScanSuccessSound,
+} from "./components/scannerFeedback";
 import { SCANNER_BG, SCANNER_BORDER, SCANNER_BRAND } from "./components/scannerTheme";
 import { ScannerScanHeader } from "./components/ScannerScanHeader";
 import { ScannerResultSheet } from "./components/ScannerResultSheet";
@@ -14,7 +19,8 @@ import { ScannerManualEntrySheet } from "./components/ScannerManualEntrySheet";
 import { ScannerRecentPanel } from "./components/ScannerRecentPanel";
 import { ScannerQrViewport } from "./components/ScannerQrViewport";
 import { useScannerCamera } from "./components/useScannerCamera";
-import { STATS_REFRESH_DEBOUNCE_MS } from "./components/scannerCameraConfig";
+import { scanNextUsesNewSession } from "./components/scannerCameraLifecycle";
+import { SCANNER_BATTERY_PAUSE_MESSAGE, STATS_REFRESH_DEBOUNCE_MS } from "./components/scannerCameraConfig";
 
 const STORAGE_KEY = "scanner_selected_event";
 const RECENT_SCANS_LIMIT = 6;
@@ -164,7 +170,7 @@ export default function ScannerScan() {
   }, [result?.result]);
 
   useEffect(() => {
-    if (result?.result === "valid" && result.success && !result.lookup) {
+    if (shouldPlayScanSuccessSound(result)) {
       playScanSuccessSound();
     }
   }, [result]);
@@ -274,11 +280,12 @@ export default function ScannerScan() {
     setSessionOpen(false);
   }, []);
 
-  const { pauseDecode, resumeDecode, fullStop } = useScannerCamera({
+  const { fullStop } = useScannerCamera({
     sessionOpen,
     lowBattery,
     hostRef: qrHostRef,
     onDecode: (token) => {
+      setSessionOpen(false);
       void validate(token);
     },
     onError: handleCameraError,
@@ -302,22 +309,31 @@ export default function ScannerScan() {
   }, [event?.id]);
 
   const onScanNext = useCallback(() => {
-    setResult(null);
-    processedRef.current = false;
-    resumeDecode();
-  }, [resumeDecode]);
+    if (!scanNextUsesNewSession()) return;
+    onStart();
+  }, [onStart]);
+
+  const navigateAfterStop = useCallback(
+    async (path: string) => {
+      await stopSession();
+      setTimedOut(false);
+      setResult(null);
+      navigate(path);
+    },
+    [navigate, stopSession]
+  );
 
   const onManualSubmit = () => {
     const t = manualToken.trim();
     if (!t || !event?.id) return;
     setManualOpen(false);
     setManualToken("");
-    if (sessionOpen) pauseDecode();
+    if (sessionOpen) void stopSession();
     void validate(t);
   };
 
   const logout = async () => {
-    await fullStop();
+    await stopSession();
     try {
       await fetch(`${getApiBaseUrl()}${API_ROUTES.SCANNER_LOGOUT}`, { method: "POST", credentials: "include" });
     } catch {}
@@ -345,14 +361,14 @@ export default function ScannerScan() {
         isOffline={isOffline}
         lastSyncedAt={lastSyncedAt}
         lowBattery={lowBattery}
-        onEventActivity={() => navigate("/scanner/event-activity")}
-        onHistory={() => navigate("/scanner/history")}
+        onEventActivity={() => void navigateAfterStop("/scanner/event-activity")}
+        onHistory={() => void navigateAfterStop("/scanner/history")}
         onLogout={logout}
       />
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         {sessionOpen ? (
-          <div className="flex min-h-0 flex-1 flex-col bg-black">
+          <div className="relative flex min-h-0 flex-1 flex-col bg-black pb-[7rem]">
             <div className="relative min-h-0 flex-1 overflow-hidden">
               <ScannerQrViewport ref={qrHostRef} />
               <div className="absolute left-0 right-0 top-4 px-4">
@@ -366,13 +382,14 @@ export default function ScannerScan() {
               </div>
             </div>
             <div
-              className="flex shrink-0 justify-center border-t bg-black/90 px-4 py-5"
-              style={{ borderColor: SCANNER_BORDER, paddingBottom: "max(1.25rem, env(safe-area-inset-bottom, 0px))" }}
+              className="fixed inset-x-0 bottom-0 z-[60] flex justify-center border-t border-white/10 bg-black/80 px-4 py-4"
+              style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
             >
               <Button
                 className="h-[4.5rem] w-[4.5rem] rounded-full border-4 border-white/10 bg-red-600 shadow-2xl transition-transform hover:scale-105 hover:bg-red-700"
                 onClick={() => void stopSession()}
                 size="lg"
+                aria-label="Stop scanning"
               >
                 <Square className="h-9 w-9 fill-white" />
               </Button>
@@ -440,13 +457,7 @@ export default function ScannerScan() {
           result={result}
           undoSecondsLeft={undoSecondsLeft}
           onOpenChange={(open) => {
-            if (!open) {
-              setResult(null);
-              if (sessionOpen) {
-                processedRef.current = false;
-                resumeDecode();
-              }
-            }
+            if (!open) setResult(null);
           }}
           onScanNext={onScanNext}
         />
@@ -465,28 +476,30 @@ export default function ScannerScan() {
               <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#1A1A1A]">
                 <RotateCw className="h-7 w-7 text-[#A3A3A3]" />
               </div>
-              <p className="mb-2 text-lg font-semibold text-white">Session timeout</p>
-              <p className="mb-6 text-sm text-[#A3A3A3]">Camera session expired. Restart to continue.</p>
+              <p className="mb-2 text-lg font-semibold text-white">Camera paused</p>
+              <p className="mb-6 text-sm text-[#A3A3A3]">{SCANNER_BATTERY_PAUSE_MESSAGE}</p>
               <Button
                 className="h-12 w-full font-semibold text-white"
                 style={{ backgroundColor: SCANNER_BRAND }}
                 onClick={onStart}
               >
-                <RotateCw className="mr-2 h-5 w-5" />
-                Restart scanning
+                <ScanLine className="mr-2 h-5 w-5" />
+                Scan to continue
               </Button>
             </div>
           </div>
         )}
       </div>
 
-      <ScannerRecentPanel
-        stats={stats}
-        recentScans={recentScans}
-        loading={loadingScans}
-        onViewAll={() => navigate("/scanner/history")}
-        onExpand={() => void loadScansAndStats()}
-      />
+      {!sessionOpen && (
+        <ScannerRecentPanel
+          stats={stats}
+          recentScans={recentScans}
+          loading={loadingScans}
+          onViewAll={() => void navigateAfterStop("/scanner/history")}
+          onExpand={() => void loadScansAndStats()}
+        />
+      )}
 
       <ScannerManualEntrySheet
         open={manualOpen}

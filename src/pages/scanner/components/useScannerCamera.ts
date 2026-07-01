@@ -6,6 +6,7 @@ import {
   buildHtml5QrcodeConfig,
   buildPinnedCameraConstraints,
 } from "./scannerCameraConfig";
+import { shouldStopCameraAfterDecode } from "./scannerCameraLifecycle";
 
 export interface UseScannerCameraOptions {
   sessionOpen: boolean;
@@ -15,6 +16,23 @@ export interface UseScannerCameraOptions {
   onError: (message: string) => void;
   onTimeout: () => void;
   processedRef: React.MutableRefObject<boolean>;
+}
+
+function stopHostMediaTracks(host: HTMLElement | null) {
+  if (!host) return;
+  host.querySelectorAll("video").forEach((video) => {
+    const stream = video.srcObject;
+    if (stream && typeof (stream as MediaStream).getTracks === "function") {
+      (stream as MediaStream).getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          /* ignore */
+        }
+      });
+    }
+    video.srcObject = null;
+  });
 }
 
 export function useScannerCamera({
@@ -29,8 +47,6 @@ export function useScannerCamera({
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pinnedDeviceIdRef = useRef<string | null>(null);
-  const pausedRef = useRef(false);
-  const visibilityPausedRef = useRef(false);
   const mountedRef = useRef(true);
 
   const clearSessionTimeout = useCallback(() => {
@@ -42,9 +58,8 @@ export function useScannerCamera({
 
   const fullStop = useCallback(async () => {
     clearSessionTimeout();
-    pausedRef.current = false;
-    visibilityPausedRef.current = false;
     pinnedDeviceIdRef.current = null;
+    const host = hostRef.current;
     if (scannerRef.current) {
       try {
         await scannerRef.current.stop();
@@ -54,7 +69,8 @@ export function useScannerCamera({
       }
       scannerRef.current = null;
     }
-  }, [clearSessionTimeout]);
+    stopHostMediaTracks(host);
+  }, [clearSessionTimeout, hostRef]);
 
   const armSessionTimeout = useCallback(() => {
     clearSessionTimeout();
@@ -65,27 +81,18 @@ export function useScannerCamera({
     }, SCANNER_SESSION_TIMEOUT_MS);
   }, [clearSessionTimeout, fullStop, onTimeout]);
 
-  const pauseDecode = useCallback(() => {
-    if (!scannerRef.current || pausedRef.current) return;
-    try {
-      scannerRef.current.pause(true);
-      pausedRef.current = true;
+  const handleDecode = useCallback(
+    (decodedText: string) => {
+      if (!shouldStopCameraAfterDecode(processedRef.current) || !mountedRef.current) return;
+      processedRef.current = true;
       clearSessionTimeout();
-    } catch {
-      /* ignore */
-    }
-  }, [clearSessionTimeout]);
-
-  const resumeDecode = useCallback(() => {
-    if (!scannerRef.current || !pausedRef.current) return;
-    try {
-      scannerRef.current.resume();
-      pausedRef.current = false;
-      armSessionTimeout();
-    } catch {
-      /* ignore */
-    }
-  }, [armSessionTimeout]);
+      void (async () => {
+        await fullStop();
+        if (mountedRef.current) onDecode(decodedText);
+      })();
+    },
+    [clearSessionTimeout, fullStop, onDecode, processedRef]
+  );
 
   const startCamera = useCallback(async () => {
     const host = hostRef.current;
@@ -93,34 +100,18 @@ export function useScannerCamera({
 
     try {
       if (!scannerRef.current) {
-        const sc = new Html5Qrcode(host.id, buildHtml5QrcodeConfig());
-        scannerRef.current = sc;
+        scannerRef.current = new Html5Qrcode(host.id, buildHtml5QrcodeConfig());
       }
 
       const sc = scannerRef.current;
-      if (sc.isScanning) {
-        if (pausedRef.current) {
-          resumeDecode();
-        }
-        return;
-      }
+      if (sc.isScanning) return;
 
       const scanConfig = buildCameraScanConfig(lowBattery);
       const cameraIdOrConfig = pinnedDeviceIdRef.current
         ? buildPinnedCameraConstraints(pinnedDeviceIdRef.current, lowBattery)
         : { facingMode: "environment" as const };
 
-      await sc.start(
-        cameraIdOrConfig,
-        scanConfig,
-        (decodedText) => {
-          if (processedRef.current || !mountedRef.current) return;
-          processedRef.current = true;
-          pauseDecode();
-          onDecode(decodedText);
-        },
-        () => {}
-      );
+      await sc.start(cameraIdOrConfig, scanConfig, handleDecode, () => {});
 
       try {
         const settings = sc.getRunningTrackSettings();
@@ -131,7 +122,6 @@ export function useScannerCamera({
         /* ignore */
       }
 
-      pausedRef.current = false;
       armSessionTimeout();
     } catch {
       if (mountedRef.current) {
@@ -139,30 +129,17 @@ export function useScannerCamera({
         await fullStop();
       }
     }
-  }, [
-    armSessionTimeout,
-    fullStop,
-    hostRef,
-    lowBattery,
-    onDecode,
-    onError,
-    pauseDecode,
-    processedRef,
-    resumeDecode,
-  ]);
+  }, [armSessionTimeout, fullStop, handleDecode, hostRef, lowBattery, onError]);
 
   useLayoutEffect(() => {
     if (!sessionOpen) return;
 
     mountedRef.current = true;
-    let startTimer: ReturnType<typeof setTimeout> | null = null;
-
-    startTimer = window.setTimeout(() => {
+    const startTimer = window.setTimeout(() => {
       void startCamera();
     }, 50);
 
     return () => {
-      mountedRef.current = false;
       if (startTimer != null) window.clearTimeout(startTimer);
     };
   }, [sessionOpen, startCamera]);
@@ -174,39 +151,24 @@ export function useScannerCamera({
   }, [sessionOpen, fullStop]);
 
   useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      void fullStop();
+    };
+  }, [fullStop]);
+
+  useEffect(() => {
     const onVisibility = () => {
-      if (!sessionOpen || !scannerRef.current) return;
-      if (document.hidden) {
-        if (!pausedRef.current && scannerRef.current.isScanning) {
-          try {
-            scannerRef.current.pause(true);
-            visibilityPausedRef.current = true;
-            clearSessionTimeout();
-          } catch {
-            /* ignore */
-          }
-        }
-        return;
-      }
-      if (visibilityPausedRef.current && !processedRef.current) {
-        try {
-          scannerRef.current.resume();
-          visibilityPausedRef.current = false;
-          pausedRef.current = false;
-          armSessionTimeout();
-        } catch {
-          /* ignore */
-        }
-      }
+      if (!sessionOpen || !document.hidden) return;
+      void (async () => {
+        await fullStop();
+        onTimeout();
+      })();
     };
 
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [armSessionTimeout, clearSessionTimeout, processedRef, sessionOpen]);
+  }, [fullStop, onTimeout, sessionOpen]);
 
-  return {
-    pauseDecode,
-    resumeDecode,
-    fullStop,
-  };
+  return { fullStop };
 }
