@@ -441,6 +441,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/dashboard/activity",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/contact-messages",
       "destination": "/api/misc.js"
     },
