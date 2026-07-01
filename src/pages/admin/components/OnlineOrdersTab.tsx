@@ -38,6 +38,8 @@ import { AdminOnlineOrderMobileList } from "./AdminMobileOrderList";
 import { OrderPromoCornerRibbon } from "@/components/admin/OrderPromoCornerRibbon";
 import { parsePromoFromOrder, resolvePromoBadgeColor } from "@/lib/eventPromo/promoOrder";
 import type { OnlineOrder, OnlineOrderFilters } from "../types";
+import type { GetRowHighlight } from "@/lib/admin/rowHighlight";
+import { getRowHighlightClass, getStatusPulseClass } from "@/lib/admin/rowHighlight";
 
 function promoColorForOrder(order: OnlineOrder): string {
   return resolvePromoBadgeColor(parsePromoFromOrder(order), order);
@@ -59,6 +61,7 @@ export interface OnlineOrdersTabProps {
   onViewOrder: (order: OnlineOrder) => void;
   /** Pass type names from the selected event (event_passes.name). When empty, "All Types" only. */
   eventPassTypes?: string[];
+  getRowHighlight?: GetRowHighlight;
 }
 
 /** Mask email like COD tab: first 3 of local + *** @ + last 4 of domain. */
@@ -83,6 +86,7 @@ export function OnlineOrdersTab({
   onFetchWithFilters,
   onViewOrder,
   eventPassTypes = [],
+  getRowHighlight,
 }: OnlineOrdersTabProps) {
   const { toast } = useToast();
   const fetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -363,10 +367,15 @@ export function OnlineOrdersTab({
                             return `${day}/${month}/${d.getFullYear()}`;
                           })();
 
+                          const rowHighlight = getRowHighlight?.(order.id);
+
                           return (
                             <TableRow
                               key={order.id}
-                              className="text-xs cursor-pointer"
+                              className={cn(
+                                "text-xs cursor-pointer",
+                                getRowHighlightClass(rowHighlight),
+                              )}
                               onClick={() => onViewOrder(order)}
                               title={
                                 order.ville
@@ -489,7 +498,13 @@ export function OnlineOrdersTab({
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <div className={cn("w-3 h-3 rounded-full cursor-help", getStatusColor())} />
+                                      <div
+                                        className={cn(
+                                          "w-3 h-3 rounded-full cursor-help",
+                                          getStatusColor(),
+                                          getStatusPulseClass(rowHighlight),
+                                        )}
+                                      />
                                     </TooltipTrigger>
                                     <TooltipContent>
                                       <div className="space-y-1">
@@ -523,6 +538,7 @@ export function OnlineOrdersTab({
                   orders={onlineOrders}
                   language={language}
                   onViewOrder={onViewOrder}
+                  getRowHighlight={getRowHighlight}
                 />
               </div>
             </>

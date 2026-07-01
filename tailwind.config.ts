@@ -174,6 +174,20 @@ export default {
 					from: { transform: 'scaleY(0)' },
 					to: { transform: 'scaleY(1)' }
 				},
+				'admin-row-enter': {
+					from: { opacity: '0', transform: 'translateY(-2px)' },
+					to: { opacity: '1', transform: 'translateY(0)' }
+				},
+				'admin-status-pulse-emerald': {
+					'0%': { boxShadow: '0 0 0 0 rgba(16, 185, 129, 0.45)' },
+					'70%': { boxShadow: '0 0 0 5px rgba(16, 185, 129, 0)' },
+					'100%': { boxShadow: '0 0 0 0 rgba(16, 185, 129, 0)' }
+				},
+				'admin-status-pulse-amber': {
+					'0%': { boxShadow: '0 0 0 0 rgba(245, 158, 11, 0.45)' },
+					'70%': { boxShadow: '0 0 0 5px rgba(245, 158, 11, 0)' },
+					'100%': { boxShadow: '0 0 0 0 rgba(245, 158, 11, 0)' }
+				},
 				'trainer-float-drift': {
 					'0%, 100%': { transform: 'translate(0, 0)' },
 					'15%': { transform: 'translate(8px, -12px)' },
@@ -201,7 +215,10 @@ export default {
 				'chapter-card-enter': 'chapter-card-enter 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards',
 				'chapter-node-pop': 'chapter-node-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards',
 				'chapter-line-grow': 'chapter-line-grow 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards',
-				'trainer-float-drift': 'trainer-float-drift 8s ease-in-out infinite'
+				'trainer-float-drift': 'trainer-float-drift 8s ease-in-out infinite',
+				'admin-row-enter': 'admin-row-enter 0.35s ease-out',
+				'admin-status-pulse-emerald': 'admin-status-pulse-emerald 0.6s ease-out 1',
+				'admin-status-pulse-amber': 'admin-status-pulse-amber 0.6s ease-out 1'
 			}
 		}
 	},

@@ -23,6 +23,8 @@ import { OrderPromoCornerRibbon } from "@/components/admin/OrderPromoCornerRibbo
 import { AdminCodOrderMobileList } from "./AdminMobileOrderList";
 import { orderHasPromoAttribution, parsePromoFromOrder, resolvePromoBadgeColor } from "@/lib/eventPromo/promoOrder";
 import type { AmbassadorOrderFilters, AmbassadorFilterOptions, AmbassadorOrderLog } from "../types";
+import type { GetRowHighlight } from "@/lib/admin/rowHighlight";
+import { getRowHighlightClass, getStatusPulseClass } from "@/lib/admin/rowHighlight";
 
 function promoColorForCodOrder(order: CodOrder): string {
   return resolvePromoBadgeColor(parsePromoFromOrder(order), order);
@@ -158,6 +160,7 @@ export interface AmbassadorSalesTabProps {
   onRefresh: (statusFilter?: string) => void;
   onViewOrder: (order: CodOrder) => void;
   onViewAmbassador: (ambassadorId: string) => void;
+  getRowHighlight?: GetRowHighlight;
 }
 
 const PAID_STATUSES = ["PAID", "COMPLETED"];
@@ -677,10 +680,15 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                 return `${day}/${month}/${d.getFullYear()}`;
                               })();
 
+                              const rowHighlight = p.getRowHighlight?.(order.id);
+
                               return (
                                 <TableRow
                                   key={order.id}
-                                  className="text-xs cursor-pointer"
+                                  className={cn(
+                                    "text-xs cursor-pointer",
+                                    getRowHighlightClass(rowHighlight),
+                                  )}
                                   onClick={() => p.onViewOrder(order)}
                                   title={
                                     p.language === "en"
@@ -784,7 +792,11 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <div
-                                            className={`w-3 h-3 rounded-full cursor-help ${getStatusColor(order.status)}`}
+                                            className={cn(
+                                              "w-3 h-3 rounded-full cursor-help",
+                                              getStatusColor(order.status),
+                                              getStatusPulseClass(rowHighlight),
+                                            )}
                                           />
                                         </TooltipTrigger>
                                         <TooltipContent>
@@ -854,6 +866,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                       orders={paginatedCodOrders}
                       language={p.language}
                       onViewOrder={p.onViewOrder}
+                      getRowHighlight={p.getRowHighlight}
                     />
                   </div>
                 </>

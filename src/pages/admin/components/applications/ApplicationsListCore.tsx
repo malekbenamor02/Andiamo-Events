@@ -64,6 +64,8 @@ import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { useToast } from "@/hooks/use-toast";
 import type { AmbassadorApplication, Ambassador, SelectedMotivation } from "../../types";
 import type { ApplicationsTabProps } from "../ApplicationsTab";
+import type { GetRowHighlight } from "@/lib/admin/rowHighlight";
+import { getRowHighlightClass, getStatusPulseClass } from "@/lib/admin/rowHighlight";
 import { AdminResendEmailConfirm, ADMIN_RESEND_EMAIL_CONFIRM_CLOSE_MS } from "../AdminResendEmailConfirm";
 import {
   AdminApplicationReviewConfirm,
@@ -176,6 +178,7 @@ export function ApplicationsListCore({
   onToggleBulkSelect,
   onToggleAllBulkSelect,
   bulkActionsBar,
+  getRowHighlight,
 }: ApplicationsListCoreProps) {
   const { toast } = useToast();
   const [bulkSelectVisible, setBulkSelectVisible] = useState(bulkSelectAlwaysVisible);
@@ -629,6 +632,7 @@ export function ApplicationsListCore({
                   const reviewerDisplayName =
                     application.reviewed_by_name?.trim() ||
                     (language === "en" ? "Not recorded" : "Non enregistré");
+                  const rowHighlight = getRowHighlight?.(application.id);
                 const row = (
                     <TableRow
                       className={cn(
@@ -637,6 +641,7 @@ export function ApplicationsListCore({
                           bulkSelectedIds?.has(application.id) &&
                           "bg-primary/[0.04] hover:bg-primary/[0.07]",
                         showReviewerTooltip && "cursor-help",
+                        getRowHighlightClass(rowHighlight),
                       )}
                     >
                       {showBulkCheckboxes && (
@@ -708,7 +713,9 @@ export function ApplicationsListCore({
                       </TableCell>
                       <TableCell className="text-xs px-2 py-2">
                         <div className="flex items-center gap-2">
-                          {getStatusBadge(application.status)}
+                          <span className={cn("inline-flex", getStatusPulseClass(rowHighlight))}>
+                            {getStatusBadge(application.status)}
+                          </span>
                           {application.status === "approved" && (
                             <div
                               className="flex items-center"

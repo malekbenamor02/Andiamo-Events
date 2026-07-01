@@ -9,6 +9,8 @@ import { orderHasPromoAttribution, parsePromoFromOrder, resolvePromoBadgeColor }
 import { AdminOrderStatusDot } from "./adminOrderDetailsUi";
 import type { CodOrder } from "./AmbassadorSalesTab";
 import type { OnlineOrder } from "../types";
+import type { GetRowHighlight } from "@/lib/admin/rowHighlight";
+import { getRowHighlightClass, getStatusPulseClass } from "@/lib/admin/rowHighlight";
 
 function formatPassSummary(
   passes: Array<{ pass_type?: string; passName?: string; quantity?: number }>
@@ -54,10 +56,12 @@ function ListRow({
   onClick,
   children,
   cornerRibbon,
+  highlightClassName,
 }: {
   onClick: () => void;
   children: ReactNode;
   cornerRibbon?: ReactNode;
+  highlightClassName?: string;
 }) {
   return (
     <button
@@ -65,7 +69,8 @@ function ListRow({
       onClick={onClick}
       className={cn(
         "relative flex w-full items-center gap-3 overflow-hidden px-3 py-3 text-left hover:bg-muted/30 active:bg-muted/40",
-        cornerRibbon && "pr-7"
+        cornerRibbon && "pr-7",
+        highlightClassName,
       )}
     >
       {cornerRibbon}
@@ -105,10 +110,12 @@ export function AdminCodOrderMobileList({
   orders,
   language,
   onViewOrder,
+  getRowHighlight,
 }: {
   orders: CodOrder[];
   language: "en" | "fr";
   onViewOrder: (order: CodOrder) => void;
+  getRowHighlight?: GetRowHighlight;
 }) {
   if (orders.length === 0) {
     return (
@@ -146,12 +153,14 @@ export function AdminCodOrderMobileList({
                 language
               )
             : null;
+        const rowHighlight = getRowHighlight?.(order.id);
 
         return (
           <ListRow
             key={order.id}
             onClick={() => onViewOrder(order)}
             cornerRibbon={cornerRibbon}
+            highlightClassName={getRowHighlightClass(rowHighlight)}
           >
             <div className="flex items-start justify-between gap-3">
               <p className="truncate font-medium text-sm">
@@ -162,7 +171,12 @@ export function AdminCodOrderMobileList({
               </span>
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <AdminOrderStatusDot status={order.status} language={language} kind="order" />
+              <AdminOrderStatusDot
+                status={order.status}
+                language={language}
+                kind="order"
+                className={getStatusPulseClass(rowHighlight)}
+              />
               {passSummary && (
                 <span className="text-xs text-muted-foreground">{passSummary}</span>
               )}
@@ -201,10 +215,12 @@ export function AdminOnlineOrderMobileList({
   orders,
   language,
   onViewOrder,
+  getRowHighlight,
 }: {
   orders: OnlineOrder[];
   language: "en" | "fr";
   onViewOrder: (order: OnlineOrder) => void;
+  getRowHighlight?: GetRowHighlight;
 }) {
   if (orders.length === 0) {
     return (
@@ -250,12 +266,14 @@ export function AdminOnlineOrderMobileList({
                 language
               )
             : null;
+        const rowHighlight = getRowHighlight?.(order.id);
 
         return (
           <ListRow
             key={order.id}
             onClick={() => onViewOrder(order)}
             cornerRibbon={cornerRibbon}
+            highlightClassName={getRowHighlightClass(rowHighlight)}
           >
             <div className="flex items-start justify-between gap-3">
               <p className="truncate font-medium text-sm">{customer}</p>
@@ -264,7 +282,12 @@ export function AdminOnlineOrderMobileList({
               </span>
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <AdminOrderStatusDot status={status} language={language} kind="payment" />
+              <AdminOrderStatusDot
+                status={status}
+                language={language}
+                kind="payment"
+                className={getStatusPulseClass(rowHighlight)}
+              />
               {passSummary && (
                 <span className="text-xs text-muted-foreground">{passSummary}</span>
               )}

@@ -161,6 +161,13 @@ import {
   type AdminFeedEvent,
   type AdminFeedNotificationKind,
 } from "@/lib/admin/adminNotificationTypes";
+import {
+  type GetRowHighlight,
+  type RowHighlightEntry,
+  lookupRowHighlight,
+  mergeRowHighlightsFromFeedEvents,
+  pruneExpiredRowHighlights,
+} from "@/lib/admin/rowHighlight";
 import { logger } from "@/lib/logger";
 import { logAdminAction } from "@/lib/adminLogs";
 import { OfficialInvitationForm } from "@/components/admin/OfficialInvitationForm";
@@ -1139,6 +1146,30 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchAmbassadorSalesDataRef = useRef<() => void>(() => {});
   const fetchAllDataRef = useRef<() => Promise<void>>(async () => {});
 
+  const [rowHighlights, setRowHighlights] = useState<Map<string, RowHighlightEntry>>(new Map());
+
+  const getOnlineOrderRowHighlight = useCallback<GetRowHighlight>(
+    (recordId) => lookupRowHighlight(rowHighlights, 'online_order', recordId),
+    [rowHighlights],
+  );
+
+  const getAmbassadorSaleRowHighlight = useCallback<GetRowHighlight>(
+    (recordId) => lookupRowHighlight(rowHighlights, 'ambassador_sale', recordId),
+    [rowHighlights],
+  );
+
+  const getApplicationRowHighlight = useCallback<GetRowHighlight>(
+    (recordId) => lookupRowHighlight(rowHighlights, 'ambassador_application', recordId),
+    [rowHighlights],
+  );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setRowHighlights((prev) => pruneExpiredRowHighlights(prev));
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const canAccessTab = useCallback(
     (tab: string) => canAccessTabKey(allowedTabs, tab),
     [allowedTabs]
@@ -1164,6 +1195,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const handleFeedEvents = useCallback((events: AdminFeedEvent[]) => {
     if (events.length === 0) return;
+    setRowHighlights((prev) => mergeRowHighlightsFromFeedEvents(prev, events));
     const mapped: AdminNotification[] = events.map((ev) => ({
       id: `${ev.id}-${ev.occurredAt}`,
       feedEventId: ev.id,
@@ -2402,9 +2434,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   // Fetch Ambassador Sales System data
-  const fetchAmbassadorSalesData = async (statusFilter?: string) => {
+  const fetchAmbassadorSalesData = async (
+    statusFilter?: string,
+    options?: { silent?: boolean },
+  ) => {
     if (!canAccessTab('ambassador-sales')) return;
-    setLoadingOrders(true);
+    const silent = options?.silent ?? false;
+    if (!silent) setLoadingOrders(true);
     try {
       const ambassadorNameMap = new Map<string, string>();
       const ambassadorStatusMap = new Map<string, string>();
@@ -2560,17 +2596,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
       }
     } finally {
-      setLoadingOrders(false);
+      if (!silent) setLoadingOrders(false);
     }
   };
   fetchAmbassadorSalesDataRef.current = () => {
-    void fetchAmbassadorSalesData();
+    void fetchAmbassadorSalesData(undefined, { silent: true });
   };
 
   // Fetch online orders
-  const fetchOnlineOrders = async () => {
+  const fetchOnlineOrders = async (options?: { silent?: boolean }) => {
     if (!canAccessTab('online-orders')) return;
-    setLoadingOnlineOrders(true);
+    const silent = options?.silent ?? false;
+    if (!silent) setLoadingOnlineOrders(true);
     try {
       const dateTo = onlineOrderFilters.dateTo
         ? (() => {
@@ -2628,7 +2665,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
       }
     } finally {
-      setLoadingOnlineOrders(false);
+      if (!silent) setLoadingOnlineOrders(false);
     }
   };
 
@@ -2698,7 +2735,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   fetchOnlineOrdersLatestRef.current = fetchOnlineOrders;
   fetchOnlineOrdersRef.current = () => {
-    void fetchOnlineOrders();
+    void fetchOnlineOrders({ silent: true });
   };
 
   // Admin order management functions
@@ -5170,11 +5207,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     loadPassesForManagement();
   }, [isPassManagementDialogOpen, isEventDialogOpen, eventForPassManagement?.id, language]);
 
-  const fetchAllData = async () => {
-    setLoading(true);
+  const fetchAllData = async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    if (!silent) setLoading(true);
     const SAFETY_TIMEOUT_MS = 25000;
     const safetyTimer = window.setTimeout(() => {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }, SAFETY_TIMEOUT_MS);
 
     try {
@@ -5207,7 +5245,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       // Unblock shell + overview as soon as core lists exist; settings/hero load in background.
       window.clearTimeout(safetyTimer);
-      setLoading(false);
+      if (!silent) setLoading(false);
 
       void (async () => {
         try {
@@ -5233,10 +5271,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         variant: "destructive",
       });
       window.clearTimeout(safetyTimer);
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
-  fetchAllDataRef.current = fetchAllData;
+  fetchAllDataRef.current = () => fetchAllData({ silent: true });
 
   useAdminNotificationFeed({
     enabled: authReady && !loading,
@@ -8438,6 +8476,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 currentAdminName={currentAdminName}
                 currentAdminEmail={currentAdminEmail}
                 ambassadorMap={ambassadorMap}
+                getRowHighlight={getApplicationRowHighlight}
                   />
                 </Suspense>
               )}
@@ -8582,6 +8621,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   onRefresh={fetchOnlineOrders}
                   onFetchWithFilters={fetchOnlineOrdersWithFilters}
                   onViewOrder={(order) => { setSelectedOnlineOrder(order); setIsOnlineOrderDetailsOpen(true); }}
+                  getRowHighlight={getOnlineOrderRowHighlight}
                   eventPassTypes={selectedEventId
                     ? (events.find((e: { id: string }) => e.id === selectedEventId)?.passes?.map((p: { name: string }) => p.name).filter(Boolean) ?? [])
                     : [...new Set((events || []).flatMap((e: { passes?: { name: string }[] }) => (e.passes || []).map((p) => p.name).filter(Boolean)))]}
@@ -8612,6 +8652,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     setIsOrderDetailsOpen(true);
                   }}
                   onViewAmbassador={handleViewAmbassador}
+                  getRowHighlight={getAmbassadorSaleRowHighlight}
                   />
                 </Suspense>
               )}

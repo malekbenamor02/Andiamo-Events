@@ -64,6 +64,7 @@ export interface ApplicationsTabProps {
   currentAdminName: string | null;
   currentAdminEmail: string | null;
   ambassadorMap: Map<string, { ville?: string }>;
+  getRowHighlight?: GetRowHighlight;
 }
 
 type ApplicationsViewMode = "all" | "selections";
