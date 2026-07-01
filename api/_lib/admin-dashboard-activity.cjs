@@ -41,7 +41,7 @@ const ONLINE_TERMINAL_STATUSES = new Set([
 ]);
 
 const ORDER_SELECT =
-  'id, created_at, completed_at, payment_status_set_at, total_price, total_with_fees, status, payment_status, payment_method, source, notes, quantity, total, order_passes (quantity, price)';
+  'id, created_at, completed_at, payment_status_set_at, total_price, total_with_fees, status, payment_status, payment_method, source, notes, quantity, order_passes (quantity, price)';
 
 async function fetchAllPaginated(buildPageQuery, pageSize = 1000) {
   const all = [];
