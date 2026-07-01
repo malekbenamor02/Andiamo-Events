@@ -4711,6 +4711,10 @@ app.get('/api/admin/dashboard/activity', (req, res) => {
   req.url = req.originalUrl || req.url;
   return forwardToMisc(req, res);
 });
+app.post('/api/admin-ambassador-application-resend-email', (req, res) => {
+  req.url = req.originalUrl || req.url;
+  return forwardToMisc(req, res);
+});
 
 /* Legacy inline counts handler – use api/misc.js
 app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) => {

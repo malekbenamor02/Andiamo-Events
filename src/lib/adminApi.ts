@@ -73,11 +73,31 @@ export const adminApi = {
     temporaryPassword?: string;
     /** Server generates password and returns temporaryPassword once */
     generatePassword?: boolean;
+    /** Optional admin note included in rejection email (server-built template only) */
+    rejectionNote?: string;
   }) =>
     adminFetch(API_ROUTES.ADMIN_UPDATE_APPLICATION, {
       method: 'POST',
       body: JSON.stringify(payload),
-    }),
+    }) as Promise<{
+      success?: boolean;
+      data?: { status?: string; [key: string]: unknown };
+      temporaryPassword?: string;
+      approvalEmailSent?: boolean;
+      approvalEmailError?: string;
+      rejectionEmailSent?: boolean;
+      rejectionEmailError?: string;
+    }>,
+
+  resendAmbassadorApplicationApprovalEmail: (payload: {
+    applicationId: string;
+    /** When false, resend uses existing ambassador password hash (no rotation). Default: regenerate. */
+    regeneratePassword?: boolean;
+  }) =>
+    adminFetch(API_ROUTES.ADMIN_AMBASSADOR_APPLICATION_RESEND_EMAIL, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }) as Promise<{ success?: boolean }>,
 
   createAmbassador: (payload: Record<string, unknown>) =>
     adminFetch(API_ROUTES.ADMIN_AMBASSADORS, { method: 'POST', body: JSON.stringify(payload) }).then(

@@ -123,7 +123,10 @@ async function sendAmbassadorApplicationApprovalEmail(opts) {
     throw err;
   }
 
-  if (opts.regeneratePassword || !plainPassword) {
+  const shouldRegeneratePassword =
+    opts.regeneratePassword === true ||
+    (opts.regeneratePassword !== false && !plainPassword);
+  if (shouldRegeneratePassword) {
     const { resolveAmbassadorPasswordFromBody } = await import('./admin-data-route-helpers.js');
     const resolved = await resolveAmbassadorPasswordFromBody({ generatePassword: true });
     plainPassword = resolved.temporaryPassword;

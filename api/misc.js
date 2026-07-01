@@ -27,6 +27,7 @@ import { hasEffectivePermission } from './_lib/admin-authorization.mjs';
 import { createAdminDbClient, createServiceRoleClient } from './_lib/service-role-client.js';
 import { writeAdminMutationAudit } from './_lib/admin-mutation-audit.js';
 import { handleAdminLogout } from './_lib/admin-logout-http.js';
+import { handleAmbassadorApplicationResendEmail } from './_lib/ambassador-application-email-http.js';
 import { agentDebugLog } from './_lib/agent-debug-log.js';
 import { createRequire } from 'module';
 import nodePath from 'path';
@@ -44,6 +45,8 @@ const { fetchAmbassadorSocialLinkFromApplications } = requireFromRoot(
 const { handleActiveAmbassadorsRequest } = requireFromRoot(
   nodePath.join(__dirname, '_lib', 'active-ambassadors-handler.cjs')
 );
+const { sendAmbassadorApplicationApprovalEmail, sendAmbassadorApplicationRejectionEmail } =
+  requireFromRoot(nodePath.join(__dirname, '_lib', 'ambassador-application-approval-email.cjs'));
 
 // Lazy-load ticket email builder so ambassador-sales/orders and other routes don't crash if this file is missing
 let _buildOnlineTicketEmailHtml = null;
@@ -1833,6 +1836,23 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         }
 
         const bodyData = await parseBody(req);
+        const FORBIDDEN_CLIENT_EMAIL_FIELDS = [
+          'to',
+          'subject',
+          'html',
+          'from',
+          'emailBody',
+          'campaignTemplate',
+        ];
+        for (const field of FORBIDDEN_CLIENT_EMAIL_FIELDS) {
+          if (bodyData[field] != null && bodyData[field] !== '') {
+            return res.status(400).json({
+              error: 'Invalid request',
+              details: `Field "${field}" is not accepted.`,
+            });
+          }
+        }
+
         const { applicationId, status, reapply_delay_date, temporaryPassword, generatePassword } = bodyData;
 
         if (bodyData.hashedPassword != null || looksLikeBcryptHash(bodyData.password)) {
@@ -1949,12 +1969,70 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             details: `No application found with id: ${applicationId}`
           });
         }
+
+        const updatedApplication = result.data[0];
+        let approvalEmailSent = false;
+        let approvalEmailError = null;
+        let rejectionEmailSent = false;
+        let rejectionEmailError = null;
+
+        if (status === 'approved') {
+          try {
+            await sendAmbassadorApplicationApprovalEmail({
+              db: dbForApp,
+              application: updatedApplication,
+              plainPassword: resolvedTemporaryPassword,
+              req,
+              regeneratePassword: false,
+            });
+            approvalEmailSent = true;
+          } catch (emailErr) {
+            approvalEmailSent = false;
+            approvalEmailError = emailErr.message || 'Failed to send approval email';
+            console.error('[admin-update-application] approval email failed', {
+              applicationId,
+              detail: emailErr.message,
+            });
+          }
+        } else if (status === 'rejected') {
+          const rejectionNote =
+            typeof bodyData.rejectionNote === 'string'
+              ? bodyData.rejectionNote.trim().slice(0, 2000)
+              : null;
+          try {
+            await sendAmbassadorApplicationRejectionEmail({
+              db: dbForApp,
+              application: updatedApplication,
+              rejectionNote: rejectionNote || null,
+            });
+            rejectionEmailSent = true;
+          } catch (emailErr) {
+            rejectionEmailSent = false;
+            rejectionEmailError = emailErr.message || 'Failed to send rejection email';
+            console.error('[admin-update-application] rejection email failed', {
+              applicationId,
+              detail: emailErr.message,
+            });
+          }
+        }
         
         return res.status(200).json({ 
           success: true, 
-          data: result.data[0],
+          data: updatedApplication,
           message: `Application ${status} successfully`,
           ...(resolvedTemporaryPassword ? { temporaryPassword: resolvedTemporaryPassword } : {}),
+          ...(status === 'approved'
+            ? {
+                approvalEmailSent,
+                ...(approvalEmailError ? { approvalEmailError } : {}),
+              }
+            : {}),
+          ...(status === 'rejected'
+            ? {
+                rejectionEmailSent,
+                ...(rejectionEmailError ? { rejectionEmailError } : {}),
+              }
+            : {}),
         });
       } catch (error) {
         console.error('Admin update application error:', error);
@@ -1964,6 +2042,13 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           type: error.name
         });
       }
+    }
+
+    // ============================================
+    // /api/admin-ambassador-application-resend-email
+    // ============================================
+    if (path === '/api/admin-ambassador-application-resend-email' && method === 'POST') {
+      return handleAmbassadorApplicationResendEmail(req, res, { parseBody });
     }
     
     // ============================================

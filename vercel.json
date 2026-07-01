@@ -69,6 +69,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin-ambassador-application-resend-email",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/ambassador-login",
       "destination": "/api/misc.js"
     },
