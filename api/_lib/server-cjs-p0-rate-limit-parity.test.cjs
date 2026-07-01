@@ -19,7 +19,7 @@ describe('server.cjs P0 rate-limit parity (PR-1e)', () => {
     assert.match(src, /createVercelHandlerForward/);
   });
 
-  const forwards = [
+  const miscForwards = [
     ["app.post('/api/admin-login', forwardAdminLogin)", './api/admin-login.js'],
     ["app.post('/api/scanner-login', forwardScanApi)", './api/scan.js'],
     ["app.post('/api/send-email', forwardMiscApi)", './api/misc.js'],
@@ -28,9 +28,12 @@ describe('server.cjs P0 rate-limit parity (PR-1e)', () => {
     ["app.post('/api/admin-resend-ticket-email', forwardMiscApi)", './api/misc.js'],
     ["app.post('/api/resend-order-completion-email', forwardMiscApi)", './api/misc.js'],
     ["app.post('/api/orders/create', forwardOrdersCreate)", './api/orders-create.js'],
+    ["app.post('/api/site-logs', forwardMiscApi)", './api/misc.js'],
+    ["app.get('/api/admin/dashboard/bootstrap', forwardMiscApi)", './api/misc.js'],
+    ["app.get('/api/admin/dashboard/activity', forwardMiscApi)", './api/misc.js'],
   ];
 
-  for (const [routeLine, modulePath] of forwards) {
+  for (const [routeLine, modulePath] of miscForwards) {
     it(`delegates ${routeLine}`, () => {
       assert.match(src, new RegExp(routeLine.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
       assert.match(src, new RegExp(modulePath.replace(/\./g, '\\.')));
@@ -113,6 +116,8 @@ describe('compatibility wrappers still load', () => {
   it('server-cjs-vercel-forward.cjs loads', () => {
     const mod = require('./server-cjs-vercel-forward.cjs');
     assert.equal(typeof mod.createVercelHandlerForward, 'function');
+    const resolved = mod.resolveHandlerModule('./api/admin-login.js');
+    assert.match(resolved.replace(/\\/g, '/'), /\/api\/admin-login\.js$/);
   });
 });
 

@@ -150,6 +150,20 @@ describe('server.cjs parity', () => {
   });
 });
 
+describe('admin data routes — dashboard activity auth', () => {
+  it('dashboard/activity requires dashboard:view before buildDashboardActivity', () => {
+    const src = read('api/_lib/admin-data-routes.js');
+    const block = blockBetween(
+      src,
+      "'/api/admin/dashboard/activity'",
+      "if (path === '/api/admin/ambassadors'",
+    );
+    assert.match(block, /requireAdmin\(req, res, verifyAdminAuth, PERM\.DASHBOARD_BOOTSTRAP\)/);
+    assert.match(block, /buildDashboardActivity/);
+    assert.match(block, /super_admin/);
+  });
+});
+
 describe('regression — no role-static HTTP authorization', () => {
   const files = [
     'api/misc.js',

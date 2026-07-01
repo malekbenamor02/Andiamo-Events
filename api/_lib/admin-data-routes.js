@@ -32,6 +32,34 @@ function matchId(path, prefix) {
   return id && id.length > 0 ? id : null;
 }
 
+const APPLICATION_STATS_STATUSES = ['pending', 'approved', 'suspended', 'rejected', 'removed'];
+
+/** Exact ambassador_applications counts by status (not limited by PostgREST row cap). */
+async function countAmbassadorApplicationStats(db) {
+  const counts = {};
+  for (const status of APPLICATION_STATS_STATUSES) {
+    const { count, error } = await db
+      .from('ambassador_applications')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', status);
+    if (error) throw error;
+    counts[status] = count ?? 0;
+  }
+  const pending = counts.pending;
+  const approved = counts.approved;
+  const suspended = counts.suspended;
+  const rejected = counts.rejected;
+  const removed = counts.removed;
+  return {
+    pending,
+    approved,
+    suspended,
+    rejected,
+    removed,
+    total: pending + approved + suspended + rejected + removed,
+  };
+}
+
 export async function handleAdminDataRoutes(req, res, path, method, { verifyAdminAuth, parseBody }) {
   // GET /api/admin/dashboard/bootstrap
   if (path === '/api/admin/dashboard/bootstrap' && method === 'GET') {
@@ -52,6 +80,14 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
         return res.status(500).json({ error: 'Failed to load applications', details: appsRes.error.message });
       }
       payload.applications = appsRes.data || [];
+      try {
+        payload.applicationStats = await countAmbassadorApplicationStats(db);
+      } catch (statsErr) {
+        return res.status(500).json({
+          error: 'Failed to load application stats',
+          details: statsErr?.message || String(statsErr),
+        });
+      }
     } else {
       payload.applications = [];
     }
@@ -100,6 +136,35 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
     }
 
     return res.status(200).json(payload);
+  }
+
+  // GET /api/admin/dashboard/activity — Overview Activity chart (server-side UTC daily aggregates)
+  if (path === '/api/admin/dashboard/activity' && method === 'GET') {
+    const ctx = await requireAdmin(req, res, verifyAdminAuth, PERM.DASHBOARD_BOOTSTRAP);
+    if (!ctx) return true;
+
+    const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
+    const searchParams = new URLSearchParams(queryString);
+    const eventId = searchParams.get('event_id');
+    const daysRaw = parseInt(searchParams.get('days') || '7', 10);
+    const days = Number.isFinite(daysRaw) ? daysRaw : 7;
+
+    if (!eventId) {
+      return jsonBadRequest(res, 'event_id is required');
+    }
+
+    const { buildDashboardActivity } = requireCjs('./admin-dashboard-activity.cjs');
+    const includePos = ctx.auth?.admin?.role === 'super_admin';
+
+    try {
+      const data = await buildDashboardActivity(ctx.db, { eventId, days, includePos });
+      return res.status(200).json({ success: true, data });
+    } catch (err) {
+      return res.status(500).json({
+        error: 'Failed to load dashboard activity',
+        details: err?.message || String(err),
+      });
+    }
   }
 
   if (path === '/api/admin/ambassadors' && method === 'GET') {

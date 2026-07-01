@@ -25,12 +25,42 @@ import type { AmbassadorApplication, Event } from "../types";
 import { formatDateDMY } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 
+export interface ApplicationStats {
+  pending: number;
+  approved: number;
+  suspended: number;
+  rejected: number;
+  removed: number;
+  total: number;
+}
+
+function resolveApplicationStats(
+  applications: AmbassadorApplication[],
+  applicationStats: ApplicationStats | null | undefined,
+): ApplicationStats {
+  if (applicationStats) return applicationStats;
+  const pending = applications.filter((a) => a.status === "pending").length;
+  const approved = applications.filter((a) => a.status === "approved").length;
+  const suspended = applications.filter((a) => a.status === "suspended").length;
+  const rejected = applications.filter((a) => a.status === "rejected").length;
+  const removed = applications.filter((a) => a.status === "removed").length;
+  return {
+    pending,
+    approved,
+    suspended,
+    rejected,
+    removed,
+    total: pending + approved + suspended + rejected + removed,
+  };
+}
+
 export interface OverviewTabProps {
   language: "en" | "fr";
   t: Record<string, string>;
   applications: AmbassadorApplication[];
   pendingApplications: AmbassadorApplication[];
   approvedCount: number;
+  applicationStats?: ApplicationStats | null;
   events: Event[];
   displayStats: {
     totalRevenue: number;
@@ -126,7 +156,9 @@ function copy(language: "en" | "fr") {
       applications: "Candidatures",
       pending: "En attente",
       approved: "Approuvées",
+      paused: "En pause",
       rejected: "Rejetées",
+      removed: "Retirées",
       totalApplications: "Total",
       upcomingEvents: "Événements à venir",
       viewAll: "Tout voir",
@@ -154,7 +186,9 @@ function copy(language: "en" | "fr") {
     applications: "Applications",
     pending: "Pending",
     approved: "Approved",
+    paused: "Paused",
     rejected: "Rejected",
+    removed: "Removed",
     totalApplications: "Total",
     upcomingEvents: "Upcoming events",
     viewAll: "View all",
@@ -179,6 +213,7 @@ export function OverviewTab({
   applications,
   pendingApplications,
   approvedCount,
+  applicationStats,
   events,
   displayStats,
   showFinancialKpis,
@@ -190,8 +225,7 @@ export function OverviewTab({
 }: OverviewTabProps) {
   const isMobile = useIsMobile();
   const c = copy(language);
-  const rejectedCount = applications.filter((a) => a.status === "rejected").length;
-  const totalApps = applications.length;
+  const appStats = resolveApplicationStats(applications, applicationStats);
 
   const upcomingEvents = events
     .filter((e) => e.event_type === "upcoming" && new Date(e.date) >= new Date())
@@ -363,21 +397,33 @@ export function OverviewTab({
               {[
                 {
                   label: c.pending,
-                  count: pendingApplications.length,
-                  pct: totalApps > 0 ? (pendingApplications.length / totalApps) * 100 : 0,
+                  count: appStats.pending,
+                  pct: appStats.total > 0 ? (appStats.pending / appStats.total) * 100 : 0,
                   bar: "bg-amber-500",
                 },
                 {
                   label: c.approved,
-                  count: approvedCount,
-                  pct: totalApps > 0 ? (approvedCount / totalApps) * 100 : 0,
+                  count: appStats.approved,
+                  pct: appStats.total > 0 ? (appStats.approved / appStats.total) * 100 : 0,
                   bar: "bg-emerald-500",
                 },
                 {
+                  label: c.paused,
+                  count: appStats.suspended,
+                  pct: appStats.total > 0 ? (appStats.suspended / appStats.total) * 100 : 0,
+                  bar: "bg-zinc-500",
+                },
+                {
                   label: c.rejected,
-                  count: rejectedCount,
-                  pct: totalApps > 0 ? (rejectedCount / totalApps) * 100 : 0,
+                  count: appStats.rejected,
+                  pct: appStats.total > 0 ? (appStats.rejected / appStats.total) * 100 : 0,
                   bar: "bg-red-500",
+                },
+                {
+                  label: c.removed,
+                  count: appStats.removed,
+                  pct: appStats.total > 0 ? (appStats.removed / appStats.total) * 100 : 0,
+                  bar: "bg-orange-600",
                 },
               ].map((row) => (
                 <div key={row.label}>
@@ -395,7 +441,7 @@ export function OverviewTab({
               ))}
               <div className="flex items-center justify-between border-t border-border/60 pt-3 text-sm">
                 <span className="text-muted-foreground">{c.totalApplications}</span>
-                <span className="font-semibold tabular-nums text-primary">{totalApps}</span>
+                <span className="font-semibold tabular-nums text-primary">{appStats.total}</span>
               </div>
             </div>
           </Panel>

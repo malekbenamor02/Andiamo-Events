@@ -20,7 +20,7 @@ Section 1 — Hero / Accroche
 
 Section 2 — Les 3 formules (cartes comparatives)
 • 3 cartes cote a cote (ou empilees sur mobile) : Essentielle / Pro / Premium
-• Prix mis en avant : 850 DT / 1 100 DT / 2 500 DT
+• Prix mis en avant : 9000 DT / 1 100 DT / 2 500 DT
 • Liste des inclus par formule (voir tableau comparatif en Section 4 du doc formation)
 • Bouton 'Choisir cette formule' sur chaque carte — pre-remplit le formulaire
 • Formule Pro mise en avant avec badge 'Recommandee'

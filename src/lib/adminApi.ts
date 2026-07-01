@@ -1,5 +1,13 @@
 import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from '@/lib/api-routes';
 
+export interface DashboardActivityDay {
+  name: string;
+  date: string;
+  applications: number;
+  orders: number;
+  revenue: number;
+}
+
 async function adminFetch(path: string, init?: RequestInit) {
   const url = buildFullApiUrl(path, getApiBaseUrl());
   if (!url) throw new Error('API URL not configured');
@@ -48,6 +56,11 @@ export const adminApi = {
     adminFetch(API_ROUTES.ADMIN_PASS_DELETE(id), { method: 'DELETE' }),
 
   fetchDashboardBootstrap: () => adminFetch(API_ROUTES.ADMIN_DASHBOARD_BOOTSTRAP),
+
+  fetchDashboardActivity: (eventId: string, days = 7) =>
+    adminFetch(
+      `${API_ROUTES.ADMIN_DASHBOARD_ACTIVITY}?event_id=${encodeURIComponent(eventId)}&days=${days}`,
+    ).then((r: { data?: DashboardActivityDay[] }) => r.data || []),
 
   listAmbassadors: () =>
     adminFetch(API_ROUTES.ADMIN_AMBASSADORS).then((r: { data?: unknown[] }) => r.data || []),

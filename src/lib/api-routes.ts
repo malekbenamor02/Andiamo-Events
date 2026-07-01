@@ -67,6 +67,7 @@ export const API_ROUTES = {
   // Application Management
   ADMIN_UPDATE_APPLICATION: '/api/admin-update-application',
   ADMIN_DASHBOARD_BOOTSTRAP: '/api/admin/dashboard/bootstrap',
+  ADMIN_DASHBOARD_ACTIVITY: '/api/admin/dashboard/activity',
   ADMIN_AMBASSADORS: '/api/admin/ambassadors',
   ADMIN_AMBASSADOR: (id: string) => `/api/admin/ambassadors/${encodeURIComponent(id)}`,
   ADMIN_AMBASSADOR_APPLICATIONS: '/api/admin/ambassador-applications',

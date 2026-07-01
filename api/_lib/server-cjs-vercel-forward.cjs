@@ -1,5 +1,16 @@
 'use strict';
 
+const path = require('path');
+const { pathToFileURL } = require('url');
+
+/** Repo root (server.cjs passes paths like ./api/admin-login.js relative to this). */
+const PROJECT_ROOT = path.join(__dirname, '..', '..');
+
+function resolveHandlerModule(modulePath) {
+  if (path.isAbsolute(modulePath)) return modulePath;
+  return path.join(PROJECT_ROOT, modulePath.replace(/^\.\//, ''));
+}
+
 /**
  * Forward Express requests to Vercel-style ESM handlers (source of truth on production).
  * Used by server.cjs local dev parity (PR-1e).
@@ -7,11 +18,13 @@
 function createVercelHandlerForward(modulePath) {
   /** @type {Promise<(req: import('http').IncomingMessage, res: import('http').ServerResponse) => Promise<void>>|null} */
   let handlerPromise = null;
+  const resolvedPath = resolveHandlerModule(modulePath);
+  const importUrl = pathToFileURL(resolvedPath).href;
 
   return async function forwardToVercelHandler(req, res, next) {
     try {
       if (!handlerPromise) {
-        handlerPromise = import(modulePath).then((mod) => {
+        handlerPromise = import(importUrl).then((mod) => {
           if (!mod?.default) {
             throw new Error(`Module ${modulePath} has no default export`);
           }
@@ -36,4 +49,5 @@ function createVercelHandlerForward(modulePath) {
 
 module.exports = {
   createVercelHandlerForward,
+  resolveHandlerModule,
 };
