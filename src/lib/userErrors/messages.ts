@@ -40,6 +40,11 @@ const EN: CopyMap = {
     title: 'Invalid presale code',
     description: "That presale code isn't valid. Check it and try again.",
   },
+  [PUBLIC_ERROR_CODES.PRESALE_CODE_EXHAUSTED]: {
+    title: 'Presale code unavailable',
+    description:
+      'This presale code is no longer available. Please DM us on Instagram for a new code.',
+  },
   [PUBLIC_ERROR_CODES.PRESALE_UNAVAILABLE]: {
     title: 'Presale unavailable',
     description: "Presale access isn't available right now. Please try again later.",
@@ -177,6 +182,11 @@ const FR: CopyMap = {
     title: 'Code prévente invalide',
     description: "Ce code prévente n'est pas valide. Vérifiez-le et réessayez.",
   },
+  [PUBLIC_ERROR_CODES.PRESALE_CODE_EXHAUSTED]: {
+    title: 'Code prévente indisponible',
+    description:
+      "Ce code prévente n'est plus disponible. Envoyez-nous un message sur Instagram pour obtenir un nouveau code.",
+  },
   [PUBLIC_ERROR_CODES.PRESALE_UNAVAILABLE]: {
     title: 'Prévente indisponible',
     description: "L'accès prévente n'est pas disponible pour le moment. Réessayez plus tard.",
@@ -299,7 +309,7 @@ export const PRESALE_REASON_TO_CODE: Record<string, PublicErrorCode> = {
   code_not_found: PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID,
   code_not_active_yet: PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID,
   code_expired: PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID,
-  code_exhausted: PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID,
+  code_exhausted: PUBLIC_ERROR_CODES.PRESALE_CODE_EXHAUSTED,
   session_create_failed: PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE,
   server_error: PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE,
   rate_limited: PUBLIC_ERROR_CODES.RATE_LIMITED,

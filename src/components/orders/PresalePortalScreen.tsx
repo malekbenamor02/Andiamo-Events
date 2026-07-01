@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { PresaleInlineError } from "@/lib/presale/presaleRedeemFeedback";
 import { cn } from "@/lib/utils";
 
 export interface PresalePortalScreenProps {
@@ -16,6 +17,7 @@ export interface PresalePortalScreenProps {
   onSubmit: (e: React.FormEvent) => void;
   isSubmitting: boolean;
   processingLabel: string;
+  inlineError?: PresaleInlineError | null;
   onBackToEvents?: () => void;
 }
 
@@ -51,11 +53,14 @@ export function PresalePortalScreen({
   onSubmit,
   isSubmitting,
   processingLabel,
+  inlineError,
   onBackToEvents,
 }: PresalePortalScreenProps) {
   const reducedMotion = useReducedMotion();
   const copy = getCopy(language, eventName);
   const duration = reducedMotion ? 0 : undefined;
+  const isWarning = inlineError?.variant === "warning";
+  const isError = inlineError?.variant === "error";
 
   return (
     <AnimatePresence>
@@ -141,8 +146,30 @@ export function PresalePortalScreen({
               onChange={(e) => onCodeChange(e.target.value.toUpperCase())}
               placeholder={copy.placeholder}
               disabled={isSubmitting}
-              className="h-11 border-border/60 bg-muted/30 text-center tracking-[0.12em] placeholder:tracking-normal"
+              aria-invalid={inlineError ? true : undefined}
+              aria-describedby={inlineError ? "presale-code-feedback" : undefined}
+              className={cn(
+                "h-11 bg-muted/30 text-center tracking-[0.12em] placeholder:tracking-normal",
+                isWarning &&
+                  "border-amber-400 focus:border-amber-500 focus-visible:border-amber-500 dark:border-amber-500/50 dark:focus:border-amber-500/70 dark:focus-visible:border-amber-500/70",
+                isError && "border-destructive focus:border-destructive focus-visible:border-destructive",
+                !inlineError && "border-border/60"
+              )}
             />
+            {inlineError ? (
+              <p
+                id="presale-code-feedback"
+                role={isWarning ? "status" : "alert"}
+                className={cn(
+                  "rounded-md px-2.5 py-2 text-sm leading-snug",
+                  isWarning &&
+                    "border bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30",
+                  isError && "bg-destructive/10 text-destructive"
+                )}
+              >
+                {inlineError.message}
+              </p>
+            ) : null}
             <Button
               type="submit"
               disabled={isSubmitting}

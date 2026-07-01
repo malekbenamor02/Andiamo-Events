@@ -12,6 +12,7 @@ export const PUBLIC_ERROR_CODES = {
   INSUFFICIENT_STOCK: 'insufficient_stock',
   PAYMENT_UNAVAILABLE: 'payment_unavailable',
   PRESALE_CODE_INVALID: 'presale_code_invalid',
+  PRESALE_CODE_EXHAUSTED: 'presale_code_exhausted',
   PRESALE_UNAVAILABLE: 'presale_unavailable',
   PRESALE_ACCESS_REQUIRED: 'presale_access_required',
   RATE_LIMITED: 'rate_limited',
@@ -50,6 +51,8 @@ export const PUBLIC_ERROR_MESSAGES_EN = {
     "Online payment isn't available right now. Please try again or contact us.",
   [PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID]:
     "That presale code isn't valid. Check it and try again.",
+  [PUBLIC_ERROR_CODES.PRESALE_CODE_EXHAUSTED]:
+    'This presale code is no longer available. Please DM us on Instagram for a new code.',
   [PUBLIC_ERROR_CODES.PRESALE_UNAVAILABLE]:
     "Presale access isn't available right now. Please try again later.",
   [PUBLIC_ERROR_CODES.PRESALE_ACCESS_REQUIRED]:
@@ -96,7 +99,7 @@ export const PRESALE_REASON_MESSAGES = {
   code_not_found: PUBLIC_ERROR_MESSAGES_EN[PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID],
   code_not_active_yet: PUBLIC_ERROR_MESSAGES_EN[PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID],
   code_expired: PUBLIC_ERROR_MESSAGES_EN[PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID],
-  code_exhausted: PUBLIC_ERROR_MESSAGES_EN[PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID],
+  code_exhausted: PUBLIC_ERROR_MESSAGES_EN[PUBLIC_ERROR_CODES.PRESALE_CODE_EXHAUSTED],
   session_create_failed: PUBLIC_ERROR_MESSAGES_EN[PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE],
   server_error: PUBLIC_ERROR_MESSAGES_EN[PUBLIC_ERROR_CODES.SERVICE_UNAVAILABLE],
   rate_limited: PUBLIC_ERROR_MESSAGES_EN[PUBLIC_ERROR_CODES.RATE_LIMITED],

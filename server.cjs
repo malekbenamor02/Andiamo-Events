@@ -4703,6 +4703,14 @@ app.post('/api/site-logs', (req, res) => {
   req.url = req.originalUrl || req.url;
   return forwardToMisc(req, res);
 });
+app.get('/api/events/by-slug/:slug', (req, res) => {
+  req.url = req.originalUrl || req.url;
+  return forwardToMisc(req, res);
+});
+app.get('/api/events/by-id/:eventId', (req, res) => {
+  req.url = req.originalUrl || req.url;
+  return forwardToMisc(req, res);
+});
 app.get('/api/admin/dashboard/bootstrap', (req, res) => {
   req.url = req.originalUrl || req.url;
   return forwardToMisc(req, res);

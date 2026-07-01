@@ -7,6 +7,7 @@ export const PUBLIC_ERROR_CODES = {
   INSUFFICIENT_STOCK: 'insufficient_stock',
   PAYMENT_UNAVAILABLE: 'payment_unavailable',
   PRESALE_CODE_INVALID: 'presale_code_invalid',
+  PRESALE_CODE_EXHAUSTED: 'presale_code_exhausted',
   PRESALE_UNAVAILABLE: 'presale_unavailable',
   PRESALE_ACCESS_REQUIRED: 'presale_access_required',
   RATE_LIMITED: 'rate_limited',

@@ -47,6 +47,10 @@ import {
   roundPresaleMoneyDisplay,
   type PresaleDiscountPolicy,
 } from '@/lib/presale/presaleDiscount';
+import {
+  resolvePresaleRedeemFailure,
+  type PresaleInlineError,
+} from '@/lib/presale/presaleRedeemFeedback';
 import { trackEvent } from '@/lib/ga';
 import {
   createMetaEventId,
@@ -203,6 +207,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   /** From GET /api/presale/required — authoritative DB flag; undefined = meta request failed, fall back to client row. */
   const [serverPresaleRequired, setServerPresaleRequired] = useState<boolean | undefined>(undefined);
   const [presaleCodeDraft, setPresaleCodeDraft] = useState('');
+  const [presaleInlineError, setPresaleInlineError] = useState<PresaleInlineError | null>(null);
   const [presaleRedeeming, setPresaleRedeeming] = useState(false);
   /** Mirrors presale_codes discount for the active session (from session or redeem API). */
   const [presaleDiscountPolicy, setPresaleDiscountPolicy] = useState<PresaleDiscountPolicy | null>(null);
@@ -660,13 +665,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     }
   };
 
-  function presaleRedeemErrorDescription(
-    lang: 'en' | 'fr',
-    reason: string | undefined,
-    serverMessage: string | undefined
-  ): string {
-    return mapPublicError({ reason, message: serverMessage }, lang).description;
-  }
+  const handlePresaleCodeChange = useCallback((value: string) => {
+    setPresaleCodeDraft(value);
+    setPresaleInlineError(null);
+  }, []);
 
   useEffect(() => {
     if (eventSlug || eventId) {
@@ -695,6 +697,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       setPassesForbiddenPresale(false);
       setServerPresaleRequired(undefined);
       setPresaleDiscountPolicy(null);
+      setPresaleInlineError(null);
 
       const isLocal = isLocalhostClient();
 
@@ -972,6 +975,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       return;
     }
     setPresaleRedeeming(true);
+    setPresaleInlineError(null);
     try {
       let recaptchaToken: string | null = null;
       try {
@@ -1012,11 +1016,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       if (!r.ok || !body.success) {
         const reason = typeof body.reason === 'string' ? body.reason : undefined;
         const serverMessage = typeof body.message === 'string' ? body.message : undefined;
-        toast({
-          title: t[language].error,
-          description: presaleRedeemErrorDescription(language, reason, serverMessage),
-          variant: 'destructive',
-        });
+        const failure = resolvePresaleRedeemFailure(language, reason, serverMessage);
+        if (failure.type === 'inline') {
+          setPresaleInlineError(failure.error);
+        } else {
+          toast({
+            title: t[language].error,
+            description: failure.description,
+            variant: 'destructive',
+          });
+        }
         return;
       }
       const csrfFromRedeem =
@@ -1053,6 +1062,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       }
       setPassesForbiddenPresale(false);
       setPresaleCodeDraft('');
+      setPresaleInlineError(null);
       setEvent((prev) => (prev ? ({ ...prev, passes: mapped } as Event) : prev));
     } finally {
       setPresaleRedeeming(false);
@@ -1622,11 +1632,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           language={language}
           eventName={event.name}
           code={presaleCodeDraft}
-          onCodeChange={setPresaleCodeDraft}
+          onCodeChange={handlePresaleCodeChange}
           onSubmit={handlePresaleRedeem}
           isSubmitting={presaleRedeeming}
           processingLabel={t[language].processing}
-          onBackToEvents={() => navigate('/')}
+          inlineError={presaleInlineError}
+          onBackToEvents={() => {
+            setPresaleInlineError(null);
+            navigate('/');
+          }}
         />
       </main>
     );

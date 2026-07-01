@@ -47,6 +47,32 @@ describe('mapPublicError', () => {
     expect(r.title).toMatch(/prévente/i);
   });
 
+  it('maps code_exhausted to Instagram DM message', () => {
+    const r = mapPublicError({ reason: 'code_exhausted' }, 'en');
+    expect(r.code).toBe(PUBLIC_ERROR_CODES.PRESALE_CODE_EXHAUSTED);
+    expect(r.description).toBe(
+      'This presale code is no longer available. Please DM us on Instagram for a new code.'
+    );
+  });
+
+  it('keeps invalid presale message for code_not_found', () => {
+    const r = mapPublicError({ reason: 'code_not_found' }, 'en');
+    expect(r.code).toBe(PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID);
+    expect(r.description).toBe("That presale code isn't valid. Check it and try again.");
+  });
+
+  it('keeps invalid presale message for code_expired', () => {
+    const r = mapPublicError({ reason: 'code_expired' }, 'en');
+    expect(r.code).toBe(PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID);
+    expect(r.description).toBe("That presale code isn't valid. Check it and try again.");
+  });
+
+  it('keeps invalid presale message for code_not_active_yet', () => {
+    const r = mapPublicError({ reason: 'code_not_active_yet' }, 'en');
+    expect(r.code).toBe(PUBLIC_ERROR_CODES.PRESALE_CODE_INVALID);
+    expect(r.description).toBe("That presale code isn't valid. Check it and try again.");
+  });
+
   it('preserves safe stock detail from API message', () => {
     const r = mapPublicError(
       {
