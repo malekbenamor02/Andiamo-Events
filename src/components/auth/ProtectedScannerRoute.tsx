@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import { API_ROUTES, getApiBaseUrl } from '@/lib/api-routes';
+import { isAuthenticatedScannerSession } from '@/lib/scanner-session';
 
 interface ProtectedScannerRouteProps {
   children: React.ReactNode;
@@ -23,7 +24,7 @@ const ProtectedScannerRoute = ({ children, language }: ProtectedScannerRouteProp
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
 
-        if (res.ok && data?.scanner) {
+        if (isAuthenticatedScannerSession(res.ok, data)) {
           setState('auth');
           return;
         }
