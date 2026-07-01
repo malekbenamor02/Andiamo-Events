@@ -4698,6 +4698,20 @@ app.patch('/api/marketing/campaigns/:id', requireAdminAuth, requireAdminPermissi
 // ============================================
 app.get('/api/admin/phone-numbers/counts', requireAdminAuth, requireAdminPermission('marketing:manage'), (req, res) => forwardToMisc(req, res));
 
+// Client site logs + admin dashboard data (handleAdminDataRoutes in api/misc.js on Vercel)
+app.post('/api/site-logs', (req, res) => {
+  req.url = req.originalUrl || req.url;
+  return forwardToMisc(req, res);
+});
+app.get('/api/admin/dashboard/bootstrap', (req, res) => {
+  req.url = req.originalUrl || req.url;
+  return forwardToMisc(req, res);
+});
+app.get('/api/admin/dashboard/activity', (req, res) => {
+  req.url = req.originalUrl || req.url;
+  return forwardToMisc(req, res);
+});
+
 /* Legacy inline counts handler – use api/misc.js
 app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) => {
   try {

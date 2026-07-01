@@ -164,7 +164,7 @@ import type {
   HeroImage,
   AboutImage,
 } from "./types";
-import { OverviewTab } from "./components/OverviewTab";
+import { OverviewTab, type ApplicationStats } from "./components/OverviewTab";
 import type { SuggestionReadFilter, SuggestionTypeFilter } from "./components/SuggestionsTab";
 import type { MarketingTabProps } from "./components/MarketingTab";
 import { peekAndConsumeAdminVerifyCache } from "@/lib/admin-verify-cache";
@@ -327,6 +327,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const invalidateEvents = useInvalidateEvents();
   const invalidateSiteContent = useInvalidateSiteContent();
   const [applications, setApplications] = useState<AmbassadorApplication[]>([]);
+  const [applicationStats, setApplicationStats] = useState<ApplicationStats | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
 
   const [ambassadors, setAmbassadors] = useState<Ambassador[]>([]);
@@ -919,9 +920,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }, [filteredCodOrders, orderFilters.passType]);
 
   const [onlineOrdersForChart, setOnlineOrdersForChart] = useState<any[]>([]);
+  const [dashboardActivityData, setDashboardActivityData] = useState<
+    import('@/lib/adminApi').DashboardActivityDay[] | null
+  >(null);
+  /** When true, Activity chart uses legacy client-side aggregation (API unavailable). */
+  const [dashboardActivityFallback, setDashboardActivityFallback] = useState(false);
 
-  // Activity chart: last 7 days with Applications, Orders (ambassador + online), Revenue, Events created, Approved (per day)
-  const activityChartData = useMemo(() => {
+  // Activity chart fallback: last 7 days from capped in-memory arrays (legacy path)
+  const activityChartDataFallback = useMemo(() => {
     const out: { name: string; applications: number; approved: number; orders: number; revenue: number; eventsCreated: number }[] = [];
     const now = new Date();
     for (let i = 6; i >= 0; i--) {
@@ -953,6 +959,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
     return out;
   }, [applications, codAmbassadorOrders, onlineOrdersForChart, events]);
+
+  const activityChartData = useMemo(() => {
+    if (dashboardActivityData && !dashboardActivityFallback) {
+      return dashboardActivityData.map((d) => ({
+        name: d.name,
+        applications: d.applications,
+        approved: 0,
+        orders: d.orders,
+        revenue: d.revenue,
+        eventsCreated: 0,
+      }));
+    }
+    return activityChartDataFallback;
+  }, [dashboardActivityData, dashboardActivityFallback, activityChartDataFallback]);
 
   /**
    * Header event selector: all events. Test events (`is_test`) only on localhost / local dev — same as public listings.
@@ -1725,6 +1745,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           setOnlineOrdersForChart(result.data || []);
         } catch {
           setOnlineOrdersForChart([]);
+        }
+      })();
+    }
+
+    if (canAccessTab('overview')) {
+      (async () => {
+        try {
+          const data = await adminApi.fetchDashboardActivity(selectedEventId, 7);
+          setDashboardActivityData(data);
+          setDashboardActivityFallback(false);
+        } catch (e) {
+          console.warn('Dashboard activity aggregate fetch failed, using fallback:', e);
+          setDashboardActivityData(null);
+          setDashboardActivityFallback(true);
         }
       })();
     }
@@ -3062,7 +3096,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId, email: normalizedEmail }),
+      body: JSON.stringify({ orderId, newEmail: normalizedEmail }),
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -5179,6 +5213,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const ambassadorsData = bootstrap.ambassadors;
 
       setApplications(appsData || []);
+      setApplicationStats(bootstrap.applicationStats ?? null);
       setAmbassadors(ambassadorsData || []);
 
       const eventRows = eventsData || [];
@@ -8404,6 +8439,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   applications={applications}
                   pendingApplications={pendingApplications}
                   approvedCount={approvedCount}
+                  applicationStats={applicationStats}
                   events={events}
                   displayStats={dashboardOrderStats}
                   showFinancialKpis={isSuperAdmin}
