@@ -8,6 +8,7 @@ import { writeAdminMutationAudit } from './admin-mutation-audit.js';
 
 const requireCjs = createRequire(import.meta.url);
 const { revokeAllAmbassadorSessions } = requireCjs('./ambassador-auth.cjs');
+const { buildDashboardActivity } = requireCjs('./admin-dashboard-activity.cjs');
 import {
   ADMIN_DATA_ROUTE_PERMISSIONS as PERM,
   pickAllowedFields,
@@ -152,8 +153,6 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
     if (!eventId) {
       return jsonBadRequest(res, 'event_id is required');
     }
-
-    const { buildDashboardActivity } = requireCjs('./admin-dashboard-activity.cjs');
 
     try {
       const data = await buildDashboardActivity(ctx.db, { eventId, days });

@@ -242,6 +242,7 @@ function copy(language: "en" | "fr") {
       last7: "7 derniers jours",
       activityUpdating: "Mise à jour…",
       activityLoadError: "Graphique indisponible — données précédentes affichées si disponibles.",
+      activityLoadFailed: "Impossible de charger le graphique d'activité.",
       activityFootnote:
         "Les commandes payées et le revenu sont regroupés par date de création de commande.",
       applications: "Candidatures",
@@ -276,6 +277,7 @@ function copy(language: "en" | "fr") {
     last7: "Last 7 days",
     activityUpdating: "Updating…",
     activityLoadError: "Chart unavailable — showing previous data when available.",
+    activityLoadFailed: "Unable to load activity chart.",
     activityFootnote: "Paid orders and revenue are grouped by order creation date.",
     applications: "Applications",
     pending: "Pending",
@@ -418,6 +420,14 @@ export function OverviewTab({
                 <div className="h-40 w-full max-w-sm animate-pulse rounded-md bg-muted/60" />
               </div>
             ) : null}
+            {!activityChartLoading && activityChartError && activityChartData.length === 0 ? (
+              <div className="flex h-56 flex-col items-center justify-center gap-2 text-center">
+                <p className="text-sm text-muted-foreground">{c.activityLoadFailed}</p>
+                {activityChartError ? (
+                  <p className="max-w-xs text-[11px] text-amber-600 dark:text-amber-400">{activityChartError}</p>
+                ) : null}
+              </div>
+            ) : (
             <div className={cn("h-56", activityChartLoading && activityChartData.length > 0 && "opacity-60")}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={activityChartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
@@ -492,7 +502,10 @@ export function OverviewTab({
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <p className="mt-2 text-[10px] leading-snug text-muted-foreground/80">{c.activityFootnote}</p>
+            )}
+            {!activityChartError || activityChartData.length > 0 ? (
+              <p className="mt-2 text-[10px] leading-snug text-muted-foreground/80">{c.activityFootnote}</p>
+            ) : null}
           </Panel>
         </section>
 

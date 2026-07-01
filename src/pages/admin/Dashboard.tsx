@@ -1701,6 +1701,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           setDashboardActivityError(
             e instanceof Error ? e.message : 'Failed to load activity chart',
           );
+          // Keep prior dashboardActivityData on failure (stale chart).
         } finally {
           setDashboardActivityLoading(false);
         }
