@@ -114,7 +114,7 @@
     },
     {
       "source": "/api/tickets/qr/:secureToken",
-      "destination": "/api/misc.js"
+      "destination": "/api/tickets/qr/[secureToken]"
     },
     {
       "source": "/api/careers/upload-document",
@@ -881,6 +881,10 @@
       "maxDuration": 60,
       "memory": 1024,
       "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**}"
+    },
+    "api/tickets/qr/[secureToken].js": {
+      "maxDuration": 30,
+      "includeFiles": "api/_lib/**"
     },
     "api/misc.js": {
       "maxDuration": 60,

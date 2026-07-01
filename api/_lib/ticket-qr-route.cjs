@@ -37,6 +37,8 @@ async function findActiveTicketByToken(db, secureToken) {
 function extractSecureTokenFromRequest(req) {
   const fromParams = req.params?.secureToken;
   if (fromParams) return String(fromParams).trim();
+  const fromVercelQuery = req.query?.secureToken;
+  if (fromVercelQuery) return String(fromVercelQuery).trim();
   const raw = String(req.url || req.path || '').split('?')[0];
   const prefix = '/api/tickets/qr/';
   const idx = raw.indexOf(prefix);
@@ -46,12 +48,23 @@ function extractSecureTokenFromRequest(req) {
 }
 
 function sendJson(res, status, body) {
-  if (typeof res.status === 'function' && typeof res.json === 'function') {
-    return res.status(status).json(body);
+  const payload = JSON.stringify(body);
+  try {
+    if (typeof res.status === 'function' && typeof res.json === 'function') {
+      return res.status(status).json(body);
+    }
+  } catch (err) {
+    console.error(
+      '[ticket-qr] express json failed',
+      err instanceof Error ? err.message : 'unknown'
+    );
   }
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify(body));
+  if (typeof res.setHeader === 'function') {
+    res.statusCode = status;
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(payload);
+  }
+  throw new Error('response_not_writable');
 }
 
 async function handleTicketQrRequest(req, res, getServiceDb) {
@@ -111,10 +124,12 @@ async function handleTicketQrRequest(req, res, getServiceDb) {
 function registerTicketQrRoute(app, getServiceDb) {
   app.get('/api/tickets/qr/:secureToken', async (req, res) => {
     try {
-      return handleTicketQrRequest(req, res, getServiceDb);
-    } catch {
-      console.error('[ticket-qr] route error');
-      return sendJson(res, 500, { error: 'Server error' });
+      await handleTicketQrRequest(req, res, getServiceDb);
+    } catch (err) {
+      console.error('[ticket-qr] route error', err instanceof Error ? err.message : 'unknown');
+      if (!res.headersSent) {
+        return sendJson(res, 500, { error: 'Server error' });
+      }
     }
   });
 }
