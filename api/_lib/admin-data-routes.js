@@ -154,10 +154,9 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
     }
 
     const { buildDashboardActivity } = requireCjs('./admin-dashboard-activity.cjs');
-    const includePos = ctx.auth?.admin?.role === 'super_admin';
 
     try {
-      const data = await buildDashboardActivity(ctx.db, { eventId, days, includePos });
+      const data = await buildDashboardActivity(ctx.db, { eventId, days });
       return res.status(200).json({ success: true, data });
     } catch (err) {
       return res.status(500).json({

@@ -3,9 +3,12 @@
 /**
  * Overview Activity chart — server-side daily aggregates.
  *
- * Timezone policy: all day buckets use UTC (start/end of UTC calendar day).
- * Order/revenue bucket timestamp: completed_at when set, else payment_status_set_at
- * for paid online orders, else created_at.
+ * Timezone: UTC calendar days for all series.
+ * Applications: ambassador_applications.created_at
+ * Orders/revenue: orders.created_at (creation date, not payment/completion date)
+ *
+ * Main chart lines: paid orders + paid revenue only.
+ * Tooltip extras: pending orders + pending pipeline (line subtotal, no online fees).
  */
 
 const {
@@ -16,8 +19,26 @@ const {
 const UTC_DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const COD_PAID_STATUSES = ['PAID', 'COMPLETED', 'MANUAL_COMPLETED'];
+const COD_PENDING_STATUSES = [
+  'PENDING_CASH',
+  'PENDING_ADMIN_APPROVAL',
+  'PENDING_AMBASSADOR_CONFIRMATION',
+  'APPROVED',
+];
 const COD_SOURCES = ['platform_cod', 'ambassador_manual'];
 const POS_PAID_STATUSES = ['PAID', 'COMPLETED'];
+const POS_PENDING_STATUSES = ['PENDING_ADMIN_APPROVAL'];
+const EXCLUDED_SOURCES = new Set(['official_invitation', 'Invitation']);
+const ONLINE_TERMINAL_STATUSES = new Set([
+  'CANCELLED',
+  'CANCELLED_BY_ADMIN',
+  'CANCELLED_BY_AMBASSADOR',
+  'REJECTED',
+  'FAILED',
+  'REFUNDED',
+  'EXPIRED',
+  'REMOVED_BY_ADMIN',
+]);
 
 const ORDER_SELECT =
   'id, created_at, completed_at, payment_status_set_at, total_price, total_with_fees, status, payment_status, payment_method, source, notes, quantity, total, order_passes (quantity, price)';
@@ -55,8 +76,13 @@ function buildUtcDayBuckets(dayCount) {
   return days;
 }
 
+function isExcludedActivitySource(order) {
+  return EXCLUDED_SOURCES.has(order.source);
+}
+
 function isPaidOnlineActivityOrder(order) {
   if (order.source !== 'platform_online') return false;
+  if (order.payment_method !== 'online') return false;
   if (order.status === 'REMOVED_BY_ADMIN') return false;
   if (order.payment_status === 'REFUNDED' || order.status === 'REFUNDED') return false;
   return (
@@ -79,63 +105,116 @@ function isPaidPosActivityOrder(order) {
   return POS_PAID_STATUSES.includes(order.status);
 }
 
-function isActivityOrder(order, { includePos = false } = {}) {
+function isActivityOrder(order) {
   return (
     isPaidOnlineActivityOrder(order) ||
     isPaidCodActivityOrder(order) ||
-    (includePos && isPaidPosActivityOrder(order))
+    isPaidPosActivityOrder(order)
   );
 }
 
-/** Bucket date (YYYY-MM-DD UTC) for paid/collected activity orders. */
-function getActivityBucketDateUtc(order) {
-  if (order.completed_at) {
-    return new Date(order.completed_at).toISOString().slice(0, 10);
-  }
+function isPendingOnlineActivityOrder(order) {
+  if (order.source !== 'platform_online') return false;
+  if (order.payment_method !== 'online') return false;
+  if (isPaidOnlineActivityOrder(order)) return false;
+  if (ONLINE_TERMINAL_STATUSES.has(order.status)) return false;
   if (
-    order.payment_status === 'PAID' &&
-    order.payment_status_set_at &&
-    order.payment_method === 'online'
+    order.payment_status === 'FAILED' ||
+    order.payment_status === 'REFUNDED' ||
+    order.payment_status === 'EXPIRED'
   ) {
-    return new Date(order.payment_status_set_at).toISOString().slice(0, 10);
+    return false;
   }
-  if (order.created_at) {
-    return new Date(order.created_at).toISOString().slice(0, 10);
-  }
-  return null;
+  return (
+    order.status === 'PENDING_ONLINE' ||
+    order.status === 'REDIRECTED' ||
+    order.payment_status === 'PENDING_PAYMENT' ||
+    order.payment_status == null
+  );
 }
 
-function activityOrderRevenue(order) {
+function isPendingCodActivityOrder(order) {
+  if (order.payment_method !== 'ambassador_cash') return false;
+  if (!COD_SOURCES.includes(order.source)) return false;
+  if (order.status === 'REMOVED_BY_ADMIN') return false;
+  if (isPaidCodActivityOrder(order)) return false;
+  return COD_PENDING_STATUSES.includes(order.status);
+}
+
+function isPendingPosActivityOrder(order) {
+  if (order.source !== 'point_de_vente') return false;
+  if (order.status === 'REMOVED_BY_ADMIN') return false;
+  if (isPaidPosActivityOrder(order)) return false;
+  return POS_PENDING_STATUSES.includes(order.status);
+}
+
+function isPendingActivityOrder(order) {
+  return (
+    isPendingOnlineActivityOrder(order) ||
+    isPendingCodActivityOrder(order) ||
+    isPendingPosActivityOrder(order)
+  );
+}
+
+/** Bucket date (YYYY-MM-DD UTC) from orders.created_at for Activity chart. */
+function getActivityCreatedAtBucketDateUtc(order) {
+  if (!order.created_at) return null;
+  return new Date(order.created_at).toISOString().slice(0, 10);
+}
+
+function activityPaidRevenue(order) {
   if (isPaidOnlineActivityOrder(order)) {
     return getOrderReportRevenue(order);
   }
   return getOrderTicketsAndRevenue(order).revenue;
 }
 
+/** Pending pipeline: line subtotal only (no online payment fees until paid). */
+function activityPendingRevenue(order) {
+  return getOrderTicketsAndRevenue(order).revenue;
+}
+
 /**
- * Pure aggregation for tests — merge order rows into day buckets.
+ * Pure aggregation for tests — merge order rows into day buckets by created_at.
  */
-function aggregateActivityFromOrders(orders, dayBuckets, { includePos = false } = {}) {
-  const byDate = new Map(dayBuckets.map((d) => [d.date, { ...d, applications: 0, orders: 0, revenue: 0 }]));
+function aggregateActivityFromOrders(orders, dayBuckets) {
+  const byDate = new Map(
+    dayBuckets.map((d) => [
+      d.date,
+      { ...d, applications: 0, orders: 0, revenue: 0, pendingOrders: 0, pendingRevenue: 0 },
+    ]),
+  );
   const validDates = new Set(dayBuckets.map((d) => d.date));
 
   for (const order of orders) {
-    if (!isActivityOrder(order, { includePos })) continue;
-    const bucketDate = getActivityBucketDateUtc(order);
+    if (isExcludedActivitySource(order)) continue;
+    const bucketDate = getActivityCreatedAtBucketDateUtc(order);
     if (!bucketDate || !validDates.has(bucketDate)) continue;
     const row = byDate.get(bucketDate);
-    row.orders += 1;
-    row.revenue += activityOrderRevenue(order);
+
+    if (isActivityOrder(order)) {
+      row.orders += 1;
+      row.revenue += activityPaidRevenue(order);
+    } else if (isPendingActivityOrder(order)) {
+      row.pendingOrders += 1;
+      row.pendingRevenue += activityPendingRevenue(order);
+    }
   }
 
   return dayBuckets.map((d) => {
     const row = byDate.get(d.date);
+    const revenue = Math.round(row.revenue);
+    const pendingRevenue = Math.round(row.pendingRevenue);
     return {
       name: row.name,
       date: row.date,
       applications: row.applications,
       orders: row.orders,
-      revenue: Math.round(row.revenue),
+      revenue,
+      pendingOrders: row.pendingOrders,
+      pendingRevenue,
+      totalCreatedOrders: row.orders + row.pendingOrders,
+      totalPotentialRevenue: revenue + pendingRevenue,
     };
   });
 }
@@ -163,15 +242,15 @@ async function countApplicationsByDay(db, dayBuckets) {
   return counts;
 }
 
-async function fetchActivityOrdersForEvent(db, eventId, includePos) {
+async function fetchActivityOrdersForEvent(db, eventId, windowStart, windowEnd) {
   const onlineRows = await fetchAllPaginated((offset, pageSize) =>
     db
       .from('orders')
       .select(ORDER_SELECT)
       .eq('event_id', eventId)
       .eq('source', 'platform_online')
-      .neq('status', 'REMOVED_BY_ADMIN')
-      .or('payment_status.eq.PAID,status.eq.PAID,status.eq.COMPLETED')
+      .gte('created_at', windowStart)
+      .lte('created_at', windowEnd)
       .order('created_at', { ascending: false })
       .range(offset, offset + pageSize - 1),
   );
@@ -183,25 +262,23 @@ async function fetchActivityOrdersForEvent(db, eventId, includePos) {
       .eq('event_id', eventId)
       .eq('payment_method', 'ambassador_cash')
       .in('source', COD_SOURCES)
-      .in('status', COD_PAID_STATUSES)
+      .gte('created_at', windowStart)
+      .lte('created_at', windowEnd)
       .order('created_at', { ascending: false })
       .range(offset, offset + pageSize - 1),
   );
 
-  let posRows = [];
-  if (includePos) {
-    posRows = await fetchAllPaginated((offset, pageSize) =>
-      db
-        .from('orders')
-        .select(ORDER_SELECT)
-        .eq('event_id', eventId)
-        .eq('source', 'point_de_vente')
-        .in('status', POS_PAID_STATUSES)
-        .neq('status', 'REMOVED_BY_ADMIN')
-        .order('created_at', { ascending: false })
-        .range(offset, offset + pageSize - 1),
-    );
-  }
+  const posRows = await fetchAllPaginated((offset, pageSize) =>
+    db
+      .from('orders')
+      .select(ORDER_SELECT)
+      .eq('event_id', eventId)
+      .eq('source', 'point_de_vente')
+      .gte('created_at', windowStart)
+      .lte('created_at', windowEnd)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + pageSize - 1),
+  );
 
   const seen = new Set();
   const merged = [];
@@ -213,26 +290,40 @@ async function fetchActivityOrdersForEvent(db, eventId, includePos) {
   return merged;
 }
 
-async function buildDashboardActivity(db, { eventId, days = 7, includePos = false }) {
+async function buildDashboardActivity(db, { eventId, days = 7 }) {
   const dayCount = Math.min(30, Math.max(1, Number(days) || 7));
   const dayBuckets = buildUtcDayBuckets(dayCount);
+  const windowStart = dayBuckets[0].startIso;
+  const windowEnd = dayBuckets[dayBuckets.length - 1].endIso;
 
   const [applicationCounts, orders] = await Promise.all([
     countApplicationsByDay(db, dayBuckets),
-    fetchActivityOrdersForEvent(db, eventId, includePos),
+    fetchActivityOrdersForEvent(db, eventId, windowStart, windowEnd),
   ]);
 
-  const aggregated = aggregateActivityFromOrders(orders, dayBuckets, { includePos });
+  const aggregated = aggregateActivityFromOrders(orders, dayBuckets);
   return applyApplicationCounts(aggregated, applicationCounts);
 }
 
 module.exports = {
   buildUtcDayBuckets,
-  getActivityBucketDateUtc,
+  getActivityCreatedAtBucketDateUtc,
   isActivityOrder,
+  isPendingActivityOrder,
   isPaidOnlineActivityOrder,
   isPaidCodActivityOrder,
   isPaidPosActivityOrder,
+  isPendingOnlineActivityOrder,
+  isPendingCodActivityOrder,
+  isPendingPosActivityOrder,
+  isExcludedActivitySource,
+  activityPaidRevenue,
+  activityPendingRevenue,
   aggregateActivityFromOrders,
   buildDashboardActivity,
+  COD_PAID_STATUSES,
+  COD_PENDING_STATUSES,
+  POS_PAID_STATUSES,
+  POS_PENDING_STATUSES,
+  EXCLUDED_SOURCES,
 };

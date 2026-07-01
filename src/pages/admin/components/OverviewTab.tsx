@@ -22,8 +22,11 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import type { AmbassadorApplication, Event } from "../types";
+import type { DashboardActivityDay } from "@/lib/adminApi";
 import { formatDateDMY } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
+import { format, parseISO } from "date-fns";
+import { enGB, fr } from "date-fns/locale";
 
 export interface ApplicationStats {
   pending: number;
@@ -72,16 +75,100 @@ export interface OverviewTabProps {
   adminName: string | null;
   pendingAmbassadorOrdersCount: number;
   previousPendingAmbassadorOrdersCount: number | null;
-  activityChartData: {
-    name: string;
-    applications: number;
-    approved: number;
-    orders: number;
-    revenue: number;
-    eventsCreated: number;
-  }[];
+  activityChartData: DashboardActivityDay[];
+  activityChartLoading?: boolean;
+  activityChartError?: string | null;
   setActiveTab: (tab: string) => void;
   getStatusBadge: (status: string) => React.ReactNode;
+}
+
+function formatActivityTooltipHeading(dateIso: string, language: "en" | "fr") {
+  try {
+    const d = parseISO(dateIso);
+    const loc = language === "fr" ? fr : enGB;
+    return format(d, "EEEE, dd/MM/yyyy", { locale: loc });
+  } catch {
+    return formatDateDMY(dateIso, language);
+  }
+}
+
+function ActivityChartTooltip({
+  active,
+  payload,
+  language,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: DashboardActivityDay }>;
+  language: "en" | "fr";
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  const t =
+    language === "fr"
+      ? {
+          applications: "Candidatures",
+          ordersCreated: "Commandes créées",
+          paid: "Payées",
+          pending: "En attente",
+          total: "Total",
+          revenue: "Revenu",
+          paidRevenue: "Revenu payé",
+          pendingPipeline: "Pipeline en attente",
+          totalPotential: "Potentiel total",
+        }
+      : {
+          applications: "Applications",
+          ordersCreated: "Orders created",
+          paid: "Paid",
+          pending: "Pending",
+          total: "Total",
+          revenue: "Revenue",
+          paidRevenue: "Paid revenue",
+          pendingPipeline: "Pending pipeline",
+          totalPotential: "Total potential",
+        };
+
+  const fmt = (n: number) => Number(n).toLocaleString();
+
+  return (
+    <div className="min-w-[200px] rounded-md border border-border bg-popover px-3 py-2.5 text-xs shadow-md">
+      <p className="mb-2 font-medium capitalize text-foreground">
+        {formatActivityTooltipHeading(row.date, language)}
+      </p>
+      <div className="space-y-2 text-muted-foreground">
+        <div>
+          <p className="font-medium text-foreground">{t.applications}</p>
+          <p className="tabular-nums">{fmt(row.applications)}</p>
+        </div>
+        <div>
+          <p className="font-medium text-foreground">{t.ordersCreated}</p>
+          <p>
+            {t.paid}: <span className="tabular-nums text-foreground">{fmt(row.orders)}</span>
+          </p>
+          <p>
+            {t.pending}: <span className="tabular-nums text-foreground">{fmt(row.pendingOrders)}</span>
+          </p>
+          <p>
+            {t.total}: <span className="tabular-nums text-foreground">{fmt(row.totalCreatedOrders)}</span>
+          </p>
+        </div>
+        <div>
+          <p className="font-medium text-foreground">{t.revenue}</p>
+          <p>
+            {t.paidRevenue}: <span className="tabular-nums text-foreground">{fmt(row.revenue)} TND</span>
+          </p>
+          <p>
+            {t.pendingPipeline}:{" "}
+            <span className="tabular-nums text-foreground">{fmt(row.pendingRevenue)} TND</span>
+          </p>
+          <p>
+            {t.totalPotential}:{" "}
+            <span className="tabular-nums text-foreground">{fmt(row.totalPotentialRevenue)} TND</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -151,8 +238,12 @@ function copy(language: "en" | "fr") {
       signedIn: "Connecté en tant que",
       subtitle: "Aperçu de vos événements",
       overview: "Vue d'ensemble",
-      activity: "Activité",
+      activity: "Activité payée",
       last7: "7 derniers jours",
+      activityUpdating: "Mise à jour…",
+      activityLoadError: "Graphique indisponible — données précédentes affichées si disponibles.",
+      activityFootnote:
+        "Les commandes payées et le revenu sont regroupés par date de création de commande.",
       applications: "Candidatures",
       pending: "En attente",
       approved: "Approuvées",
@@ -172,8 +263,8 @@ function copy(language: "en" | "fr") {
       pendingRevenue: "Revenus en attente",
       soldTickets: "Billets vendus",
       chartApplications: "Candidatures",
-      chartOrders: "Commandes",
-      chartRevenue: "Revenus (TND)",
+      chartOrders: "Commandes payées",
+      chartRevenue: "Revenu payé (TND)",
     };
   }
   return {
@@ -181,8 +272,11 @@ function copy(language: "en" | "fr") {
     signedIn: "Signed in as",
     subtitle: "Overview of your events",
     overview: "Overview",
-    activity: "Activity",
+    activity: "Paid activity",
     last7: "Last 7 days",
+    activityUpdating: "Updating…",
+    activityLoadError: "Chart unavailable — showing previous data when available.",
+    activityFootnote: "Paid orders and revenue are grouped by order creation date.",
     applications: "Applications",
     pending: "Pending",
     approved: "Approved",
@@ -202,8 +296,8 @@ function copy(language: "en" | "fr") {
     pendingRevenue: "Pending revenue",
     soldTickets: "Sold tickets",
     chartApplications: "Applications",
-    chartOrders: "Orders",
-    chartRevenue: "Revenue (TND)",
+    chartOrders: "Paid orders",
+    chartRevenue: "Paid revenue (TND)",
   };
 }
 
@@ -220,6 +314,8 @@ export function OverviewTab({
   adminName,
   pendingAmbassadorOrdersCount,
   activityChartData,
+  activityChartLoading = false,
+  activityChartError = null,
   setActiveTab,
   getStatusBadge,
 }: OverviewTabProps) {
@@ -309,10 +405,20 @@ export function OverviewTab({
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               {c.activity}
             </span>
-            <span className="text-[11px] text-muted-foreground">{c.last7}</span>
+            <span className="text-[11px] text-muted-foreground">
+              {activityChartLoading ? c.activityUpdating : c.last7}
+            </span>
           </div>
-          <Panel className="p-4">
-            <div className="h-56">
+          {activityChartError ? (
+            <p className="mb-2 text-[11px] text-amber-600 dark:text-amber-400">{c.activityLoadError}</p>
+          ) : null}
+          <Panel className="relative p-4">
+            {activityChartLoading && activityChartData.length === 0 ? (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-card/80">
+                <div className="h-40 w-full max-w-sm animate-pulse rounded-md bg-muted/60" />
+              </div>
+            ) : null}
+            <div className={cn("h-56", activityChartLoading && activityChartData.length > 0 && "opacity-60")}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={activityChartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
@@ -338,25 +444,24 @@ export function OverviewTab({
                     width={32}
                   />
                   <RechartsTooltip
-                    contentStyle={{
-                      background: "hsl(var(--popover))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: 6,
-                      fontSize: 12,
-                    }}
-                    formatter={(value: number, name: string) => {
+                    content={<ActivityChartTooltip language={language} />}
+                    cursor={{ stroke: "hsl(var(--border))" }}
+                    wrapperStyle={{ outline: "none", zIndex: 20 }}
+                    allowEscapeViewBox={{ x: true, y: true }}
+                    trigger={isMobile ? "click" : "hover"}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11 }}
+                    iconSize={8}
+                    formatter={(value: string) => {
                       const labels: Record<string, string> = {
                         applications: c.chartApplications,
                         orders: c.chartOrders,
                         revenue: c.chartRevenue,
                       };
-                      return [
-                        name === "revenue" ? `${Number(value).toLocaleString()} TND` : value,
-                        labels[name] || name,
-                      ];
+                      return labels[value] || value;
                     }}
                   />
-                  <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />
                   <Line
                     type="monotone"
                     dataKey="applications"
@@ -387,6 +492,7 @@ export function OverviewTab({
                 </LineChart>
               </ResponsiveContainer>
             </div>
+            <p className="mt-2 text-[10px] leading-snug text-muted-foreground/80">{c.activityFootnote}</p>
           </Panel>
         </section>
 

@@ -4,8 +4,16 @@ export interface DashboardActivityDay {
   name: string;
   date: string;
   applications: number;
+  /** Paid orders created this UTC day (main chart line). */
   orders: number;
+  /** Paid revenue from paid orders created this UTC day (main chart line). */
   revenue: number;
+  /** Pending pipeline orders created this UTC day (tooltip only). */
+  pendingOrders: number;
+  /** Pending pipeline value from pending orders created this UTC day (tooltip only). */
+  pendingRevenue: number;
+  totalCreatedOrders: number;
+  totalPotentialRevenue: number;
 }
 
 async function adminFetch(path: string, init?: RequestInit) {

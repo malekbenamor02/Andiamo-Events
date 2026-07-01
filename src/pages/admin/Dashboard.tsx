@@ -919,60 +919,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }, 0);
   }, [filteredCodOrders, orderFilters.passType]);
 
-  const [onlineOrdersForChart, setOnlineOrdersForChart] = useState<any[]>([]);
   const [dashboardActivityData, setDashboardActivityData] = useState<
     import('@/lib/adminApi').DashboardActivityDay[] | null
   >(null);
-  /** When true, Activity chart uses legacy client-side aggregation (API unavailable). */
-  const [dashboardActivityFallback, setDashboardActivityFallback] = useState(false);
+  const [dashboardActivityLoading, setDashboardActivityLoading] = useState(false);
+  const [dashboardActivityError, setDashboardActivityError] = useState<string | null>(null);
 
-  // Activity chart fallback: last 7 days from capped in-memory arrays (legacy path)
-  const activityChartDataFallback = useMemo(() => {
-    const out: { name: string; applications: number; approved: number; orders: number; revenue: number; eventsCreated: number }[] = [];
-    const now = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const dateStr = format(d, 'yyyy-MM-dd');
-      const dayLabel = format(d, 'EEE');
-      const appCount = applications.filter((a: { created_at?: string }) => format(new Date(a.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
-      const approvedCount = applications.filter((a: { created_at?: string; status?: string }) => a.status === 'approved' && format(new Date(a.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
-      const dayAmbassador = codAmbassadorOrders.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
-      const dayOnline = onlineOrdersForChart.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
-      const ambassadorRevenue = dayAmbassador
-        .filter((o: any) => ['PAID', 'COMPLETED'].includes(o.status))
-        .reduce((s: number, o: any) => s + getOrderLineRevenue(o), 0);
-      const chartOnlinePaid = (o: any) =>
-        o.payment_status === 'PAID' || o.status === 'PAID' || o.status === 'COMPLETED';
-      const onlineRevenue = dayOnline
-        .filter((o: any) => chartOnlinePaid(o))
-        .reduce((s: number, o: any) => s + getOrderReportRevenue(o), 0);
-      const eventsCount = events.filter((ev: { created_at?: string }) => format(new Date(ev.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
-      out.push({
-        name: dayLabel,
-        applications: appCount,
-        approved: approvedCount,
-        orders: dayAmbassador.length + dayOnline.length,
-        revenue: Math.round(ambassadorRevenue + onlineRevenue),
-        eventsCreated: eventsCount,
-      });
-    }
-    return out;
-  }, [applications, codAmbassadorOrders, onlineOrdersForChart, events]);
-
-  const activityChartData = useMemo(() => {
-    if (dashboardActivityData && !dashboardActivityFallback) {
-      return dashboardActivityData.map((d) => ({
-        name: d.name,
-        applications: d.applications,
-        approved: 0,
-        orders: d.orders,
-        revenue: d.revenue,
-        eventsCreated: 0,
-      }));
-    }
-    return activityChartDataFallback;
-  }, [dashboardActivityData, dashboardActivityFallback, activityChartDataFallback]);
+  const activityChartData = useMemo(() => dashboardActivityData ?? [], [dashboardActivityData]);
 
   /**
    * Header event selector: all events. Test events (`is_test`) only on localhost / local dev — same as public listings.
@@ -1006,10 +959,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     city: 'all',
   });
 
-  /**
-   * POS orders for overview KPIs (super_admin only). Loaded via Supabase like online/ambassador
-   * so production totals match the dashboard event filter without a separate API round-trip.
-   */
+  /** POS orders for overview KPI strip (super_admin only). */
   const [posOrdersForOverview, setPosOrdersForOverview] = useState<any[]>([]);
 
   // Dashboard overview stats: paid revenue + sold tickets for online + ambassador; super_admin also includes POS (paid + pending revenue; paid tickets only)
@@ -1738,27 +1688,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       void fetchOnlineOrders();
     }
 
-    if (canAccessTab('online-orders') || canAccessTab('overview')) {
-      (async () => {
-        try {
-          const result = await adminOrdersApi.chartOnlineOrders(selectedEventId);
-          setOnlineOrdersForChart(result.data || []);
-        } catch {
-          setOnlineOrdersForChart([]);
-        }
-      })();
-    }
-
     if (canAccessTab('overview')) {
+      setDashboardActivityLoading(true);
+      setDashboardActivityError(null);
       (async () => {
         try {
           const data = await adminApi.fetchDashboardActivity(selectedEventId, 7);
           setDashboardActivityData(data);
-          setDashboardActivityFallback(false);
+          setDashboardActivityError(null);
         } catch (e) {
-          console.warn('Dashboard activity aggregate fetch failed, using fallback:', e);
-          setDashboardActivityData(null);
-          setDashboardActivityFallback(true);
+          console.warn('Dashboard activity aggregate fetch failed:', e);
+          setDashboardActivityError(
+            e instanceof Error ? e.message : 'Failed to load activity chart',
+          );
+        } finally {
+          setDashboardActivityLoading(false);
         }
       })();
     }
@@ -8274,6 +8218,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   pendingAmbassadorOrdersCount={pendingAmbassadorOrdersCount}
                   previousPendingAmbassadorOrdersCount={previousPendingAmbassadorOrdersCount}
                   activityChartData={activityChartData}
+                  activityChartLoading={dashboardActivityLoading}
+                  activityChartError={dashboardActivityError}
                   setActiveTab={setActiveTab}
                   getStatusBadge={getStatusBadge}
                 />
