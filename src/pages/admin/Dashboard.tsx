@@ -145,6 +145,22 @@ import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
 import { useQueryClient } from "@tanstack/react-query";
 import { useInvalidateEvents } from "@/hooks/useEvents";
 import { useInvalidateSiteContent } from "@/hooks/useSiteContent";
+import {
+  getDesktopNotificationPermissionState,
+  useAdminNotificationFeed,
+} from "@/hooks/useAdminNotificationFeed";
+import {
+  unlockAdminNotificationAudio,
+  playAdminNotificationSound,
+  playAdminNotificationTestSound,
+  isAdminNotificationAudioUnlocked,
+} from "@/lib/admin/adminNotificationAudio";
+import { showAdminDesktopNotification } from "@/lib/admin/adminNotificationDesktop";
+import {
+  ADMIN_DESKTOP_ALERTS_KEY,
+  type AdminFeedEvent,
+  type AdminFeedNotificationKind,
+} from "@/lib/admin/adminNotificationTypes";
 import { logger } from "@/lib/logger";
 import { logAdminAction } from "@/lib/adminLogs";
 import { OfficialInvitationForm } from "@/components/admin/OfficialInvitationForm";
@@ -1104,6 +1120,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       return true;
     }
   });
+  const [desktopAlertsEnabled, setDesktopAlertsEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(ADMIN_DESKTOP_ALERTS_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [alertsUnlocked, setAlertsUnlocked] = useState(() =>
+    typeof window !== "undefined" ? isAdminNotificationAudioUnlocked() : false,
+  );
+  const [desktopPermission, setDesktopPermission] = useState(() =>
+    getDesktopNotificationPermissionState(),
+  );
+
+  const fetchOnlineOrdersRef = useRef<() => void>(() => {});
+  const fetchAmbassadorSalesDataRef = useRef<() => void>(() => {});
+  const fetchAllDataRef = useRef<() => Promise<void>>(async () => {});
 
   const canAccessTab = useCallback(
     (tab: string) => canAccessTabKey(allowedTabs, tab),
@@ -1122,68 +1156,85 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const allowedTabItems = useMemo(() => getTabsForAllowed(allowedTabs), [allowedTabs]);
 
-  const playNotificationSound = () => {
-    if (typeof window === "undefined") return;
-    try {
-      const audio = new Audio("/sounds/notification.mp3");
-      audio.volume = 0.6;
-      audio.onerror = () => {
-        playNotificationBeepFallback();
-      };
-      audio.play().catch(() => {
-        playNotificationBeepFallback();
-      });
-    } catch {
-      playNotificationBeepFallback();
-    }
+  const mapFeedKind = (kind: AdminFeedNotificationKind): AdminNotificationKind => {
+    if (kind === 'online_order') return 'online_order';
+    if (kind === 'ambassador_order') return 'ambassador_order';
+    return 'ambassador_application';
   };
 
-  const playNotificationBeepFallback = () => {
-    if (typeof window === "undefined") return;
-    try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = 880;
-      osc.type = "sine";
-      gain.gain.setValueAtTime(0.15, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.15);
-    } catch {
-      // ignore
-    }
-  };
+  const handleFeedEvents = useCallback((events: AdminFeedEvent[]) => {
+    if (events.length === 0) return;
+    const mapped: AdminNotification[] = events.map((ev) => ({
+      id: `${ev.id}-${ev.occurredAt}`,
+      feedEventId: ev.id,
+      kind: mapFeedKind(ev.kind),
+      title: ev.title,
+      message: ev.message,
+      createdAt: ev.occurredAt,
+      tabTarget: ev.tabTarget,
+      recordId: ev.recordId,
+      eventId: ev.eventId,
+      severity: ev.severity,
+    }));
+    setNotifications((prev) => [...mapped, ...prev].slice(0, 50));
+    setUnreadNotifications((prev) => prev + mapped.length);
+  }, []);
 
-  const showBrowserNotification = (title: string, body: string) => {
-    if (typeof window === "undefined") return;
-    if (!("Notification" in window)) return;
+  const handleEnableAlerts = useCallback(async () => {
+    unlockAdminNotificationAudio();
+    playAdminNotificationTestSound();
+    setAlertsUnlocked(true);
+
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setDesktopPermission("unsupported");
+      return;
+    }
+
     try {
-      if (Notification.permission === "granted") {
-        const n = new Notification(title, {
-          body,
-          icon: "/assets/faviconn.png",
-          badge: "/assets/faviconn.png",
-        });
-        n.onerror = () => {};
-      } else if (Notification.permission === "default") {
-        Notification.requestPermission()
-          .then((perm) => {
-            if (perm === "granted") {
-              const n = new Notification(title, {
-                body,
-                icon: "/assets/faviconn.png",
-                badge: "/assets/faviconn.png",
-              });
-              n.onerror = () => {};
-            }
-          })
-          .catch(() => {});
+      const perm = await Notification.requestPermission();
+      setDesktopPermission(perm === "granted" || perm === "denied" || perm === "default" ? perm : "default");
+      if (perm === "granted") {
+        setDesktopAlertsEnabled(true);
+        try {
+          window.localStorage.setItem(ADMIN_DESKTOP_ALERTS_KEY, "true");
+        } catch {
+          // ignore
+        }
       }
     } catch {
-      // Ignore notification errors
+      setDesktopPermission(getDesktopNotificationPermissionState());
+    }
+  }, []);
+
+  const handleNotificationClick = useCallback((notification: AdminNotification) => {
+    if (notification.tabTarget) {
+      setActiveTab(notification.tabTarget);
+    }
+    setUnreadNotifications((prev) => Math.max(0, prev - 1));
+  }, []);
+
+  const pushNotification = (payload: {
+    kind: AdminNotificationKind;
+    title: string;
+    message: string;
+  }) => {
+    const notification: AdminNotification = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: new Date().toISOString(),
+      ...payload,
+    };
+    setNotifications((prev) => [notification, ...prev].slice(0, 50));
+    setUnreadNotifications((prev) => prev + 1);
+    if (soundEnabled && isAdminNotificationAudioUnlocked()) {
+      playAdminNotificationSound();
+    }
+    if (
+      desktopAlertsEnabled &&
+      typeof window !== "undefined" &&
+      "Notification" in window &&
+      Notification.permission === "granted"
+    ) {
+      showAdminDesktopNotification(notification.title, notification.message);
     }
   };
 
@@ -1275,25 +1326,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       ? `${buyerName} — ${passesText} • Total ${totalText}`
       : `${buyerName} — ${passesText}`;
   };
-
-  const pushNotification = (payload: {
-    kind: AdminNotificationKind;
-    title: string;
-    message: string;
-  }) => {
-    const notification: AdminNotification = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      createdAt: new Date().toISOString(),
-      ...payload,
-    };
-    setNotifications((prev) => [notification, ...prev].slice(0, 50));
-    setUnreadNotifications((prev) => prev + 1);
-    if (soundEnabled) {
-      playNotificationSound();
-    }
-    showBrowserNotification(notification.title, notification.message);
-  };
-
 
   const content = {
     en: {
@@ -1523,19 +1555,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     fetchAllData();
   }, []);
 
-  // Request browser notification permission as soon as dashboard loads so notifications
-  // work when the tab is in background or minimized (realtime still runs, we show Notification + sound).
-  useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, []);
-
-  // Ambassador applications realtime removed — use admin API bootstrap refresh instead (RLS Wave B).
-
-  // Orders realtime disabled (RLS Wave B): refresh after mutations and on event change.
-  // Tradeoff: no live INSERT notifications; lower risk than anon realtime on privileged table.
+  // Orders realtime disabled (RLS Wave B): notification feed polling instead.
 
   // Realtime: career applications — notify so admin gets alerts even when not on Career tab
   useEffect(() => {
@@ -2543,6 +2563,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setLoadingOrders(false);
     }
   };
+  fetchAmbassadorSalesDataRef.current = () => {
+    void fetchAmbassadorSalesData();
+  };
 
   // Fetch online orders
   const fetchOnlineOrders = async () => {
@@ -2674,6 +2697,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   fetchOnlineOrdersLatestRef.current = fetchOnlineOrders;
+  fetchOnlineOrdersRef.current = () => {
+    void fetchOnlineOrders();
+  };
 
   // Admin order management functions
   // Approve Email/SMS delivery for PAID orders
@@ -5210,6 +5236,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setLoading(false);
     }
   };
+  fetchAllDataRef.current = fetchAllData;
+
+  useAdminNotificationFeed({
+    enabled: authReady && !loading,
+    eventId: selectedEventId || null,
+    soundEnabled,
+    desktopAlertsEnabled,
+    onEvents: handleFeedEvents,
+    onRefreshOnlineOrders: () => fetchOnlineOrdersRef.current(),
+    onRefreshAmbassadorSales: () => fetchAmbassadorSalesDataRef.current(),
+    onRefreshApplications: () => {
+      void fetchAllDataRef.current();
+    },
+  });
 
   const handleApprove = async (application: AmbassadorApplication) => {
     setProcessingId(application.id);
@@ -8176,6 +8216,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         }
                       }}
                       onMarkAllRead={() => setUnreadNotifications(0)}
+                      desktopPermission={desktopPermission}
+                      desktopAlertsEnabled={desktopAlertsEnabled}
+                      alertsUnlocked={alertsUnlocked}
+                      onEnableAlerts={handleEnableAlerts}
+                      onNotificationClick={handleNotificationClick}
                     />
                   </div>
                 </div>

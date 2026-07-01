@@ -69,6 +69,7 @@ export const API_ROUTES = {
   ADMIN_AMBASSADOR_APPLICATION_RESEND_EMAIL: '/api/admin-ambassador-application-resend-email',
   ADMIN_DASHBOARD_BOOTSTRAP: '/api/admin/dashboard/bootstrap',
   ADMIN_DASHBOARD_ACTIVITY: '/api/admin/dashboard/activity',
+  ADMIN_NOTIFICATIONS_FEED: '/api/admin/notifications/feed',
   ADMIN_AMBASSADORS: '/api/admin/ambassadors',
   ADMIN_AMBASSADOR: (id: string) => `/api/admin/ambassadors/${encodeURIComponent(id)}`,
   ADMIN_AMBASSADOR_APPLICATIONS: '/api/admin/ambassador-applications',

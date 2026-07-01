@@ -70,6 +70,14 @@ export const adminApi = {
       `${API_ROUTES.ADMIN_DASHBOARD_ACTIVITY}?event_id=${encodeURIComponent(eventId)}&days=${days}`,
     ).then((r: { data?: DashboardActivityDay[] }) => r.data || []),
 
+  fetchNotificationFeed: (params: { since: string; eventId?: string | null }) => {
+    const qs = new URLSearchParams({ since: params.since });
+    if (params.eventId) qs.set('event_id', params.eventId);
+    return adminFetch(
+      `${API_ROUTES.ADMIN_NOTIFICATIONS_FEED}?${qs.toString()}`,
+    ) as Promise<import('@/lib/admin/adminNotificationTypes').AdminNotificationFeedResponse>;
+  },
+
   listAmbassadors: () =>
     adminFetch(API_ROUTES.ADMIN_AMBASSADORS).then((r: { data?: unknown[] }) => r.data || []),
 

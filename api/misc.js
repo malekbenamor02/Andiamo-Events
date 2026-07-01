@@ -74,6 +74,7 @@ const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot
 
 // Ensure Vercel Node file trace includes Overview Activity chart aggregation (used via admin-data-routes).
 requireFromRoot(nodePath.join(__dirname, '_lib', 'admin-dashboard-activity.cjs'));
+requireFromRoot(nodePath.join(__dirname, '_lib', 'admin-notifications-feed.cjs'));
 
 const { uploadTicketQrToR2OrSupabase, buildTicketQrApiUrl, resolveTicketQrUrl } = requireFromRoot(nodePath.join(__dirname, '_lib', 'r2-media.cjs'));
 const { loadAdminOrderQrTicketPreviews } = requireFromRoot(

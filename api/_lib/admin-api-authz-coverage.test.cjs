@@ -156,11 +156,21 @@ describe('admin data routes — dashboard activity auth', () => {
     const block = blockBetween(
       src,
       "'/api/admin/dashboard/activity'",
-      "if (path === '/api/admin/ambassadors'",
+      "'/api/admin/notifications/feed'",
     );
     assert.match(block, /requireAdmin\(req, res, verifyAdminAuth, PERM\.DASHBOARD_BOOTSTRAP\)/);
     assert.match(block, /buildDashboardActivity/);
-    assert.match(block, /super_admin/);
+  });
+
+  it('notifications/feed requires dashboard:view before buildAdminNotificationsFeed', () => {
+    const src = read('api/_lib/admin-data-routes.js');
+    const block = blockBetween(
+      src,
+      "'/api/admin/notifications/feed'",
+      "if (path === '/api/admin/ambassadors'",
+    );
+    assert.match(block, /requireAdmin\(req, res, verifyAdminAuth, PERM\.DASHBOARD_BOOTSTRAP\)/);
+    assert.match(block, /buildAdminNotificationsFeed/);
   });
 });
 

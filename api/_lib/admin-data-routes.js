@@ -165,6 +165,40 @@ export async function handleAdminDataRoutes(req, res, path, method, { verifyAdmi
     }
   }
 
+  // GET /api/admin/notifications/feed — sanitized live notification events (read-only)
+  if (path === '/api/admin/notifications/feed' && method === 'GET') {
+    const ctx = await requireAdmin(req, res, verifyAdminAuth, PERM.DASHBOARD_BOOTSTRAP);
+    if (!ctx) return true;
+
+    const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
+    const searchParams = new URLSearchParams(queryString);
+    const since = searchParams.get('since');
+    const eventId = searchParams.get('event_id');
+
+    if (!since) {
+      return jsonBadRequest(res, 'since is required (ISO timestamp)');
+    }
+
+    const { buildAdminNotificationsFeed } = requireCjs('./admin-notifications-feed.cjs');
+
+    try {
+      const { serverTime, events, nextCursor, hasMore } = await buildAdminNotificationsFeed(ctx.db, {
+        since,
+        eventId: eventId || null,
+        permissions: ctx.permissions,
+      });
+      return res.status(200).json({ success: true, serverTime, nextCursor, hasMore, events });
+    } catch (err) {
+      if (err.code === 'INVALID_SINCE') {
+        return jsonBadRequest(res, err.message);
+      }
+      return res.status(500).json({
+        error: 'Failed to load notification feed',
+        details: err?.message || String(err),
+      });
+    }
+  }
+
   if (path === '/api/admin/ambassadors' && method === 'GET') {
     const ctx = await requireAdmin(req, res, verifyAdminAuth, PERM.AMBASSADORS);
     if (!ctx) return true;

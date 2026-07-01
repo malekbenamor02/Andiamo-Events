@@ -4,6 +4,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import type { AdminFeedTabTarget } from "@/lib/admin/adminNotificationTypes";
+import type { DesktopNotificationPermissionState } from "@/hooks/useAdminNotificationFeed";
 
 export type AdminNotificationKind =
   | "ambassador_application"
@@ -15,10 +17,16 @@ export type AdminNotificationKind =
 
 export interface AdminNotification {
   id: string;
+  /** Stable server dedupe id when sourced from notification feed */
+  feedEventId?: string;
   kind: AdminNotificationKind;
   title: string;
   message: string;
   createdAt: string;
+  tabTarget?: AdminFeedTabTarget;
+  recordId?: string;
+  eventId?: string | null;
+  severity?: "info" | "success" | "warning";
 }
 
 interface AdminNotificationPanelProps {
@@ -28,6 +36,11 @@ interface AdminNotificationPanelProps {
   soundEnabled: boolean;
   onSoundChange: (enabled: boolean) => void;
   onMarkAllRead: () => void;
+  desktopPermission: DesktopNotificationPermissionState;
+  desktopAlertsEnabled: boolean;
+  alertsUnlocked: boolean;
+  onEnableAlerts: () => void;
+  onNotificationClick?: (notification: AdminNotification) => void;
 }
 
 function copy(language: "en" | "fr") {
@@ -38,6 +51,12 @@ function copy(language: "en" | "fr") {
       markAllRead: "Tout lire",
       empty: "Aucune notification",
       ariaBell: "Notifications",
+      enableAlerts: "Activer les alertes",
+      alertsEnabled: "Alertes activées",
+      desktopBlocked:
+        "Notifications bloquées. Activez-les dans les paramètres du site du navigateur.",
+      desktopUnsupported: "Notifications bureau non prises en charge",
+      testSound: "Tester le son",
     };
   }
   return {
@@ -46,6 +65,11 @@ function copy(language: "en" | "fr") {
     markAllRead: "Mark all read",
     empty: "No notifications yet",
     ariaBell: "Notifications",
+    enableAlerts: "Enable alerts",
+    alertsEnabled: "Alerts enabled",
+    desktopBlocked: "Desktop notifications blocked. Enable them in browser site settings.",
+    desktopUnsupported: "Desktop notifications not supported",
+    testSound: "Test sound",
   };
 }
 
@@ -63,11 +87,46 @@ export function AdminNotificationPanel({
   soundEnabled,
   onSoundChange,
   onMarkAllRead,
+  desktopPermission,
+  desktopAlertsEnabled,
+  alertsUnlocked,
+  onEnableAlerts,
+  onNotificationClick,
 }: AdminNotificationPanelProps) {
   const t = copy(language);
 
+  const showEnableButton =
+    !alertsUnlocked ||
+    (desktopPermission === "default" && !desktopAlertsEnabled);
+
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+      {showEnableButton && desktopPermission !== "unsupported" && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={onEnableAlerts}
+        >
+          {t.enableAlerts}
+        </Button>
+      )}
+
+      {alertsUnlocked && desktopPermission === "granted" && desktopAlertsEnabled && (
+        <span className="hidden text-[11px] text-muted-foreground sm:inline">{t.alertsEnabled}</span>
+      )}
+
+      {desktopPermission === "denied" && (
+        <span className="max-w-[10rem] text-[10px] leading-snug text-amber-600 sm:max-w-xs">
+          {t.desktopBlocked}
+        </span>
+      )}
+
+      {desktopPermission === "unsupported" && (
+        <span className="hidden text-[10px] text-muted-foreground sm:inline">{t.desktopUnsupported}</span>
+      )}
+
       <div className="flex items-center gap-2">
         <Label
           htmlFor="sound-toggle"
@@ -121,30 +180,55 @@ export function AdminNotificationPanel({
             <p className="px-3 py-8 text-center text-sm text-muted-foreground">{t.empty}</p>
           ) : (
             <div className="max-h-80 overflow-y-auto">
-              {notifications.map((n, index) => (
-                <div
-                  key={n.id}
-                  className={cn(
-                    "px-3 py-2.5",
-                    index > 0 && "border-t border-border/50",
-                  )}
-                >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <p className="min-w-0 truncate text-sm font-medium text-foreground">
-                      {n.title}
+              {notifications.map((n, index) => {
+                const clickable = Boolean(n.tabTarget && onNotificationClick);
+                const row = (
+                  <>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="min-w-0 truncate text-sm font-medium text-foreground">
+                        {n.title}
+                      </p>
+                      <time
+                        dateTime={n.createdAt}
+                        className="shrink-0 text-[11px] tabular-nums text-muted-foreground"
+                      >
+                        {formatTime(n.createdAt, language)}
+                      </time>
+                    </div>
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                      {n.message}
                     </p>
-                    <time
-                      dateTime={n.createdAt}
-                      className="shrink-0 text-[11px] tabular-nums text-muted-foreground"
+                  </>
+                );
+
+                if (clickable) {
+                  return (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => onNotificationClick?.(n)}
+                      className={cn(
+                        "w-full px-3 py-2.5 text-left transition-colors hover:bg-muted/50",
+                        index > 0 && "border-t border-border/50",
+                      )}
                     >
-                      {formatTime(n.createdAt, language)}
-                    </time>
+                      {row}
+                    </button>
+                  );
+                }
+
+                return (
+                  <div
+                    key={n.id}
+                    className={cn(
+                      "px-3 py-2.5",
+                      index > 0 && "border-t border-border/50",
+                    )}
+                  >
+                    {row}
                   </div>
-                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                    {n.message}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </PopoverContent>

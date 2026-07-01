@@ -4719,6 +4719,10 @@ app.get('/api/admin/dashboard/activity', (req, res) => {
   req.url = req.originalUrl || req.url;
   return forwardToMisc(req, res);
 });
+app.get('/api/admin/notifications/feed', (req, res) => {
+  req.url = req.originalUrl || req.url;
+  return forwardToMisc(req, res);
+});
 app.post('/api/admin-ambassador-application-resend-email', (req, res) => {
   req.url = req.originalUrl || req.url;
   return forwardToMisc(req, res);
