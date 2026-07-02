@@ -8863,6 +8863,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         orderLogs={orderLogs}
         language={language}
         isSuperAdmin={currentAdminRole === "super_admin"}
+        canManageOrders={
+          adminPermissions.includes('*') || adminPermissions.includes('orders:manage')
+        }
+        onRefreshOrderLogs={async () => {
+          try {
+            const result = await adminOrdersApi.listOrderLogs(100);
+            setOrderLogs(result.data || []);
+          } catch (e) {
+            console.warn('Order logs refresh failed:', e);
+          }
+        }}
         resendingTicketEmail={resendingTicketEmail}
         onOrderUpdate={(updates) => setSelectedOrder(prev => prev ? { ...prev, ...updates } : null)}
         onRefresh={(status) => fetchAmbassadorSalesData(status)}

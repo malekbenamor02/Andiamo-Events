@@ -47,6 +47,7 @@ function registerAdminOrdersRoutes(app, deps) {
     requireAdminAuth,
     requireAdminPermission,
     generateTicketsAndSendEmail,
+    getEmailTransporter,
   } = deps;
 
   // GET /api/admin/orders/online
@@ -509,6 +510,44 @@ function registerAdminOrdersRoutes(app, deps) {
         return res.json({ success: true });
       } catch (err) {
         return res.status(500).json({ error: err.message });
+      }
+    }
+  );
+
+  // PATCH /api/admin/orders/:id/ambassador — reassign COD order to another ambassador
+  app.patch(
+    '/api/admin/orders/:id/ambassador',
+    requireAdminAuth,
+    requireAdminPermission('orders:manage'),
+    async (req, res) => {
+      try {
+        const db = requireServiceDb(supabaseService, res);
+        if (!db) return;
+
+        const { reassignAmbassadorOrder } = require('./admin-reassign-ambassador.cjs');
+        const body = req.body || {};
+        const notifyAmbassador =
+          body.notifyAmbassador === undefined ? true : body.notifyAmbassador === true;
+        const notifyCustomer =
+          body.notifyCustomer === undefined ? true : body.notifyCustomer === true;
+
+        const result = await reassignAmbassadorOrder(db, {
+          orderId: req.params.id,
+          newAmbassadorId: body.newAmbassadorId,
+          reason: body.reason,
+          notifyAmbassador,
+          notifyCustomer,
+          admin: req.admin,
+          getEmailTransporter,
+        });
+
+        return res.json(result);
+      } catch (err) {
+        const status = err.statusCode || 500;
+        return res.status(status).json({
+          error: err.message,
+          ...(err.details ? { details: err.details } : {}),
+        });
       }
     }
   );

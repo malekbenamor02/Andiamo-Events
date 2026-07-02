@@ -201,6 +201,8 @@ export const API_ROUTES = {
     `/api/admin/orders/${encodeURIComponent(id)}/payment-status`,
   ADMIN_ORDER_COMPLETE: (id: string) =>
     `/api/admin/orders/${encodeURIComponent(id)}/complete`,
+  ADMIN_ORDER_REASSIGN_AMBASSADOR: (id: string) =>
+    `/api/admin/orders/${encodeURIComponent(id)}/ambassador`,
   ADMIN_ORDER_APPROVE_EMAIL_SMS: (id: string) =>
     `/api/admin/orders/${encodeURIComponent(id)}/approve-email-sms`,
   ADMIN_AUDIT_LOG: '/api/admin/audit-log',

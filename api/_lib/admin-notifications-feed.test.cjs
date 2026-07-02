@@ -9,6 +9,7 @@ const {
   buildAdminNotificationsFeed,
   buildOnlineOrderEvents,
   buildAmbassadorSaleEvents,
+  buildAmbassadorReassignEvents,
   buildApplicationEvents,
   computeFeedPage,
   simulateFeedPagination,
@@ -140,6 +141,29 @@ describe('admin-notifications-feed', () => {
       since,
     );
     assert.equal(events.length, 0);
+  });
+
+  it('buildAmbassadorReassignEvents emits reassigned feed event without sound', () => {
+    const since = '2026-07-01T10:00:00.000Z';
+    const events = buildAmbassadorReassignEvents(
+      {
+        id: 'log1',
+        order_id: 'o1',
+        action: 'admin_reassigned',
+        created_at: '2026-07-01T12:00:00.000Z',
+        details: {
+          new_ambassador_id: 'amb-new',
+          order_number: 999,
+          event_id: 'e1',
+        },
+      },
+      since,
+    );
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, 'ambassador_sale_reassigned');
+    assert.equal(events[0].playSound, false);
+    assert.equal(events[0].showDesktop, false);
+    assert.equal(events[0].recordId, 'o1');
   });
 
   it('buildApplicationEvents emits created and status with stable ids', () => {

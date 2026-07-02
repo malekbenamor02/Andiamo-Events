@@ -8,6 +8,7 @@ export type AdminFeedEventType =
   | 'online_order_status_changed'
   | 'ambassador_sale_created'
   | 'ambassador_sale_status_changed'
+  | 'ambassador_sale_reassigned'
   | 'ambassador_application_created'
   | 'ambassador_application_status_changed';
 

@@ -280,6 +280,69 @@ function buildAmbassadorSaleEvents(order, sinceIso) {
   return events;
 }
 
+function buildAmbassadorReassignEvents(logRow, sinceIso) {
+  if (!logRow || logRow.action !== 'admin_reassigned') return [];
+  if (!isAtOrAfter(logRow.created_at, sinceIso)) return [];
+
+  const orderId = logRow.order_id;
+  const newAmbassadorId = logRow.details?.new_ambassador_id || 'unknown';
+  const orderLabel = logRow.details?.order_number
+    ? formatOrderNumber({ order_number: logRow.details.order_number })
+    : orderId;
+
+  return [
+    {
+      id: `order:${orderId}:ambassador_reassigned:${newAmbassadorId}:${logRow.id}`,
+      type: 'ambassador_sale_reassigned',
+      kind: 'ambassador_order',
+      eventId: logRow.details?.event_id || null,
+      recordId: orderId,
+      occurredAt: logRow.created_at,
+      title: 'Ambassador sale reassigned',
+      message: assertSanitizedMessage(`Order #${orderLabel} reassigned`),
+      severity: 'info',
+      tabTarget: 'ambassador-sales',
+      playSound: false,
+      showDesktop: false,
+    },
+  ];
+}
+
+async function fetchReassignmentLogsBatch(db, batchSince) {
+  const { data, error } = await db
+    .from('order_logs')
+    .select('id, order_id, action, created_at, details')
+    .eq('action', 'admin_reassigned')
+    .gte('created_at', batchSince)
+    .order('created_at', { ascending: true })
+    .limit(ORDER_BATCH_LIMIT);
+
+  if (error) throw error;
+  const rows = data || [];
+  return { rows, hitLimit: rows.length >= ORDER_BATCH_LIMIT };
+}
+
+async function fetchAllReassignmentLogs(db, sinceIso) {
+  const byId = new Map();
+  let batchSince = sinceIso;
+  let sourceTruncated = false;
+
+  for (let i = 0; i < MAX_ORDER_BATCHES; i++) {
+    const { rows, hitLimit } = await fetchReassignmentLogsBatch(db, batchSince);
+    if (rows.length === 0) break;
+    for (const row of rows) {
+      byId.set(row.id, row);
+    }
+    if (!hitLimit) break;
+    sourceTruncated = true;
+    const last = rows[rows.length - 1];
+    if (!last.created_at || last.created_at === batchSince) break;
+    batchSince = last.created_at;
+  }
+
+  return { rows: [...byId.values()], sourceTruncated };
+}
+
 function buildApplicationEvents(app, sinceIso) {
   const events = [];
 
@@ -537,6 +600,16 @@ async function buildAdminNotificationsFeed(db, options) {
     for (const order of rows) {
       events.push(...buildAmbassadorSaleEvents(order, sinceIso));
     }
+
+    const { rows: reassignLogs, sourceTruncated: reassignTruncated } =
+      await fetchAllReassignmentLogs(db, sinceIso);
+    if (reassignTruncated) sourceTruncated = true;
+    for (const logRow of reassignLogs) {
+      if (eventId && logRow.details?.event_id && logRow.details.event_id !== eventId) {
+        continue;
+      }
+      events.push(...buildAmbassadorReassignEvents(logRow, sinceIso));
+    }
   }
 
   if (canApplications) {
@@ -559,6 +632,7 @@ module.exports = {
   buildAdminNotificationsFeed,
   buildOnlineOrderEvents,
   buildAmbassadorSaleEvents,
+  buildAmbassadorReassignEvents,
   buildApplicationEvents,
   computeFeedPage,
   simulateFeedPagination,

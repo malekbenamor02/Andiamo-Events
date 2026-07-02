@@ -118,6 +118,14 @@ describe('special route fixes', () => {
     );
   });
 
+  it('reassign ambassador route requires orders:manage', () => {
+    const src = read('api/_lib/admin-orders-routes.cjs');
+    const routeIdx = src.indexOf("'/api/admin/orders/:id/ambassador'");
+    const permIdx = src.indexOf("requireAdminPermission('orders:manage')", routeIdx);
+    const reassignIdx = src.indexOf('reassignAmbassadorOrder', routeIdx);
+    assert.ok(routeIdx >= 0 && permIdx > routeIdx && reassignIdx > permIdx);
+  });
+
   it('reports excel export requires reports:view before loadReportsExportPayload', () => {
     const src = read('api/_lib/reports-export-route.cjs');
     const routeIdx = src.indexOf("'/api/admin/reports/export'");

@@ -61,6 +61,7 @@ export function mapFeedEventToRowHighlightKind(
       return 'paid';
     case 'online_order_status_changed':
     case 'ambassador_sale_status_changed':
+    case 'ambassador_sale_reassigned':
     case 'ambassador_application_status_changed':
       return 'status';
     default:

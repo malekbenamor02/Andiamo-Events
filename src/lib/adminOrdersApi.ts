@@ -101,6 +101,20 @@ export const adminOrdersApi = {
   completeOrder: (orderId: string) =>
     adminOrdersFetch(API_ROUTES.ADMIN_ORDER_COMPLETE(orderId), { method: 'PATCH' }),
 
+  reassignAmbassador: (
+    orderId: string,
+    payload: {
+      newAmbassadorId: string;
+      reason?: string;
+      notifyAmbassador?: boolean;
+      notifyCustomer?: boolean;
+    }
+  ) =>
+    adminOrdersFetch(API_ROUTES.ADMIN_ORDER_REASSIGN_AMBASSADOR(orderId), {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
   approveEmailSmsDelivery: (orderId: string) =>
     adminOrdersFetch(API_ROUTES.ADMIN_ORDER_APPROVE_EMAIL_SMS(orderId), { method: 'POST' }),
 

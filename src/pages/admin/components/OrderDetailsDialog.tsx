@@ -58,8 +58,16 @@ import {
 import {
   Package, FileText, Activity, Database, Calendar as CalendarIcon, Clock,
   User, Phone, Mail, MapPin, Ticket, Save, X, Edit, RefreshCw, Send,
-  Wrench, CheckCircle, XCircle, MailCheck, Plus, Tag
+  Wrench, CheckCircle, XCircle, MailCheck, Plus, Tag, ArrowRightLeft
 } from "lucide-react";
+import { ChangeAmbassadorDialog } from "./ChangeAmbassadorDialog";
+import {
+  canShowChangeAmbassadorAction,
+  formatAdminReassignedAmbassadorNotificationResult,
+  formatAdminReassignedCustomerNotificationResult,
+  formatOrderActivityDateTime,
+  type AdminReassignedLogDetails,
+} from "@/lib/admin/orderActivityLogDisplay";
 
 function isAmbassadorCashOrder(order: Record<string, unknown>): boolean {
   const paymentMethod = String(order.payment_method ?? "");
@@ -96,6 +104,9 @@ export interface OrderDetailsDialogProps {
   onResendTicket: (orderId: string) => void | Promise<void>;
   /** When true, loads and shows QR ticket images and statuses (API allows super_admin only). */
   isSuperAdmin?: boolean;
+  /** Required for change-ambassador mutation (orders:manage). */
+  canManageOrders?: boolean;
+  onRefreshOrderLogs?: () => void | Promise<void>;
 }
 
 export function OrderDetailsDialog({
@@ -116,6 +127,8 @@ export function OrderDetailsDialog({
   onResendTicket,
   orderFilters,
   isSuperAdmin = false,
+  canManageOrders = false,
+  onRefreshOrderLogs,
 }: OrderDetailsDialogProps) {
   const { toast } = useToast();
   const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -162,6 +175,14 @@ export function OrderDetailsDialog({
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isChangeAmbassadorOpen, setIsChangeAmbassadorOpen] = useState(false);
+
+  const showChangeAmbassador =
+    canManageOrders && order != null && canShowChangeAmbassadorAction(order as Record<string, unknown>);
+  const orderAmbassadorName =
+    order != null
+      ? String((order as Record<string, unknown>).ambassador_name ?? "—")
+      : "—";
 
   // Read presale snapshot persisted by the order-create handler. RLS hides `presale_codes` from
   // the anon admin client, so the snapshot stored on `orders.notes.presale` is the source of truth.
@@ -941,6 +962,28 @@ export function OrderDetailsDialog({
                 </AdminOrderDetailsGrid>
               </AdminOrderDetailsSection>
 
+              <AdminOrderDetailsSection title={language === "en" ? "Ambassador" : "Ambassadeur"}>
+                <AdminOrderDetailsGrid>
+                  <AdminOrderDetailsField label={language === "en" ? "Assigned ambassador" : "Ambassadeur assigné"}>
+                    <span className="font-medium">{orderAmbassadorName}</span>
+                  </AdminOrderDetailsField>
+                  {showChangeAmbassador && (
+                    <AdminOrderDetailsField label={language === "en" ? "Actions" : "Actions"}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        onClick={() => setIsChangeAmbassadorOpen(true)}
+                      >
+                        <ArrowRightLeft className="h-4 w-4" />
+                        {language === "en" ? "Change ambassador" : "Changer d'ambassadeur"}
+                      </Button>
+                    </AdminOrderDetailsField>
+                  )}
+                </AdminOrderDetailsGrid>
+              </AdminOrderDetailsSection>
+
               <AdminOrderDetailsSection title={language === "en" ? "Admin notes" : "Notes admin"}>
                   {isEditingAdminNotes ? (
                     <div className="space-y-2">
@@ -1165,6 +1208,8 @@ export function OrderDetailsDialog({
                                 return <RefreshCw className="w-4 h-4 text-blue-500" />;
                               case "created":
                                 return <Plus className="w-4 h-4 text-purple-500" />;
+                              case "admin_reassigned":
+                                return <ArrowRightLeft className="w-4 h-4 text-indigo-500" />;
                               default:
                                 return <Clock className="w-4 h-4 text-muted-foreground" />;
                             }
@@ -1177,6 +1222,10 @@ export function OrderDetailsDialog({
                               cancelled: { label: language === "en" ? "Cancelled" : "Annulé", variant: "destructive" },
                               status_changed: { label: language === "en" ? "Status Changed" : "Statut modifié", variant: "secondary" },
                               created: { label: language === "en" ? "Created" : "Créé", variant: "outline" },
+                              admin_reassigned: {
+                                label: language === "en" ? "Ambassador reassigned" : "Ambassadeur réassigné",
+                                variant: "secondary",
+                              },
                             };
                             const actionInfo = actionMap[log.action] || { label: log.action, variant: "outline" as const };
                             return (
@@ -1219,7 +1268,52 @@ export function OrderDetailsDialog({
                                 </div>
                                 {log.details && typeof log.details === "object" && (
                                   <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                                    {log.details.old_status && log.details.new_status && (
+                                    {log.action === "admin_reassigned" && (
+                                      <>
+                                        <p className="break-words whitespace-normal">
+                                          {language === "en" ? "From" : "De"}:{" "}
+                                          <span className="font-medium text-foreground">
+                                            {log.details.old_ambassador_name || "—"}
+                                          </span>
+                                        </p>
+                                        <p className="break-words whitespace-normal">
+                                          {language === "en" ? "To" : "Vers"}:{" "}
+                                          <span className="font-medium text-foreground">
+                                            {log.details.new_ambassador_name || "—"}
+                                          </span>
+                                        </p>
+                                        {log.details.admin_name && (
+                                          <p className="break-words whitespace-normal">
+                                            {language === "en" ? "By" : "Par"}:{" "}
+                                            <span className="font-medium text-foreground">
+                                              {log.details.admin_name}
+                                            </span>
+                                          </p>
+                                        )}
+                                        {log.details.reason && (
+                                          <p className="italic break-words whitespace-normal">
+                                            {language === "en" ? "Reason" : "Raison"}: {log.details.reason}
+                                          </p>
+                                        )}
+                                        <p className="break-words whitespace-normal">
+                                          {formatAdminReassignedAmbassadorNotificationResult(
+                                            log.details as AdminReassignedLogDetails,
+                                            language
+                                          )}
+                                        </p>
+                                        <p className="break-words whitespace-normal">
+                                          {formatAdminReassignedCustomerNotificationResult(
+                                            log.details as AdminReassignedLogDetails,
+                                            language
+                                          )}
+                                        </p>
+                                        <p className="break-words whitespace-normal">
+                                          {language === "en" ? "Date" : "Date"}:{" "}
+                                          {formatOrderActivityDateTime(log.created_at, language)}
+                                        </p>
+                                      </>
+                                    )}
+                                    {log.action !== "admin_reassigned" && log.details.old_status && log.details.new_status && (
                                       <p className="break-words whitespace-normal">
                                         {language === "en" ? "Status" : "Statut"}:
                                         <span className="ml-1 font-medium break-all">{log.details.old_status}</span>
@@ -1227,12 +1321,12 @@ export function OrderDetailsDialog({
                                         <span className="font-medium break-all">{log.details.new_status}</span>
                                       </p>
                                     )}
-                                    {log.details.reason && (
+                                    {log.action !== "admin_reassigned" && log.details.reason && (
                                       <p className="italic break-words whitespace-normal">
                                         {language === "en" ? "Reason" : "Raison"}: {log.details.reason}
                                       </p>
                                     )}
-                                    {log.details.email_sent !== undefined && (
+                                    {log.action !== "admin_reassigned" && log.details.email_sent !== undefined && (
                                       <p className="break-words whitespace-normal">
                                         {language === "en" ? "Email" : "Email"}:
                                         <span className={`ml-1 ${log.details.email_sent ? "text-green-500" : "text-red-500"}`}>
@@ -1246,7 +1340,7 @@ export function OrderDetailsDialog({
                                         </span>
                                       </p>
                                     )}
-                                    {log.details.sms_sent !== undefined && (
+                                    {log.action !== "admin_reassigned" && log.details.sms_sent !== undefined && (
                                       <p className="break-words whitespace-normal">
                                         {language === "en" ? "SMS" : "SMS"}:
                                         <span className={`ml-1 ${log.details.sms_sent ? "text-green-500" : "text-red-500"}`}>
@@ -1587,6 +1681,27 @@ export function OrderDetailsDialog({
           resendConfirmKind === "ticket" ? resendingTicketEmail : resendingEmail
         }
       />
+
+      {order && (
+        <ChangeAmbassadorDialog
+          open={isChangeAmbassadorOpen}
+          onOpenChange={setIsChangeAmbassadorOpen}
+          orderId={String(order.id)}
+          currentAmbassadorId={order.ambassador_id as string | undefined}
+          currentAmbassadorName={orderAmbassadorName !== "—" ? orderAmbassadorName : null}
+          customerCity={order.city as string | undefined}
+          customerVille={order.ville as string | undefined}
+          language={language}
+          onSuccess={async (result) => {
+            onOrderUpdate({
+              ambassador_id: result.ambassador_id,
+              ambassador_name: result.ambassador_name,
+            });
+            onRefresh(orderFilters?.status);
+            await onRefreshOrderLogs?.();
+          }}
+        />
+      )}
     </>
   );
 }
