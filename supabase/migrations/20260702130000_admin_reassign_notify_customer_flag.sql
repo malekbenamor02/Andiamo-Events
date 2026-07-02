@@ -1,7 +1,10 @@
 -- Extend atomic reassignment RPC core audit details with notify_customer flag.
 
-CREATE OR REPLACE FUNCTION public.admin_reassign_ambassador_order_atomic(
-  p_order_id uuid,
+DROP FUNCTION IF EXISTS public.admin_reassign_ambassador_order_atomic(
+  uuid, uuid, uuid, uuid, text, text, text, boolean, text, text
+);
+
+CREATE OR REPLACE FUNCTION public.admin_reassign_ambassador_order_atomic(  p_order_id uuid,
   p_expected_ambassador_id uuid,
   p_new_ambassador_id uuid,
   p_admin_id uuid,
